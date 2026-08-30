@@ -110,6 +110,22 @@ class IVDesign:
 
 
 @dataclass(frozen=True)
+class RDDDesign:
+    object_id: str
+    framework: str = "unknown"  # continuity | local_randomization | unknown
+    design_type: str = "sharp"  # sharp | fuzzy | unknown
+    estimator: str | None = None
+    global_polynomial_order: int | None = None
+    robust_bias_corrected_inference: bool | None = None
+    alternative_modern_inference_reported: bool | None = None
+    randomization_inference_reported: bool | None = None
+    density_test_reported: bool | None = None
+    bandwidth_selection: str | None = None
+    materiality: Materiality = Materiality.MAIN_EMPIRICAL_CLAIM
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+
+@dataclass(frozen=True)
 class Finding:
     finding_id: str
     detector_id: str

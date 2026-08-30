@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from .detectors.base import DetectorRegistry
 from .detectors.correlation import CorrelationPSDDetector
 from .detectors.designs import DIDDesignDetector, WeakIVDesignDetector
+from .detectors.rdd import RDDDesignDetector
 from .detectors.regression import RegressionConsistencyDetector
 from .detectors.sample import SampleAccountingDetector
 from .models import AuditSummary, CheckResult, Finding
@@ -19,7 +20,14 @@ class AuditEngine:
 
         detectors = [RegressionConsistencyDetector(), SampleAccountingDetector()]
         if include_experimental:
-            detectors.extend([CorrelationPSDDetector(), DIDDesignDetector(), WeakIVDesignDetector()])
+            detectors.extend(
+                [
+                    CorrelationPSDDetector(),
+                    DIDDesignDetector(),
+                    WeakIVDesignDetector(),
+                    RDDDesignDetector(),
+                ]
+            )
         self.registry = DetectorRegistry(detectors)
 
     def audit(self, objects: Iterable[object]) -> AuditSummary:

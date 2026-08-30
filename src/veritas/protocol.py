@@ -14,11 +14,12 @@ class ProtocolDriftError(RuntimeError):
 
 @dataclass(frozen=True)
 class AuditProtocol:
-    protocol_version: int = 1
+    protocol_version: int = 2
     detector_versions: dict[str, str] = field(default_factory=dict)
     thresholds: dict[str, Any] = field(default_factory=dict)
     assumptions: dict[str, Any] = field(default_factory=dict)
     artifact_sha256: dict[str, str] = field(default_factory=dict)
+    methodology_snapshot_sha256: str | None = None
 
 
 def stable_sha256(value: Any) -> str:
@@ -29,7 +30,7 @@ def stable_sha256(value: Any) -> str:
 def build_protocol_lock(protocol: AuditProtocol) -> dict[str, Any]:
     payload = asdict(protocol)
     return {
-        "lock_version": 1,
+        "lock_version": 2,
         "protocol_sha256": stable_sha256(payload),
         "protocol": payload,
     }
@@ -51,6 +52,9 @@ def ensure_protocol_lock(path: str | Path, protocol: AuditProtocol) -> dict[str,
 
     target.parent.mkdir(parents=True, exist_ok=True)
     desired["locked_at"] = datetime.now(UTC).isoformat()
-    desired["rule"] = "Changing a locked detector version, threshold, assumption, or artifact identity requires a new audit run."
+    desired["rule"] = (
+        "Changing a locked detector version, threshold, assumption, artifact identity, or methodology snapshot "
+        "requires a new audit run."
+    )
     target.write_text(json.dumps(desired, ensure_ascii=False, indent=2), encoding="utf-8")
     return desired

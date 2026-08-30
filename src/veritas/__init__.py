@@ -11,6 +11,7 @@ from .claims import (
     StatisticalClaimGraph,
     StatisticalObjectNode,
 )
+from .methodology import MethodAnchor, get_method_anchor, methodology_snapshot_sha256
 from .models import (
     AuditSummary,
     CheckResult,
@@ -18,6 +19,7 @@ from .models import (
     DIDDesign,
     Finding,
     IVDesign,
+    RDDDesign,
     RegressionResult,
     ReportedNumber,
     SamplePartition,
@@ -41,6 +43,8 @@ __all__ = [
     "Finding",
     "IVDesign",
     "Materiality",
+    "MethodAnchor",
+    "RDDDesign",
     "RegressionResult",
     "RelationType",
     "ReportedNumber",
@@ -48,6 +52,8 @@ __all__ = [
     "SourceLocation",
     "StatisticalClaimGraph",
     "StatisticalObjectNode",
+    "get_method_anchor",
+    "methodology_snapshot_sha256",
 ]
 
 __version__ = "0.2.0"
