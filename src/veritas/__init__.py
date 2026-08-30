@@ -46,6 +46,7 @@ from .models import (
     SourceLocation,
     StandardizedRegressionReconstruction,
 )
+from .runtime import numerical_backend_sha256, numerical_backend_versions
 from .specifications import (
     Specification,
     SpecificationConstraint,
@@ -105,6 +106,8 @@ __all__ = [
     "evaluate_hard_alert_certification",
     "get_method_anchor",
     "methodology_snapshot_sha256",
+    "numerical_backend_sha256",
+    "numerical_backend_versions",
     "summarize_specification_robustness",
 ]
 
