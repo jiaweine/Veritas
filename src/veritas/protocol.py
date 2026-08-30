@@ -22,6 +22,7 @@ class AuditProtocol:
     artifact_sha256: dict[str, str] = field(default_factory=dict)
     methodology_snapshot_sha256: str | None = None
     extraction_calibration_sha256: str | None = None
+    specification_space_sha256: str | None = None
 
 
 def stable_sha256(value: Any) -> str:
@@ -56,7 +57,7 @@ def ensure_protocol_lock(path: str | Path, protocol: AuditProtocol) -> dict[str,
     desired["locked_at"] = datetime.now(UTC).isoformat()
     desired["rule"] = (
         "Changing a locked detector version, parser version, threshold, assumption, artifact identity, methodology "
-        "snapshot, or extraction calibration requires a new audit run."
+        "snapshot, extraction calibration, or specification space requires a new audit run."
     )
     target.write_text(json.dumps(desired, ensure_ascii=False, indent=2), encoding="utf-8")
     return desired

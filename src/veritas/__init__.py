@@ -42,6 +42,14 @@ from .models import (
     SamplePartition,
     SourceLocation,
 )
+from .specifications import (
+    Specification,
+    SpecificationConstraint,
+    SpecificationEstimate,
+    SpecificationRobustnessSummary,
+    SpecificationSpace,
+    summarize_specification_robustness,
+)
 from .types import EvidenceFamily, EvidenceGrade, Materiality
 
 __all__ = [
@@ -77,6 +85,11 @@ __all__ = [
     "ReportedNumber",
     "SamplePartition",
     "SourceLocation",
+    "Specification",
+    "SpecificationConstraint",
+    "SpecificationEstimate",
+    "SpecificationRobustnessSummary",
+    "SpecificationSpace",
     "StatisticalClaimGraph",
     "StatisticalObjectNode",
     "assign_paper_split",
@@ -84,6 +97,7 @@ __all__ = [
     "evaluate_hard_alert_certification",
     "get_method_anchor",
     "methodology_snapshot_sha256",
+    "summarize_specification_robustness",
 ]
 
 __version__ = "0.2.0"
