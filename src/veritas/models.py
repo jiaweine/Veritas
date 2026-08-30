@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isfinite
 from typing import Any
 
 from .types import CheckStatus, ComparisonOperator, EvidenceFamily, EvidenceGrade, Materiality
@@ -80,6 +81,83 @@ class CorrelationMatrix:
             raise ValueError("correlation matrix requires at least two variables")
         if len(self.cells) != n or any(len(row) != n for row in self.cells):
             raise ValueError("correlation matrix cells must be square and match labels")
+        if len(set(self.labels)) != n:
+            raise ValueError("correlation matrix labels must be unique")
+
+
+@dataclass(frozen=True)
+class StandardizedRegressionReconstruction:
+    """A standardized OLS result intended to be reconstructed from a reported correlation matrix."""
+
+    object_id: str
+    correlation_matrix: CorrelationMatrix
+    outcome: str
+    predictors: tuple[str, ...]
+    standardized_betas: tuple[ReportedNumber, ...]
+    ols_identity_verified: bool = False
+    same_sample_verified: bool = False
+    complete_predictor_set_verified: bool = False
+    materiality: Materiality = Materiality.SECONDARY_RESULT
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+    def __post_init__(self) -> None:
+        if not self.predictors:
+            raise ValueError("at least one predictor is required")
+        if len(self.predictors) != len(self.standardized_betas):
+            raise ValueError("predictors and standardized_betas must have equal length")
+        if len(set(self.predictors)) != len(self.predictors):
+            raise ValueError("predictor labels must be unique")
+        if self.outcome in self.predictors:
+            raise ValueError("outcome may not also be a predictor")
+
+
+@dataclass(frozen=True)
+class DiscreteSummary:
+    """Reported summary statistics for a variable with an explicit finite support."""
+
+    object_id: str
+    n: int
+    mean: ReportedNumber
+    support: tuple[float, ...]
+    sd: ReportedNumber | None = None
+    sd_definition: str = "unknown"  # sample | population | unknown
+    support_verified: bool = False
+    n_verified: bool = False
+    weighted: bool | None = None
+    materiality: Materiality = Materiality.SECONDARY_RESULT
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+    def __post_init__(self) -> None:
+        if self.n <= 0:
+            raise ValueError("DiscreteSummary.n must be positive")
+        if len(self.support) < 2:
+            raise ValueError("DiscreteSummary.support requires at least two values")
+        if len(set(self.support)) != len(self.support):
+            raise ValueError("DiscreteSummary.support values must be unique")
+        if any(not isfinite(value) for value in self.support):
+            raise ValueError("DiscreteSummary.support values must be finite")
+
+
+@dataclass(frozen=True)
+class LogitResult:
+    object_id: str
+    beta: ReportedNumber
+    odds_ratio: ReportedNumber
+    exp_beta_relation_verified: bool = False
+    materiality: Materiality = Materiality.SECONDARY_RESULT
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+
+@dataclass(frozen=True)
+class MediationResult:
+    object_id: str
+    a_path: ReportedNumber
+    b_path: ReportedNumber
+    indirect_effect: ReportedNumber
+    product_definition_verified: bool = False
+    scale_consistent_verified: bool = False
+    materiality: Materiality = Materiality.SECONDARY_RESULT
+    source: SourceLocation = field(default_factory=SourceLocation)
 
 
 @dataclass(frozen=True)

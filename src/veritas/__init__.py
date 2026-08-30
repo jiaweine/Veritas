@@ -34,13 +34,17 @@ from .models import (
     CheckResult,
     CorrelationMatrix,
     DIDDesign,
+    DiscreteSummary,
     Finding,
     IVDesign,
+    LogitResult,
+    MediationResult,
     RDDDesign,
     RegressionResult,
     ReportedNumber,
     SamplePartition,
     SourceLocation,
+    StandardizedRegressionReconstruction,
 )
 from .specifications import (
     Specification,
@@ -68,6 +72,7 @@ __all__ = [
     "ConformalExtractionGate",
     "CorrelationMatrix",
     "DIDDesign",
+    "DiscreteSummary",
     "EvidenceFamily",
     "EvidenceGrade",
     "ExtractedField",
@@ -76,7 +81,9 @@ __all__ = [
     "ExtractionResolution",
     "Finding",
     "IVDesign",
+    "LogitResult",
     "Materiality",
+    "MediationResult",
     "MethodAnchor",
     "PaperAuditOutcome",
     "RDDDesign",
@@ -90,6 +97,7 @@ __all__ = [
     "SpecificationEstimate",
     "SpecificationRobustnessSummary",
     "SpecificationSpace",
+    "StandardizedRegressionReconstruction",
     "StatisticalClaimGraph",
     "StatisticalObjectNode",
     "assign_paper_split",
@@ -100,4 +108,4 @@ __all__ = [
     "summarize_specification_robustness",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
