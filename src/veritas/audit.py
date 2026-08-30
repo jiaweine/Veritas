@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from .detectors.base import DetectorRegistry
+from .detectors.correlation import CorrelationPSDDetector
+from .detectors.designs import DIDDesignDetector, WeakIVDesignDetector
 from .detectors.regression import RegressionConsistencyDetector
 from .detectors.sample import SampleAccountingDetector
 from .models import AuditSummary, CheckResult, Finding
@@ -10,11 +12,15 @@ from .scoring import review_priority, verification_coverage
 
 
 class AuditEngine:
-    def __init__(self, registry: DetectorRegistry | None = None) -> None:
-        self.registry = registry or DetectorRegistry([
-            RegressionConsistencyDetector(),
-            SampleAccountingDetector(),
-        ])
+    def __init__(self, registry: DetectorRegistry | None = None, *, include_experimental: bool = False) -> None:
+        if registry is not None:
+            self.registry = registry
+            return
+
+        detectors = [RegressionConsistencyDetector(), SampleAccountingDetector()]
+        if include_experimental:
+            detectors.extend([CorrelationPSDDetector(), DIDDesignDetector(), WeakIVDesignDetector()])
+        self.registry = DetectorRegistry(detectors)
 
     def audit(self, objects: Iterable[object]) -> AuditSummary:
         checks: list[CheckResult] = []
