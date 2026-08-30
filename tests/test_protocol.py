@@ -13,6 +13,7 @@ def test_protocol_lock_detects_drift(tmp_path):
         methodology_snapshot_sha256=methodology_snapshot_sha256(),
         extraction_calibration_sha256="c" * 64,
         specification_space_sha256="d" * 64,
+        numerical_backend_sha256="e" * 64,
     )
     ensure_protocol_lock(path, first)
     ensure_protocol_lock(path, first)
@@ -24,6 +25,7 @@ def test_protocol_lock_detects_drift(tmp_path):
         methodology_snapshot_sha256=methodology_snapshot_sha256(),
         extraction_calibration_sha256="c" * 64,
         specification_space_sha256="d" * 64,
+        numerical_backend_sha256="e" * 64,
     )
     with pytest.raises(ProtocolDriftError):
         ensure_protocol_lock(path, changed)
@@ -65,5 +67,15 @@ def test_protocol_lock_detects_solver_drift(tmp_path):
     ensure_protocol_lock(path, first)
 
     changed = AuditProtocol(solver_versions={"scs": "3.3.0", "scipy": "1.17.1"})
+    with pytest.raises(ProtocolDriftError):
+        ensure_protocol_lock(path, changed)
+
+
+def test_protocol_lock_detects_full_numerical_backend_drift(tmp_path):
+    path = tmp_path / "audit.lock.json"
+    first = AuditProtocol(numerical_backend_sha256="a" * 64)
+    ensure_protocol_lock(path, first)
+
+    changed = AuditProtocol(numerical_backend_sha256="b" * 64)
     with pytest.raises(ProtocolDriftError):
         ensure_protocol_lock(path, changed)
