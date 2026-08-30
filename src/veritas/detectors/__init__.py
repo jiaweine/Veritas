@@ -6,6 +6,7 @@ from .discrete import DiscreteSummaryFeasibilityDetector
 from .rdd import RDDDesignDetector
 from .regression import RegressionConsistencyDetector
 from .sample import SampleAccountingDetector
+from .standardized_regression import StandardizedRegressionReconstructionDetector
 
 __all__ = [
     "CorrelationPSDDetector",
@@ -18,5 +19,6 @@ __all__ = [
     "RDDDesignDetector",
     "RegressionConsistencyDetector",
     "SampleAccountingDetector",
+    "StandardizedRegressionReconstructionDetector",
     "WeakIVDesignDetector",
 ]
