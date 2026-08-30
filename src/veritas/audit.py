@@ -10,6 +10,7 @@ from .detectors.discrete import DiscreteSummaryFeasibilityDetector
 from .detectors.rdd import RDDDesignDetector
 from .detectors.regression import RegressionConsistencyDetector
 from .detectors.sample import SampleAccountingDetector
+from .detectors.standardized_regression import StandardizedRegressionReconstructionDetector
 from .models import AuditSummary, CheckResult, Finding
 from .scoring import review_priority, verification_coverage
 
@@ -28,6 +29,7 @@ class AuditEngine:
                     DiscreteSummaryFeasibilityDetector(),
                     LogitOddsRatioDetector(),
                     MediationProductDetector(),
+                    StandardizedRegressionReconstructionDetector(),
                     DIDDesignDetector(),
                     WeakIVDesignDetector(),
                     RDDDesignDetector(),
