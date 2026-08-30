@@ -81,6 +81,34 @@ class CorrelationMatrix:
             raise ValueError("correlation matrix requires at least two variables")
         if len(self.cells) != n or any(len(row) != n for row in self.cells):
             raise ValueError("correlation matrix cells must be square and match labels")
+        if len(set(self.labels)) != n:
+            raise ValueError("correlation matrix labels must be unique")
+
+
+@dataclass(frozen=True)
+class StandardizedRegressionReconstruction:
+    """A standardized OLS result intended to be reconstructed from a reported correlation matrix."""
+
+    object_id: str
+    correlation_matrix: CorrelationMatrix
+    outcome: str
+    predictors: tuple[str, ...]
+    standardized_betas: tuple[ReportedNumber, ...]
+    ols_identity_verified: bool = False
+    same_sample_verified: bool = False
+    complete_predictor_set_verified: bool = False
+    materiality: Materiality = Materiality.SECONDARY_RESULT
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+    def __post_init__(self) -> None:
+        if not self.predictors:
+            raise ValueError("at least one predictor is required")
+        if len(self.predictors) != len(self.standardized_betas):
+            raise ValueError("predictors and standardized_betas must have equal length")
+        if len(set(self.predictors)) != len(self.predictors):
+            raise ValueError("predictor labels must be unique")
+        if self.outcome in self.predictors:
+            raise ValueError("outcome may not also be a predictor")
 
 
 @dataclass(frozen=True)
