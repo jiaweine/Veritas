@@ -12,6 +12,7 @@ dependencies = [
   "cvxpy>=1.9,<2.0",
   "numpy>=1.26",
   "scipy>=1.11",
+  "scs==3.2.11",
 ]
 
 [project.optional-dependencies]
