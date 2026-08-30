@@ -1,6 +1,16 @@
 """Veritas: evidence-first auditing for empirical social science research."""
 
 from .audit import AuditEngine
+from .benchmark import (
+    BenchmarkCase,
+    BenchmarkSplit,
+    CertificationPolicy,
+    CertificationReport,
+    PaperAuditOutcome,
+    assign_paper_split,
+    benchmark_manifest_sha256,
+    evaluate_hard_alert_certification,
+)
 from .claims import (
     ArtifactRef,
     ClaimEdge,
@@ -38,6 +48,10 @@ __all__ = [
     "ArtifactRef",
     "AuditEngine",
     "AuditSummary",
+    "BenchmarkCase",
+    "BenchmarkSplit",
+    "CertificationPolicy",
+    "CertificationReport",
     "CheckResult",
     "ClaimEdge",
     "ClaimNode",
@@ -56,6 +70,7 @@ __all__ = [
     "IVDesign",
     "Materiality",
     "MethodAnchor",
+    "PaperAuditOutcome",
     "RDDDesign",
     "RegressionResult",
     "RelationType",
@@ -64,6 +79,9 @@ __all__ = [
     "SourceLocation",
     "StatisticalClaimGraph",
     "StatisticalObjectNode",
+    "assign_paper_split",
+    "benchmark_manifest_sha256",
+    "evaluate_hard_alert_certification",
     "get_method_anchor",
     "methodology_snapshot_sha256",
 ]
