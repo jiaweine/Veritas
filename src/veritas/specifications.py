@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from itertools import product
-import json
 from math import sqrt
 
 
@@ -161,7 +161,9 @@ def summarize_specification_robustness(
     )
 
 
-def _equivalence_balanced_weights(estimates: tuple[SpecificationEstimate, ...] | list[SpecificationEstimate]) -> list[float]:
+def _equivalence_balanced_weights(
+    estimates: tuple[SpecificationEstimate, ...] | list[SpecificationEstimate],
+) -> list[float]:
     counts = Counter(item.specification.equivalence_group for item in estimates)
     group_count = len(counts)
     return [1.0 / group_count / counts[item.specification.equivalence_group] for item in estimates]
@@ -179,7 +181,9 @@ def _weighted_quantile(values: list[float], weights: list[float], quantile: floa
     return ordered[-1][0]
 
 
-def _dimension_influence(estimates: tuple[SpecificationEstimate, ...] | list[SpecificationEstimate]) -> dict[str, float]:
+def _dimension_influence(
+    estimates: tuple[SpecificationEstimate, ...] | list[SpecificationEstimate],
+) -> dict[str, float]:
     by_dimension: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for item in estimates:
         for dimension, choice in item.specification.choices:
