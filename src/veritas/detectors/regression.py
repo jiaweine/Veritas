@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from scipy.stats import norm, t as student_t
+from scipy.stats import norm
+from scipy.stats import t as student_t
 
 from ..models import CheckResult, Finding, RegressionResult, ReportedNumber
 from ..types import CheckStatus, ComparisonOperator, EvidenceFamily, EvidenceGrade

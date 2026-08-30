@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +50,7 @@ def ensure_protocol_lock(path: str | Path, protocol: AuditProtocol) -> dict[str,
         return existing
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    desired["locked_at"] = datetime.now(timezone.utc).isoformat()
+    desired["locked_at"] = datetime.now(UTC).isoformat()
     desired["rule"] = "Changing a locked detector version, threshold, assumption, or artifact identity requires a new audit run."
     target.write_text(json.dumps(desired, ensure_ascii=False, indent=2), encoding="utf-8")
     return desired

@@ -13,15 +13,15 @@ def test_unverifiable_reduces_coverage_not_priority():
 
 
 def test_same_family_does_not_double_count():
-    base = dict(
-        detector_id="d@1",
-        object_id="x",
-        grade=EvidenceGrade.INTERNAL_CONTRADICTION,
-        materiality=Materiality.MAIN_EMPIRICAL_CLAIM,
-        family=EvidenceFamily.NUMERICAL_CONSISTENCY,
-        title="x",
-        explanation="x",
-    )
+    base = {
+        "detector_id": "d@1",
+        "object_id": "x",
+        "grade": EvidenceGrade.INTERNAL_CONTRADICTION,
+        "materiality": Materiality.MAIN_EMPIRICAL_CLAIM,
+        "family": EvidenceFamily.NUMERICAL_CONSISTENCY,
+        "title": "x",
+        "explanation": "x",
+    }
     one = Finding(finding_id="F1", **base)
     two = Finding(finding_id="F2", **base)
     assert review_priority([one]) == review_priority([one, two])
