@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from enum import Enum
 from hashlib import sha256
-import json
 
 from scipy.stats import beta as beta_distribution
 
@@ -110,7 +110,7 @@ def binomial_lower_bound(successes: int, trials: int, *, confidence: float = 0.9
 
 def evaluate_hard_alert_certification(
     outcomes: tuple[PaperAuditOutcome, ...] | list[PaperAuditOutcome],
-    policy: CertificationPolicy = CertificationPolicy(),
+    policy: CertificationPolicy | None = None,
 ) -> CertificationReport:
     """Evaluate E3+ readiness using paper-level errors and exact uncertainty bounds.
 
@@ -118,6 +118,7 @@ def evaluate_hard_alert_certification(
     appearing statistically stronger by producing many correlated alerts from a
     single underlying error.
     """
+    policy = policy or CertificationPolicy()
     applicable = [outcome for outcome in outcomes if outcome.applicable]
     clean = [outcome for outcome in applicable if not outcome.expected_material_issue]
     positive = [outcome for outcome in applicable if outcome.expected_material_issue]
