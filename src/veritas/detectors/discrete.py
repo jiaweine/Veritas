@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from math import isfinite
 from uuid import uuid4
 
@@ -59,7 +59,7 @@ def _verified_witness(
     sum_bounds: tuple[int, int],
     q_bounds: tuple[int, int] | None,
 ) -> tuple[int, ...] | None:
-    rounded = tuple(int(round(value)) for value in counts)
+    rounded = tuple(round(value) for value in counts)
     if any(value < 0 for value in rounded) or sum(rounded) != n:
         return None
     total = sum(value * count for value, count in zip(support_int, rounded, strict=True))
