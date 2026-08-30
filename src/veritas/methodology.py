@@ -105,6 +105,36 @@ METHOD_ANCHORS: tuple[MethodAnchor, ...] = (
         status="living-benchmark",
         url="https://github.com/opendatalab/OmniDocBench",
     ),
+    MethodAnchor(
+        key="table_understanding_2025",
+        title="Table Understanding and (Multimodal) LLMs: A Cross-Domain Case Study",
+        authors="Borisova et al.",
+        year=2025,
+        venue="Table Representation Learning Workshop",
+        status="published",
+        url="https://aclanthology.org/2025.trl-1.10/",
+        doi="10.18653/v1/2025.trl-1.10",
+    ),
+    MethodAnchor(
+        key="sconu_acl_2025",
+        title="SConU: Selective Conformal Uncertainty in Large Language Models",
+        authors="Wang et al.",
+        year=2025,
+        venue="ACL",
+        status="published",
+        url="https://aclanthology.org/2025.acl-long.934/",
+        doi="10.18653/v1/2025.acl-long.934",
+    ),
+    MethodAnchor(
+        key="conformal_lvlm_2025",
+        title="Towards Statistical Factuality Guarantee for Large Vision-Language Models",
+        authors="ConfLVLM authors",
+        year=2025,
+        venue="EMNLP",
+        status="published",
+        url="https://aclanthology.org/2025.emnlp-main.576/",
+        doi="10.18653/v1/2025.emnlp-main.576",
+    ),
 )
 
 

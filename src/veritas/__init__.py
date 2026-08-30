@@ -11,6 +11,13 @@ from .claims import (
     StatisticalClaimGraph,
     StatisticalObjectNode,
 )
+from .extraction import (
+    ConformalCalibration,
+    ConformalExtractionGate,
+    ExtractionCandidate,
+    ExtractionDecision,
+    ExtractionResolution,
+)
 from .methodology import MethodAnchor, get_method_anchor, methodology_snapshot_sha256
 from .models import (
     AuditSummary,
@@ -35,11 +42,16 @@ __all__ = [
     "ClaimEdge",
     "ClaimNode",
     "ClaimRole",
+    "ConformalCalibration",
+    "ConformalExtractionGate",
     "CorrelationMatrix",
     "DIDDesign",
     "EvidenceFamily",
     "EvidenceGrade",
     "ExtractedField",
+    "ExtractionCandidate",
+    "ExtractionDecision",
+    "ExtractionResolution",
     "Finding",
     "IVDesign",
     "Materiality",
