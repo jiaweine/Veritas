@@ -87,6 +87,34 @@ METHOD_ANCHORS: tuple[MethodAnchor, ...] = (
         url="https://rdpackages.github.io/rdhte/",
     ),
     MethodAnchor(
+        key="grim_2017",
+        title="The GRIM Test: A Simple Technique Detects Numerous Anomalies in the Reporting of Results in Psychology",
+        authors="Brown, Heathers",
+        year=2017,
+        venue="Social Psychological and Personality Science",
+        status="published",
+        url="https://journals.sagepub.com/doi/10.1177/1948550616673876",
+        doi="10.1177/1948550616673876",
+    ),
+    MethodAnchor(
+        key="grimmer_2018",
+        title="Analytic-GRIMMER: a new way of testing the possibility of standard deviations",
+        authors="Allard",
+        year=2018,
+        venue="methodology note",
+        status="published-online",
+        url="https://aurelienallard.netlify.app/post/anaytic-grimmer-possibility-standard-deviations/",
+    ),
+    MethodAnchor(
+        key="scrutiny_grimmer_2026",
+        title="scrutiny GRIMMER documentation",
+        authors="scrutiny maintainers",
+        year=2026,
+        venue="CRAN software documentation",
+        status="living-software-documentation",
+        url="https://search.r-project.org/CRAN/refmans/scrutiny/help/grimmer.html",
+    ),
+    MethodAnchor(
         key="analytic_robustness_nature_2025",
         title="Investigating the analytical robustness of the social and behavioural sciences",
         authors="multi-analyst collaboration",
@@ -147,7 +175,7 @@ def get_method_anchor(key: str) -> MethodAnchor:
 
 def methodology_snapshot() -> dict[str, object]:
     return {
-        "as_of": "2026-08-30",
+        "as_of": "2026-08-31",
         "anchors": [asdict(anchor) for anchor in METHOD_ANCHORS],
     }
 
