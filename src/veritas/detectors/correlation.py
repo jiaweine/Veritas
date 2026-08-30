@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import cvxpy as cp
 import numpy as np
+import scs
 
 from ..models import CheckResult, CorrelationMatrix, Finding, ReportedNumber
 from ..types import CheckStatus, EvidenceFamily, EvidenceGrade
@@ -11,6 +12,7 @@ from .base import Detector
 
 _NUMERICAL_TOL = 1e-7
 _HARD_MARGIN = 1e-4
+_VALIDATED_SCS_VERSION = "3.2.11"
 
 
 def _interval(number: ReportedNumber) -> tuple[float, float]:
@@ -38,7 +40,7 @@ class CorrelationPSDDetector(Detector):
     """
 
     detector_id = "correlation_psd_sdp"
-    version = "0.1.0"
+    version = "0.2.0"
 
     def supports(self, obj: object) -> bool:
         return isinstance(obj, CorrelationMatrix)
@@ -49,6 +51,16 @@ class CorrelationPSDDetector(Detector):
         if isinstance(bounds_or_failure, CheckResult):
             return [bounds_or_failure]
         lower, upper = bounds_or_failure
+
+        solver_version = getattr(scs, "__version__", "unknown")
+        if solver_version != _VALIDATED_SCS_VERSION:
+            return [
+                self._unverifiable(
+                    obj,
+                    "Correlation SDP is disabled because the installed SCS solver version "
+                    f"({solver_version}) differs from the validated version ({_VALIDATED_SCS_VERSION}).",
+                )
+            ]
 
         n = len(obj.labels)
         matrix = cp.Variable((n, n), symmetric=True)
@@ -71,6 +83,8 @@ class CorrelationPSDDetector(Detector):
         evidence = {
             "max_compatible_min_eigenvalue": optimum,
             "solver": "SCS",
+            "solver_version": solver_version,
+            "validated_solver_version": _VALIDATED_SCS_VERSION,
             "solver_status": problem.status,
             "variables": list(obj.labels),
             "algorithm": "rounding-interval semidefinite max-min eigenvalue feasibility",
