@@ -10,9 +10,14 @@ from .types import CheckStatus, ComparisonOperator, EvidenceFamily, EvidenceGrad
 class SourceLocation:
     artifact_id: str = "paper"
     page: int | None = None
+    section: str | None = None
     table: str | None = None
+    figure: str | None = None
     row: str | None = None
     column: str | None = None
+    char_start: int | None = None
+    char_end: int | None = None
+    bbox: tuple[float, float, float, float] | None = None
     text_quote: str | None = None
 
 
@@ -56,6 +61,67 @@ class SamplePartition:
     non_overlapping: bool = True
     explanation_present: bool | None = None
     materiality: Materiality = Materiality.SECONDARY_RESULT
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+
+@dataclass(frozen=True)
+class CorrelationMatrix:
+    """A reported correlation matrix; cells may be omitted in one triangle."""
+
+    object_id: str
+    labels: tuple[str, ...]
+    cells: tuple[tuple[ReportedNumber | None, ...], ...]
+    materiality: Materiality = Materiality.SECONDARY_RESULT
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+    def __post_init__(self) -> None:
+        n = len(self.labels)
+        if n < 2:
+            raise ValueError("correlation matrix requires at least two variables")
+        if len(self.cells) != n or any(len(row) != n for row in self.cells):
+            raise ValueError("correlation matrix cells must be square and match labels")
+
+
+@dataclass(frozen=True)
+class DIDDesign:
+    object_id: str
+    periods: int | None = None
+    staggered_adoption: bool | None = None
+    treatment_type: str = "binary"  # binary | continuous | unknown
+    estimator: str | None = None
+    event_study: bool | None = None
+    heterogeneity_robust_estimator_reported: bool | None = None
+    comparison_group: str | None = None
+    materiality: Materiality = Materiality.MAIN_EMPIRICAL_CLAIM
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+
+@dataclass(frozen=True)
+class IVDesign:
+    object_id: str
+    single_instrument: bool | None = None
+    single_endogenous_regressor: bool | None = None
+    just_identified: bool | None = None
+    first_stage_f: ReportedNumber | None = None
+    uses_f_gt_10_rule_as_validity_claim: bool = False
+    weak_robust_methods: tuple[str, ...] = ()
+    materiality: Materiality = Materiality.MAIN_EMPIRICAL_CLAIM
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+
+@dataclass(frozen=True)
+class RDDDesign:
+    object_id: str
+    framework: str = "unknown"  # continuity | local_randomization | unknown
+    design_type: str = "sharp"  # sharp | fuzzy | unknown
+    estimator: str | None = None
+    global_polynomial_order: int | None = None
+    robust_bias_corrected_inference: bool | None = None
+    alternative_modern_inference_reported: bool | None = None
+    randomization_inference_reported: bool | None = None
+    density_test_reported: bool | None = None
+    bandwidth_selection: str | None = None
+    materiality: Materiality = Materiality.MAIN_EMPIRICAL_CLAIM
     source: SourceLocation = field(default_factory=SourceLocation)
 
 
