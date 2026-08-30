@@ -18,6 +18,9 @@ dev = [
   "ruff>=0.6",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/veritas"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
