@@ -44,6 +44,7 @@ from .models import (
     ReportedNumber,
     SamplePartition,
     SourceLocation,
+    StandardizedRegressionReconstruction,
 )
 from .specifications import (
     Specification,
@@ -96,6 +97,7 @@ __all__ = [
     "SpecificationEstimate",
     "SpecificationRobustnessSummary",
     "SpecificationSpace",
+    "StandardizedRegressionReconstruction",
     "StatisticalClaimGraph",
     "StatisticalObjectNode",
     "assign_paper_split",
