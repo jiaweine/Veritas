@@ -28,8 +28,10 @@ class StandardizedRegressionReconstructionDetector(Detector):
 
     For standardized OLS, the reported quantities must satisfy R_xx beta = r_xy.
     Because both correlations and coefficients are rounded, the equality contains
-    bilinear uncertainty. Veritas replaces each R_ij * beta_j term with a McCormick
-    outer relaxation and simultaneously requires the correlation matrix to be PSD.
+    bilinear uncertainty. Veritas first attempts a solver-independent constructive
+    witness at the midpoint of the correlation intervals. If that fails, each
+    R_ij * beta_j term is replaced with a McCormick outer relaxation while the
+    candidate correlation matrix is constrained to be PSD.
 
     Piecewise splitting of beta intervals tightens the relaxation. Only when every
     box covering the reported beta intervals is proven infeasible may the detector
@@ -38,7 +40,7 @@ class StandardizedRegressionReconstructionDetector(Detector):
     """
 
     detector_id = "standardized_regression_mccormick_sdp"
-    version = "0.3.0"
+    version = "0.3.1"
 
     def __init__(self, *, max_partition_depth: int = 4, max_nodes: int = 31) -> None:
         if max_partition_depth < 0:
@@ -62,6 +64,23 @@ class StandardizedRegressionReconstructionDetector(Detector):
             return [prepared]
         correlation_lower, correlation_upper, beta_box = prepared
 
+        midpoint_residual = self._try_midpoint_witness(correlation_lower, correlation_upper, beta_box)
+        if midpoint_residual is not None:
+            return [
+                CheckResult(
+                    self.detector_id,
+                    "standardized_ols_identity",
+                    obj.object_id,
+                    CheckStatus.PASS,
+                    EvidenceFamily.NUMERICAL_CONSISTENCY,
+                    message=(
+                        "A solver-independent midpoint correlation matrix is PSD and implies standardized betas "
+                        "inside all reported rounding intervals "
+                        f"(max identity residual {midpoint_residual:.2e})."
+                    ),
+                )
+            ]
+
         solver_version = getattr(scs, "__version__", "unknown")
         if solver_version != _VALIDATED_SCS_VERSION:
             return [
@@ -82,7 +101,7 @@ class StandardizedRegressionReconstructionDetector(Detector):
         )
 
         if outcome == "witness":
-            residual = state["best_residual"]
+            residual = float(state["best_residual"])
             return [
                 CheckResult(
                     self.detector_id,
@@ -97,7 +116,7 @@ class StandardizedRegressionReconstructionDetector(Detector):
                 )
             ]
 
-        if outcome == "infeasible" and not state["unknown"]:
+        if outcome == "infeasible" and not bool(state["unknown"]):
             explanation = (
                 "Even a piecewise McCormick outer relaxation of the reported correlation and standardized-beta "
                 "intervals is infeasible under the verified standardized-OLS identity. Because this solver-based "
@@ -197,6 +216,35 @@ class StandardizedRegressionReconstructionDetector(Detector):
 
         beta_box = tuple(number.rounding_interval() for number in obj.standardized_betas)
         return lower, upper, beta_box
+
+    def _try_midpoint_witness(
+        self,
+        correlation_lower: np.ndarray,
+        correlation_upper: np.ndarray,
+        beta_box: tuple[tuple[float, float], ...],
+    ) -> float | None:
+        matrix = (correlation_lower + correlation_upper) / 2.0
+        np.fill_diagonal(matrix, 1.0)
+        symmetric = (matrix + matrix.T) / 2.0
+        if float(np.min(np.linalg.eigvalsh(symmetric))) < -_WITNESS_TOL:
+            return None
+
+        p = len(beta_box)
+        r_xx = symmetric[:p, :p]
+        r_xy = symmetric[:p, p]
+        try:
+            beta = np.linalg.solve(r_xx, r_xy)
+        except np.linalg.LinAlgError:
+            beta, _, _, _ = np.linalg.lstsq(r_xx, r_xy, rcond=None)
+
+        residual = r_xx @ beta - r_xy
+        max_residual = float(np.max(np.abs(residual)))
+        if max_residual > _WITNESS_TOL:
+            return None
+        for value, (lo, hi) in zip(beta, beta_box, strict=True):
+            if value < lo - _WITNESS_TOL or value > hi + _WITNESS_TOL:
+                return None
+        return max_residual
 
     def _partition_search(
         self,
