@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isfinite
 from typing import Any
 
 from .types import CheckStatus, ComparisonOperator, EvidenceFamily, EvidenceGrade, Materiality
@@ -80,6 +81,55 @@ class CorrelationMatrix:
             raise ValueError("correlation matrix requires at least two variables")
         if len(self.cells) != n or any(len(row) != n for row in self.cells):
             raise ValueError("correlation matrix cells must be square and match labels")
+
+
+@dataclass(frozen=True)
+class DiscreteSummary:
+    """Reported summary statistics for a variable with an explicit finite support."""
+
+    object_id: str
+    n: int
+    mean: ReportedNumber
+    support: tuple[float, ...]
+    sd: ReportedNumber | None = None
+    sd_definition: str = "unknown"  # sample | population | unknown
+    support_verified: bool = False
+    n_verified: bool = False
+    weighted: bool | None = None
+    materiality: Materiality = Materiality.SECONDARY_RESULT
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+    def __post_init__(self) -> None:
+        if self.n <= 0:
+            raise ValueError("DiscreteSummary.n must be positive")
+        if len(self.support) < 2:
+            raise ValueError("DiscreteSummary.support requires at least two values")
+        if len(set(self.support)) != len(self.support):
+            raise ValueError("DiscreteSummary.support values must be unique")
+        if any(not isfinite(value) for value in self.support):
+            raise ValueError("DiscreteSummary.support values must be finite")
+
+
+@dataclass(frozen=True)
+class LogitResult:
+    object_id: str
+    beta: ReportedNumber
+    odds_ratio: ReportedNumber
+    exp_beta_relation_verified: bool = False
+    materiality: Materiality = Materiality.SECONDARY_RESULT
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+
+@dataclass(frozen=True)
+class MediationResult:
+    object_id: str
+    a_path: ReportedNumber
+    b_path: ReportedNumber
+    indirect_effect: ReportedNumber
+    product_definition_verified: bool = False
+    scale_consistent_verified: bool = False
+    materiality: Materiality = Materiality.SECONDARY_RESULT
+    source: SourceLocation = field(default_factory=SourceLocation)
 
 
 @dataclass(frozen=True)
