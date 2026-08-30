@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from .detectors.algebra import LogitOddsRatioDetector, MediationProductDetector
 from .detectors.base import DetectorRegistry
 from .detectors.correlation import CorrelationPSDDetector
 from .detectors.designs import DIDDesignDetector, WeakIVDesignDetector
+from .detectors.discrete import DiscreteSummaryFeasibilityDetector
 from .detectors.rdd import RDDDesignDetector
 from .detectors.regression import RegressionConsistencyDetector
 from .detectors.sample import SampleAccountingDetector
@@ -23,6 +25,9 @@ class AuditEngine:
             detectors.extend(
                 [
                     CorrelationPSDDetector(),
+                    DiscreteSummaryFeasibilityDetector(),
+                    LogitOddsRatioDetector(),
+                    MediationProductDetector(),
                     DIDDesignDetector(),
                     WeakIVDesignDetector(),
                     RDDDesignDetector(),
