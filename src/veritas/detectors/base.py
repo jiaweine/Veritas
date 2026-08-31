@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
+from hashlib import sha256
 from typing import Any
 
 from ..models import CheckResult
@@ -38,3 +40,17 @@ class DetectorRegistry:
     @property
     def detectors(self) -> tuple[Detector, ...]:
         return tuple(self._detectors)
+
+    def sha256(self) -> str:
+        """Stable identity of the registered detector ids and declared versions.
+
+        Detector implementations are required to bump ``version`` whenever behavior changes. This
+        registry hash is therefore suitable for binding held-out certification to the detector set
+        that was actually evaluated, without depending on import order.
+        """
+        payload = sorted(
+            {"detector_id": detector.detector_id, "version": detector.version}
+            for detector in self._detectors
+        )
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return sha256(raw).hexdigest()
