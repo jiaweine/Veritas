@@ -47,7 +47,11 @@ def _line_text(line: tuple[PDFWord, ...]) -> str:
     return " ".join(word.text for word in line).strip()
 
 
-def _cluster_lines(words: tuple[PDFWord, ...], *, y_tolerance: float = 3.0) -> tuple[tuple[PDFWord, ...], ...]:
+def _cluster_lines(
+    words: tuple[PDFWord, ...],
+    *,
+    y_tolerance: float = 3.0,
+) -> tuple[tuple[PDFWord, ...], ...]:
     if not words:
         return ()
     ordered = sorted(words, key=lambda item: (_center_y(item), item.bbox[0]))
@@ -64,6 +68,39 @@ def _cluster_lines(words: tuple[PDFWord, ...], *, y_tolerance: float = 3.0) -> t
     return tuple(tuple(sorted(line, key=lambda item: item.bbox[0])) for line in lines)
 
 
+def _compact_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    return "".join(character for character in normalized if character.isalnum())
+
+
+def _geometry_fallback_role(value: str) -> str | None:
+    """Recognize geometry-only separators and common test-probability headers.
+
+    These roles do not by themselves establish statistical semantics. They only preserve column
+    boundaries or expose a p-value column after an already caption-anchored table is reconstructed.
+    """
+    compact = _compact_text(value)
+    if compact in {"prz", "prt", "prchi2", "prchisq"}:
+        return "p_value"
+    if compact in {
+        "lowerci",
+        "lower95ci",
+        "lowerconfidenceinterval",
+        "lower95confidenceinterval",
+        "cilower",
+    }:
+        return "separator_ci_lower"
+    if compact in {
+        "upperci",
+        "upper95ci",
+        "upperconfidenceinterval",
+        "upper95confidenceinterval",
+        "ciupper",
+    }:
+        return "separator_ci_upper"
+    return None
+
+
 def _header_anchors(
     line: tuple[PDFWord, ...],
     role_resolver: Callable[[str | None], str | None],
@@ -75,7 +112,7 @@ def _header_anchors(
         for start in range(len(line) - width + 1):
             span = line[start : start + width]
             text = " ".join(word.text for word in span)
-            role = role_resolver(text)
+            role = role_resolver(text) or _geometry_fallback_role(text)
             if role is None or role in anchors:
                 continue
             anchors[role] = _HeaderAnchor(role=role, text=text, x0=span[0].bbox[0])
@@ -89,17 +126,17 @@ def _header_band(
     role_resolver: Callable[[str | None], str | None],
     required_roles: frozenset[str],
     max_header_line_gap: float,
+    allow_implicit_variable: bool = False,
 ) -> _HeaderBand | None:
     """Build a bounded header band without changing global line clustering.
 
-    The primary line must itself identify the variable column. At most the immediately adjacent
-    lines may contribute missing statistical roles, and only when their vertical centers are
-    within ``max_header_line_gap`` of the primary line. This handles journal headers where a beta
-    symbol/subscript is typeset a few points above or below the other column labels while keeping
-    captions, body prose, and data rows outside the header identity decision.
+    Ordinarily the primary line must identify the variable column. For the deliberately narrow
+    implicit-row-label path, the variable header may be absent, but all required statistical roles
+    must still be present and later code must independently establish the first-column semantics
+    from the publication caption and the exact requested row label.
     """
     primary = _header_anchors(lines[header_index], role_resolver)
-    if "variable" not in primary:
+    if "variable" not in primary and not allow_implicit_variable:
         return None
 
     anchors = dict(primary)
@@ -120,7 +157,8 @@ def _header_band(
         if added:
             line_indices.append(neighbor_index)
 
-    if not required_roles.issubset(anchors):
+    needed = required_roles if "variable" in anchors else required_roles - {"variable"}
+    if not needed.issubset(anchors):
         return None
     return _HeaderBand(anchors=anchors, line_indices=tuple(sorted(line_indices)))
 
@@ -147,7 +185,10 @@ def _column_bounds(anchors: tuple[_HeaderAnchor, ...]) -> tuple[tuple[float, flo
     return tuple(bounds)
 
 
-def _cells_for_line(line: tuple[PDFWord, ...], bounds: tuple[tuple[float, float], ...]) -> tuple[str | None, ...]:
+def _cells_for_line(
+    line: tuple[PDFWord, ...],
+    bounds: tuple[tuple[float, float], ...],
+) -> tuple[str | None, ...]:
     cells: list[str | None] = []
     for left, right in bounds:
         selected = [word for word in line if left <= _center_x(word) < right]
@@ -163,12 +204,7 @@ def normalized_row_label(value: str) -> str:
 
 
 def canonical_row_label(value: str) -> str:
-    """Relax only parser-induced whitespace tokenization after exact identity is anchored.
-
-    Punctuation and characters are preserved exactly after NFKC/casefold. This relaxed form is
-    suitable for joining an independent parser to an already exact-matched row such as
-    ``Image: neutral`` vs ``Image:neutral``; it must not be the sole identity evidence.
-    """
+    """Relax only parser-induced whitespace tokenization after exact identity is anchored."""
     return "".join(normalized_row_label(value).split())
 
 
@@ -210,6 +246,39 @@ def _nearby_table_caption(
     return max(candidates, key=lambda item: item[0])[1]
 
 
+def _caption_declares_implicit_row_label(caption: str) -> bool:
+    compact = _compact_text(caption)
+    if "firstcolumn" not in compact:
+        return False
+    return any(
+        phrase in compact
+        for phrase in (
+            "coefficientname",
+            "variablename",
+            "parametername",
+            "predictorname",
+            "termname",
+        )
+    )
+
+
+def _leading_row_label(
+    line: tuple[PDFWord, ...],
+    *,
+    first_stat_x0: float,
+    target: str,
+    allow_token_boundary: bool,
+    minimum_gap: float = 6.0,
+) -> tuple[PDFWord, ...] | None:
+    prefix = tuple(word for word in line if word.bbox[2] <= first_stat_x0 - minimum_gap)
+    if not prefix:
+        return None
+    text = _line_text(prefix)
+    if not _row_label_matches(text, target, allow_token_boundary=allow_token_boundary):
+        return None
+    return prefix
+
+
 def reconstruct_borderless_tables(
     snapshot: NativePDFSnapshot,
     *,
@@ -224,13 +293,12 @@ def reconstruct_borderless_tables(
     max_caption_lines: int = 5,
     max_caption_vertical_gap: float = 120.0,
 ) -> tuple[PDFTable, ...]:
-    """Reconstruct all local caption-anchored tables containing a requested variable.
+    """Reconstruct local caption-anchored tables containing a requested row.
 
-    Returning all matches is intentional: hard-audit callers must detect display-item ambiguity
-    rather than silently selecting the first table when the same variable occurs multiple times.
-    ``allow_token_boundary=False`` is the exact identity pass used to establish an anchor.
-    Header reconstruction may combine only immediately adjacent lines inside a bounded header band;
-    global line clustering remains strict.
+    The standard path requires an explicit variable-column header. A narrow implicit path is also
+    supported when the publication caption explicitly declares that the first column contains a
+    coefficient/variable/parameter name. The implicit path still requires an exact target label to
+    the left of the first statistical column and never infers row identity from numeric position.
     """
     requested_label = canonical_table_label(table_label) if table_label is not None else None
     matches: list[PDFTable] = []
@@ -243,6 +311,7 @@ def reconstruct_borderless_tables(
                 role_resolver=role_resolver,
                 required_roles=required_roles,
                 max_header_line_gap=max_header_line_gap,
+                allow_implicit_variable=True,
             )
             if band is None:
                 continue
@@ -256,19 +325,44 @@ def reconstruct_borderless_tables(
                 continue
             if requested_label is not None and canonical_table_label(caption) != requested_label:
                 continue
-            anchors = tuple(sorted(band.anchors.values(), key=lambda item: item.x0))
-            if not anchors or anchors[0].role != "variable":
+
+            implicit_variable = "variable" not in band.anchors
+            if implicit_variable and not _caption_declares_implicit_row_label(caption):
                 continue
-            bounds = _column_bounds(anchors)
-            if not bounds:
+
+            statistical_anchors = tuple(sorted(band.anchors.values(), key=lambda item: item.x0))
+            if not statistical_anchors:
                 continue
-            header_cells = tuple(anchor.text for anchor in anchors)
+            if not implicit_variable and statistical_anchors[0].role != "variable":
+                continue
+
             header_lines = tuple(lines[index] for index in band.line_indices)
             header_y = max(_line_y(line) for line in header_lines)
             stop = min(len(lines), band.end + 1 + max_data_line_gap)
             for data_line in lines[band.end + 1 : stop]:
                 if _line_y(data_line) - header_y > max_data_vertical_gap:
                     break
+
+                anchors = statistical_anchors
+                if implicit_variable:
+                    label_words = _leading_row_label(
+                        data_line,
+                        first_stat_x0=statistical_anchors[0].x0,
+                        target=variable_label,
+                        allow_token_boundary=allow_token_boundary,
+                    )
+                    if label_words is None:
+                        continue
+                    variable_anchor = _HeaderAnchor(
+                        role="variable",
+                        text="Variable",
+                        x0=label_words[0].bbox[0],
+                    )
+                    anchors = (variable_anchor, *statistical_anchors)
+
+                bounds = _column_bounds(anchors)
+                if not bounds:
+                    continue
                 cells = _cells_for_line(data_line, bounds)
                 first = cells[0]
                 if first is None or not _row_label_matches(
@@ -279,6 +373,11 @@ def reconstruct_borderless_tables(
                     continue
                 if sum(cell is not None for cell in cells) < len(required_roles):
                     continue
+
+                header_cells = tuple(
+                    "p" if anchor.role == "p_value" else "CI" if anchor.role.startswith("separator_ci_") else anchor.text
+                    for anchor in anchors
+                )
                 matches.append(
                     PDFTable(
                         page=page.page,
