@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 SEED_PATH = Path(__file__).resolve().parents[1] / "benchmark" / "extraction" / "seed_cases_v0.11.json"
 
 
