@@ -38,6 +38,17 @@ from .extraction import (
     ExtractionResolution,
 )
 from .group_stats import GroupSummary, OneWayAnovaComparison, TwoGroupComparison
+from .ingestion import (
+    DetectorInputEnvelope,
+    EvidenceKind,
+    EvidenceLedger,
+    IngestionProtocol,
+    ObjectDraft,
+    PromotionDecision,
+    PromotionReport,
+    PromotionSpec,
+    ResolvedEvidence,
+)
 from .meta_analysis import MetaAnalysisSummary, MetaStudyEffect
 from .methodology import MethodAnchor, get_method_anchor, methodology_snapshot_sha256
 from .models import (
@@ -90,9 +101,12 @@ __all__ = [
     "CorpusPaper",
     "CorrelationMatrix",
     "DIDDesign",
+    "DetectorInputEnvelope",
     "DiscreteSummary",
     "EvidenceFamily",
     "EvidenceGrade",
+    "EvidenceKind",
+    "EvidenceLedger",
     "ExtractedField",
     "ExtractionCandidate",
     "ExtractionDecision",
@@ -101,18 +115,24 @@ __all__ = [
     "GroundTruthBasis",
     "GroupSummary",
     "IVDesign",
+    "IngestionProtocol",
     "LogitResult",
     "Materiality",
     "MediationResult",
     "MetaAnalysisSummary",
     "MetaStudyEffect",
     "MethodAnchor",
+    "ObjectDraft",
     "OneWayAnovaComparison",
     "PaperAuditOutcome",
+    "PromotionDecision",
+    "PromotionReport",
+    "PromotionSpec",
     "RDDDesign",
     "RegressionResult",
     "RelationType",
     "ReportedNumber",
+    "ResolvedEvidence",
     "SEMFitSummary",
     "SEMNestedComparison",
     "SamplePartition",
@@ -137,4 +157,4 @@ __all__ = [
     "summarize_specification_robustness",
 ]
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
