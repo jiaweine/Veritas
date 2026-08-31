@@ -9,9 +9,9 @@ from veritas.pdf_regression import RegressionLocator, extract_regression_table
 def _implicit_label_pdf(*, caption_declares_first_column: bool) -> bytes:
     doc = pymupdf.open()
     page = doc.new_page(width=612, height=792)
-    caption = "Table 2. Estimates. First column: coefficient name. Second column: estimated values."
+    caption = "Table 2. First column: coefficient name."
     if not caption_declares_first_column:
-        caption = "Table 2. Estimates of model coefficients and inferential statistics."
+        caption = "Table 2. Model estimates and inferential statistics."
     page.insert_text((36, 90), caption, fontsize=8)
 
     headers = (
