@@ -22,6 +22,21 @@ CASES = (
         "license": "CC BY",
         "adjudication_note": "Values manually checked against PLOS ONE Table 2; this is extraction gold, not a clean-paper label.",
     },
+    {
+        "case_id": "plosone-0300960-table2-image-neutral",
+        "doi": "10.1371/journal.pone.0300960",
+        "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0300960&type=printable",
+        "variable": "Image: neutral",
+        "expected_page": 10,
+        "expected": {
+            "beta": "0.104",
+            "se": "0.038",
+            "t_stat": "2.735",
+            "p_value": "0.006",
+        },
+        "license": "CC BY",
+        "adjudication_note": "Values manually checked against PLOS ONE Table 2 (linear mixed regression); extraction gold only.",
+    },
 )
 
 
@@ -53,6 +68,8 @@ def main() -> None:
                 field_results[field] = {
                     "expected": expected,
                     "normalized": normalized,
+                    "raw": [candidate.raw for candidate in candidates],
+                    "source_pages": [candidate.source.page for candidate in candidates],
                     "dual_parser": len(candidates) == 2,
                     "exact_gold_match": len(candidates) == 2 and all(value == expected for value in normalized),
                 }
@@ -64,6 +81,7 @@ def main() -> None:
             results.append(
                 {
                     "case_id": case_id,
+                    "doi": case["doi"],
                     "passed": passed,
                     "source_page": bundle.source.page,
                     "expected_page": case["expected_page"],
@@ -79,6 +97,7 @@ def main() -> None:
             results.append(
                 {
                     "case_id": case_id,
+                    "doi": case["doi"],
                     "passed": False,
                     "error_type": type(exc).__name__,
                     "error": str(exc),
