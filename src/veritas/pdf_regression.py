@@ -38,7 +38,7 @@ _HEADER_ALIASES = {
         "regressors",
     },
     "beta": {"b", "beta", "coef", "coefficient", "estimate"},
-    "se": {"se", "stderr", "standarderror", "stddev", "stdse"},
+    "se": {"se", "stderr", "stderror", "standarderror", "stddev", "stdse"},
     "t_stat": {
         "t",
         "tstat",
