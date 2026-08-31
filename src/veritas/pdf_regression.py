@@ -15,7 +15,7 @@ from .ingestion import (
     ResolvedEvidence,
 )
 from .models import RegressionResult, ReportedNumber, SourceLocation
-from .pdf_native import PDFTable, NativePDFSnapshot, parse_pdf_dual
+from .pdf_native import NativePDFSnapshot, PDFTable, parse_pdf_dual
 from .types import ComparisonOperator, Materiality
 
 _NUMBER_RE = re.compile(
