@@ -25,7 +25,17 @@ _NUMBER_RE = re.compile(
 _HEADER_CLEAN_RE = re.compile(r"[^a-z0-9]+")
 
 _HEADER_ALIASES = {
-    "variable": {"variable", "variables", "term", "predictor", "predictors", "regressor", "regressors"},
+    "variable": {
+        "variable",
+        "variables",
+        "independentvariable",
+        "independentvariables",
+        "term",
+        "predictor",
+        "predictors",
+        "regressor",
+        "regressors",
+    },
     "beta": {"b", "beta", "coef", "coefficient", "estimate"},
     "se": {"se", "stderr", "standarderror", "stddev", "stdse"},
     "t_stat": {
@@ -45,6 +55,13 @@ _HEADER_ALIASES = {
     "separator_ci": {"ci", "confidenceinterval"},
 }
 
+_HEADER_SYMBOL_TRANSLATION = str.maketrans(
+    {
+        "β": "beta",
+        "Β": "beta",
+    }
+)
+
 _SIGN_TRANSLATION = str.maketrans(
     {
         "−": "-",  # U+2212 mathematical minus
@@ -62,7 +79,8 @@ _SIGN_TRANSLATION = str.maketrans(
 def _normalized_header(value: str | None) -> str:
     if value is None:
         return ""
-    return _HEADER_CLEAN_RE.sub("", value.casefold())
+    translated = value.translate(_HEADER_SYMBOL_TRANSLATION)
+    return _HEADER_CLEAN_RE.sub("", translated.casefold())
 
 
 def _header_role(value: str | None) -> str | None:
