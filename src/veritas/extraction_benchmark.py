@@ -30,11 +30,11 @@ class ExtractionGoldTarget:
             raise ValueError("at least one accepted normalized value is required")
         if len(set(self.reviewers)) < 2 or not self.adjudicated:
             raise ValueError("extraction gold targets require two independent reviewers and adjudication")
-        if self.review_record_sha256 is not None:
-            if len(self.review_record_sha256) != 64 or any(
-                char not in "0123456789abcdef" for char in self.review_record_sha256
-            ):
-                raise ValueError("review_record_sha256 must be a lowercase SHA-256 hex digest")
+        if self.review_record_sha256 is not None and (
+            len(self.review_record_sha256) != 64
+            or any(char not in "0123456789abcdef" for char in self.review_record_sha256)
+        ):
+            raise ValueError("review_record_sha256 must be a lowercase SHA-256 hex digest")
 
 
 @dataclass(frozen=True)
