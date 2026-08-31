@@ -18,3 +18,6 @@ jobs:
       - run: pytest -q
       - run: python scripts/benchmark_pdf_regression.py
       - run: python scripts/benchmark_pdf_geometry_holdout.py
+      - name: Real open-access PDF smoke (non-gating)
+        continue-on-error: true
+        run: python scripts/smoke_real_pdf.py
