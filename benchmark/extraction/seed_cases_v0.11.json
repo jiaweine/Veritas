@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "status": "seed_corpus_not_locked_gold",
+  "scope": "real_open_access_extraction_seed_not_production_certification",
+  "rule": "Seed cases may exercise parsers but cannot enter a locked extraction TEST set until each gold target has two independent reviewers and adjudication.",
+  "as_of": "2026-08-31",
+  "production_hard_finding_authorized": false,
+  "cases": [
+    {
+      "case_id": "plosone-0318226-table2-age",
+      "paper_id": "doi:10.1371/journal.pone.0318226",
+      "article_family_id": "doi:10.1371/journal.pone.0318226",
+      "doi": "10.1371/journal.pone.0318226",
+      "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0318226&type=printable",
+      "license_note": "CC BY",
+      "object_type": "RegressionResult",
+      "locator": {"expected_page": 5, "table_label": "Table 2", "row_label": "Age (years)"},
+      "expected_fields": {"beta": "-0.016", "se": "0.004", "t_stat": "-3.650", "p_value": "<0.001"},
+      "review_status": "legacy_manual_check_pending_two_independent_reviewers",
+      "split": null
+    },
+    {
+      "case_id": "plosone-0300960-table2-image-neutral",
+      "paper_id": "doi:10.1371/journal.pone.0300960",
+      "article_family_id": "doi:10.1371/journal.pone.0300960",
+      "doi": "10.1371/journal.pone.0300960",
+      "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0300960&type=printable",
+      "license_note": "CC BY",
+      "object_type": "RegressionResult",
+      "locator": {"expected_page": 11, "table_label": "Table 2", "row_label": "Image: neutral"},
+      "expected_fields": {"beta": "0.104", "se": "0.038", "t_stat": "2.735", "p_value": "0.006"},
+      "review_status": "legacy_manual_check_pending_two_independent_reviewers",
+      "split": null
+    },
+    {
+      "case_id": "plosone-0337826-table2-edtr",
+      "paper_id": "doi:10.1371/journal.pone.0337826",
+      "article_family_id": "doi:10.1371/journal.pone.0337826",
+      "doi": "10.1371/journal.pone.0337826",
+      "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0337826&type=printable",
+      "license_note": "CC BY",
+      "object_type": "RegressionResult",
+      "locator": {"expected_page": 10, "table_label": "Table 2", "row_label": "EDTR"},
+      "expected_fields": {"beta": "0.3596", "se": "0.1386", "t_stat": "2.5938", "p_value": "0.0095"},
+      "review_status": "legacy_manual_check_pending_two_independent_reviewers",
+      "split": null
+    },
+    {
+      "case_id": "plosone-0197932-table2-beta",
+      "paper_id": "doi:10.1371/journal.pone.0197932",
+      "article_family_id": "doi:10.1371/journal.pone.0197932",
+      "doi": "10.1371/journal.pone.0197932",
+      "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0197932&type=printable",
+      "license_note": "CC BY",
+      "object_type": "RegressionResult",
+      "locator": {"expected_page": 10, "table_label": "Table 2", "row_label": "β"},
+      "expected_fields": {"beta": "0.1848905", "se": "0.03399295", "t_stat": "5.439085", "p_value": "5.355501e-08"},
+      "review_status": "legacy_manual_check_pending_two_independent_reviewers",
+      "split": null
+    }
+  ]
+}
