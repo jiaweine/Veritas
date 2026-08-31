@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from hashlib import sha256
-from typing import Any, Callable
+from typing import Any
 
 from .claims import ArtifactRef, JsonScalar
 from .extraction import ExtractionDecision, ExtractionResolution
