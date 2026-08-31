@@ -99,15 +99,26 @@ def _cells_for_line(line: tuple[PDFWord, ...], bounds: tuple[tuple[float, float]
     return tuple(cells)
 
 
-def canonical_row_label(value: str) -> str:
-    """Normalize only parser-induced Unicode/whitespace tokenization differences.
-
-    Punctuation and characters are preserved exactly after NFKC/casefold. Removing whitespace
-    lets independent PDF parsers agree on labels such as ``Image: neutral`` vs ``Image:neutral``
-    without introducing fuzzy string matching. Downstream ambiguity handling remains fail-closed.
-    """
+def normalized_row_label(value: str) -> str:
+    """Normalize Unicode and repeated whitespace while preserving token boundaries."""
     normalized = unicodedata.normalize("NFKC", value).casefold().replace("\u00a0", " ")
-    return "".join(normalized.split())
+    return " ".join(normalized.split())
+
+
+def canonical_row_label(value: str) -> str:
+    """Relax only parser-induced whitespace tokenization after exact identity is anchored.
+
+    Punctuation and characters are preserved exactly after NFKC/casefold. This relaxed form is
+    suitable for joining an independent parser to an already exact-matched row such as
+    ``Image: neutral`` vs ``Image:neutral``; it must not be the sole identity evidence.
+    """
+    return "".join(normalized_row_label(value).split())
+
+
+def _row_label_matches(value: str, target: str, *, allow_token_boundary: bool) -> bool:
+    if allow_token_boundary:
+        return canonical_row_label(value) == canonical_row_label(target)
+    return normalized_row_label(value) == normalized_row_label(target)
 
 
 def _bbox_for_lines(*lines: tuple[PDFWord, ...]) -> tuple[float, float, float, float]:
@@ -148,6 +159,7 @@ def reconstruct_borderless_tables(
     variable_label: str,
     role_resolver: Callable[[str | None], str | None],
     table_label: str | None = None,
+    allow_token_boundary: bool = True,
     required_roles: frozenset[str] = frozenset({"variable", "beta", "se", "t_stat"}),
     max_data_line_gap: int = 40,
     max_data_vertical_gap: float = 180.0,
@@ -158,6 +170,7 @@ def reconstruct_borderless_tables(
 
     Returning all matches is intentional: hard-audit callers must detect display-item ambiguity
     rather than silently selecting the first table when the same variable occurs multiple times.
+    ``allow_token_boundary=False`` is the exact identity pass used to establish an anchor.
     """
     requested_label = canonical_table_label(table_label) if table_label is not None else None
     matches: list[PDFTable] = []
@@ -184,7 +197,6 @@ def reconstruct_borderless_tables(
             if not bounds:
                 continue
             header_cells = tuple(anchor.text for anchor in anchors)
-            target = canonical_row_label(variable_label)
             header_y = _line_y(header_line)
             stop = min(len(lines), header_index + 1 + max_data_line_gap)
             for data_line in lines[header_index + 1 : stop]:
@@ -192,7 +204,11 @@ def reconstruct_borderless_tables(
                     break
                 cells = _cells_for_line(data_line, bounds)
                 first = cells[0]
-                if first is None or canonical_row_label(first) != target:
+                if first is None or not _row_label_matches(
+                    first,
+                    variable_label,
+                    allow_token_boundary=allow_token_boundary,
+                ):
                     continue
                 if sum(cell is not None for cell in cells) < len(required_roles):
                     continue
@@ -214,6 +230,7 @@ def reconstruct_borderless_table(
     variable_label: str,
     role_resolver: Callable[[str | None], str | None],
     table_label: str | None = None,
+    allow_token_boundary: bool = True,
     required_roles: frozenset[str] = frozenset({"variable", "beta", "se", "t_stat"}),
     max_data_line_gap: int = 40,
     max_data_vertical_gap: float = 180.0,
@@ -226,6 +243,7 @@ def reconstruct_borderless_table(
         variable_label=variable_label,
         role_resolver=role_resolver,
         table_label=table_label,
+        allow_token_boundary=allow_token_boundary,
         required_roles=required_roles,
         max_data_line_gap=max_data_line_gap,
         max_data_vertical_gap=max_data_vertical_gap,
