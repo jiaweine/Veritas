@@ -58,6 +58,23 @@ CASES = (
         "license": "CC BY",
         "adjudication_note": "Values manually checked against PLOS ONE Table 2 (ordinal logistic regression); extraction gold only.",
     },
+    {
+        "case_id": "plosone-0197932-table2-beta",
+        "doi": "10.1371/journal.pone.0197932",
+        "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0197932&type=printable",
+        "variable": "β",
+        "table_label": "Table 2",
+        # Table 2 is on physical PDF page 10; first column contains coefficient names but has no explicit header.
+        "expected_page": 10,
+        "expected": {
+            "beta": "0.1848905",
+            "se": "0.03399295",
+            "t_stat": "5.439085",
+            "p_value": "5.355501e-08",
+        },
+        "license": "CC BY",
+        "adjudication_note": "Values manually checked against PLOS ONE Table 2 (ordinal logistic regression); extraction gold only.",
+    },
 )
 
 
@@ -121,7 +138,21 @@ def _failure_probe(
     probes: list[dict[str, object]] = []
     variable_casefold = variable.casefold()
     table_casefold = table_label.casefold()
-    header_terms = ("independent", "variable", "beta", "β", "se", "z-value", "z value", "p-value", "p value")
+    header_terms = (
+        "independent",
+        "variable",
+        "beta",
+        "β",
+        "estimate",
+        "se",
+        "std.error",
+        "std. error",
+        "z-value",
+        "z value",
+        "p-value",
+        "p value",
+        "pr(>|z|)",
+    )
     for snapshot in snapshots:
         lines = _cluster_page_lines(snapshot, page_number)
         interesting_indices = {
