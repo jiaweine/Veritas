@@ -69,15 +69,19 @@ Primary goal: move from a four-case regression-table smoke benchmark toward a di
 - [x] report coverage–selectivity curves rather than a single extraction threshold
 - [x] move the four existing real-PDF cases into an explicit seed manifest
 - [x] prevent seed cases from carrying locked splits or production authority
+- [x] require independent double review and review-record hashes before extraction targets can enter locked gold
+- [x] expose DEVELOPMENT-only threshold selection; TEST observations are rejected from calibration APIs
+- [x] bind frozen extraction thresholds to development-manifest and policy hashes before TEST evaluation
+- [x] register adversarial negative families as a non-production benchmark contract
 
 The current four PLOS cases remain **seed cases**, not locked gold. Their legacy manual checks must be replaced by two independent reviewers plus adjudication before they can enter a frozen benchmark split.
 
 ### Corpus expansion and lock — remaining
 
 - [ ] expand real open-access extraction corpus across journals, layouts, and statistical object types
-- [ ] add adversarial negatives for repeated labels, continuation tables, footnotes, multi-panel tables, and OCR-like text corruption
+- [ ] instantiate and execute adversarial fixtures for repeated labels, continuation tables, footnotes, multi-panel tables, and OCR-like text corruption
 - [ ] complete independent double review and adjudication for extraction gold targets
-- [ ] calibrate geometry/native promotion thresholds on development only
+- [ ] run geometry/native threshold calibration on locked DEVELOPMENT data using the development-only selection API
 - [ ] freeze a genuinely untouched extraction TEST set
 - [ ] publish coverage–selectivity curves on that locked development/TEST protocol
 
