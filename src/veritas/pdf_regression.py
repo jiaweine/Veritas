@@ -24,12 +24,32 @@ _NUMBER_RE = re.compile(
 _HEADER_CLEAN_RE = re.compile(r"[^a-z0-9]+")
 
 _HEADER_ALIASES = {
-    "variable": {"variable", "term", "predictor", "regressor"},
+    "variable": {"variable", "variables", "term", "predictor", "predictors", "regressor", "regressors"},
     "beta": {"b", "beta", "coef", "coefficient", "estimate"},
     "se": {"se", "stderr", "standarderror", "stddev", "stdse"},
-    "t_stat": {"t", "tstat", "tstatistic", "z", "zstat", "zstatistic"},
+    "t_stat": {
+        "t",
+        "tstat",
+        "tstatistic",
+        "tvalue",
+        "z",
+        "zstat",
+        "zstatistic",
+        "zvalue",
+    },
     "p_value": {"p", "pvalue", "probz", "probt"},
 }
+
+_SIGN_TRANSLATION = str.maketrans({
+    "−": "-",  # U+2212 mathematical minus
+    "–": "-",  # en dash sometimes substituted by PDF text extraction
+    "—": "-",  # em dash, tolerated only inside otherwise numeric cells
+    "﹣": "-",
+    "－": "-",
+    "＋": "+",
+    "≤": "<=",
+    "≥": ">=",
+})
 
 
 def _normalized_header(value: str | None) -> str:
@@ -46,6 +66,10 @@ def _header_role(value: str | None) -> str | None:
     return None
 
 
+def _normalize_numeric_text(raw: str) -> str:
+    return raw.translate(_SIGN_TRANSLATION).replace("\u00a0", " ").strip()
+
+
 def _display_decimals(raw_number: str) -> int | None:
     mantissa = raw_number.lower().split("e", 1)[0]
     if "." not in mantissa:
@@ -54,7 +78,8 @@ def _display_decimals(raw_number: str) -> int | None:
 
 
 def parse_reported_number(raw: str) -> ReportedNumber:
-    match = _NUMBER_RE.match(raw)
+    normalized_raw = _normalize_numeric_text(raw)
+    match = _NUMBER_RE.match(normalized_raw)
     if match is None:
         raise ValueError(f"not a supported reported number: {raw!r}")
     operator_raw = match.group("op")
@@ -74,10 +99,11 @@ def parse_reported_number(raw: str) -> ReportedNumber:
 
 
 def _canonical_number(raw: str) -> str:
-    number = parse_reported_number(raw)
+    normalized_raw = _normalize_numeric_text(raw)
+    number = parse_reported_number(normalized_raw)
     operator = "" if number.operator is ComparisonOperator.EQ else number.operator.value
     decimals = 0 if number.decimals is None else number.decimals
-    if "e" in raw.casefold():
+    if "e" in normalized_raw.casefold():
         rendered = format(number.value, ".15g")
     else:
         rendered = f"{number.value:.{decimals}f}"
@@ -199,7 +225,7 @@ def extract_regression_table(
 
         stat_header = match.table.rows[match.header_row_index][match.columns["t_stat"]]
         normalized_header = _normalized_header(stat_header)
-        if normalized_header in {"z", "zstat", "zstatistic"}:
+        if normalized_header in {"z", "zstat", "zstatistic", "zvalue"}:
             semantics["inference_distribution"].append(_candidate(match, "t_stat", str(stat_header), "normal"))
 
     source = canonical_source or SourceLocation(artifact_id=next(iter(artifact_ids)))
@@ -223,7 +249,7 @@ def regression_promotion_spec(*, require_p_value: bool = True) -> PromotionSpec:
         min_independent_parser_families=2,
         require_page_anchor=True,
         require_location_anchor=True,
-        spec_version="regression-native-table-v1",
+        spec_version="regression-native-table-v2",
     )
 
 
@@ -238,10 +264,10 @@ def bundle_to_ledger(
     protocol = IngestionProtocol(
         protocol_id="dual-native-pdf-regression",
         protocol_version="0.9.0",
-        object_schema_version="regression-native-table-v1",
+        object_schema_version="regression-native-table-v2",
         calibration_sha256=calibration_sha256,
         parser_versions=bundle.parser_versions,
-        policy_note="PyMuPDF and pdfplumber must independently support all hard-audit fields and z-inference semantics.",
+        policy_note="PyMuPDF and pdfplumber must independently support all hard-audit fields and explicit z-inference semantics.",
     )
     ledger = EvidenceLedger(
         artifact=ArtifactRef(
