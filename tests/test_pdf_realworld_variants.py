@@ -58,7 +58,7 @@ def test_journal_z_value_header_is_extracted_by_both_native_parsers():
     assert len(bundle.semantic_candidates["inference_distribution"]) == 2
 
 
-def test_journal_style_row_promotes_without_guessing_method_semantics():
+def test_journal_style_row_is_detector_ready_without_guessing_method_semantics():
     ledger, spec = prepare_regression_pdf_audit(
         _journal_pdf(),
         _gate(),
@@ -66,8 +66,10 @@ def test_journal_style_row_promotes_without_guessing_method_semantics():
         calibration_sha256=calibration_manifest_sha256(b"journal-variant-calibration"),
     )
     report, envelope = ledger.promote("regression-1", spec, regression_result_builder)
-    assert report.hard_audit_ready
+    assert report.detector_ready
+    assert not report.hard_audit_ready
     assert envelope is not None
+    assert not envelope.production_authorized
     # z is explicit in the header, so the method gate is supported rather than guessed.
     assert envelope.statistical_object.inference_distribution == "normal"
 
