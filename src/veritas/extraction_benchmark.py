@@ -42,11 +42,16 @@ class ExtractionTargetOutcome:
     target_id: str
     paper_id: str
     article_family_id: str
+    kind: EvidenceKind
     critical_for_hard_audit: bool
     decision: ExtractionDecision
     accepted: bool
     value_correct: bool | None
     source_correct: bool | None
+    page_correct: bool | None
+    display_item_correct: bool | None
+    row_correct: bool | None
+    column_correct: bool | None
 
     @property
     def fully_correct_accept(self) -> bool:
@@ -69,6 +74,17 @@ class ExtractionBenchmarkReport:
     selective_coverage: float
     accepted_full_accuracy: float
     wrong_accept_rate: float
+    accepted_value_accuracy: float
+    accepted_source_accuracy: float
+    field_targets: int
+    accepted_field_targets: int
+    accepted_field_value_accuracy: float
+    table_row_targets: int
+    accepted_table_row_targets: int
+    accepted_table_row_identity_accuracy: float
+    semantic_gate_targets: int
+    accepted_semantic_gate_targets: int
+    accepted_semantic_gate_accuracy: float
     critical_article_families: int
     critical_wrong_accept_families: int
     critical_family_wrong_accept_rate: float
@@ -101,34 +117,63 @@ def evaluate_extraction_benchmark(
                     target_id=target.target_id,
                     paper_id=target.paper_id,
                     article_family_id=target.article_family_id,
+                    kind=target.kind,
                     critical_for_hard_audit=target.critical_for_hard_audit,
                     decision=ExtractionDecision.ABSTAIN,
                     accepted=False,
                     value_correct=None,
                     source_correct=None,
+                    page_correct=None,
+                    display_item_correct=None,
+                    row_correct=None,
+                    column_correct=None,
                 )
             )
             continue
+
         resolution = prediction.resolution
         accepted = resolution.decision is ExtractionDecision.ACCEPT
         value_correct = None
         source_correct = None
+        page_correct = None
+        display_item_correct = None
+        row_correct = None
+        column_correct = None
         if accepted:
             value_correct = resolution.normalized_value in set(target.accepted_normalized_values)
-            source_correct = bool(resolution.accepted_candidates) and all(
-                _source_identity_matches(candidate.source, target.source)
-                for candidate in resolution.accepted_candidates
-            )
+            candidates = resolution.accepted_candidates
+            if candidates:
+                source_components = [
+                    _source_identity_components(candidate.source, target.source)
+                    for candidate in candidates
+                ]
+                page_correct = all(item["page"] for item in source_components)
+                display_item_correct = all(item["display_item"] for item in source_components)
+                row_correct = all(item["row"] for item in source_components)
+                column_correct = all(item["column"] for item in source_components)
+                source_correct = all(item["source"] for item in source_components)
+            else:
+                page_correct = False
+                display_item_correct = False
+                row_correct = False
+                column_correct = False
+                source_correct = False
+
         outcomes.append(
             ExtractionTargetOutcome(
                 target_id=target.target_id,
                 paper_id=target.paper_id,
                 article_family_id=target.article_family_id,
+                kind=target.kind,
                 critical_for_hard_audit=target.critical_for_hard_audit,
                 decision=resolution.decision,
                 accepted=accepted,
                 value_correct=value_correct,
                 source_correct=source_correct,
+                page_correct=page_correct,
+                display_item_correct=display_item_correct,
+                row_correct=row_correct,
+                column_correct=column_correct,
             )
         )
 
@@ -141,10 +186,28 @@ def evaluate_extraction_benchmark(
         outcome.article_family_id for outcome in critical if outcome.wrong_accept
     }
 
+    field_outcomes = [outcome for outcome in outcomes if outcome.kind is EvidenceKind.FIELD]
+    accepted_fields = [outcome for outcome in field_outcomes if outcome.accepted]
+    semantic_outcomes = [
+        outcome for outcome in outcomes if outcome.kind is EvidenceKind.SEMANTIC_GATE
+    ]
+    accepted_semantic = [outcome for outcome in semantic_outcomes if outcome.accepted]
+
+    table_row_target_ids = {
+        target.target_id
+        for target in gold
+        if target.kind is EvidenceKind.FIELD
+        and (target.source.table is not None or target.source.figure is not None)
+        and target.source.row is not None
+    }
+    table_row_outcomes = [outcome for outcome in outcomes if outcome.target_id in table_row_target_ids]
+    accepted_table_rows = [outcome for outcome in table_row_outcomes if outcome.accepted]
+
     accepted_count = len(accepted_outcomes)
     target_count = len(outcomes)
     family_count = len(critical_families)
     family_wrong_count = len(wrong_families)
+
     return ExtractionBenchmarkReport(
         targets=target_count,
         accepted=accepted_count,
@@ -153,12 +216,41 @@ def evaluate_extraction_benchmark(
         abstentions=sum(outcome.decision is ExtractionDecision.ABSTAIN for outcome in outcomes),
         conflicts=sum(outcome.decision is ExtractionDecision.CONFLICT for outcome in outcomes),
         domain_shifts=sum(outcome.decision is ExtractionDecision.DOMAIN_SHIFT for outcome in outcomes),
-        selective_coverage=accepted_count / target_count if target_count else 0.0,
-        accepted_full_accuracy=fully_correct / accepted_count if accepted_count else 0.0,
-        wrong_accept_rate=wrong / target_count if target_count else 0.0,
+        selective_coverage=_rate(accepted_count, target_count),
+        accepted_full_accuracy=_rate(fully_correct, accepted_count),
+        wrong_accept_rate=_rate(wrong, target_count),
+        accepted_value_accuracy=_rate(
+            sum(outcome.value_correct is True for outcome in accepted_outcomes),
+            accepted_count,
+        ),
+        accepted_source_accuracy=_rate(
+            sum(outcome.source_correct is True for outcome in accepted_outcomes),
+            accepted_count,
+        ),
+        field_targets=len(field_outcomes),
+        accepted_field_targets=len(accepted_fields),
+        accepted_field_value_accuracy=_rate(
+            sum(outcome.value_correct is True for outcome in accepted_fields),
+            len(accepted_fields),
+        ),
+        table_row_targets=len(table_row_outcomes),
+        accepted_table_row_targets=len(accepted_table_rows),
+        accepted_table_row_identity_accuracy=_rate(
+            sum(
+                outcome.display_item_correct is True and outcome.row_correct is True
+                for outcome in accepted_table_rows
+            ),
+            len(accepted_table_rows),
+        ),
+        semantic_gate_targets=len(semantic_outcomes),
+        accepted_semantic_gate_targets=len(accepted_semantic),
+        accepted_semantic_gate_accuracy=_rate(
+            sum(outcome.fully_correct_accept for outcome in accepted_semantic),
+            len(accepted_semantic),
+        ),
         critical_article_families=family_count,
         critical_wrong_accept_families=family_wrong_count,
-        critical_family_wrong_accept_rate=family_wrong_count / family_count if family_count else 0.0,
+        critical_family_wrong_accept_rate=_rate(family_wrong_count, family_count),
         critical_family_wrong_accept_upper_bound=binomial_upper_bound(
             family_wrong_count,
             family_count,
@@ -168,13 +260,25 @@ def evaluate_extraction_benchmark(
     )
 
 
-def _source_identity_matches(predicted: SourceLocation, gold: SourceLocation) -> bool:
-    if predicted.artifact_id != gold.artifact_id:
-        return False
-    if gold.page is not None and predicted.page != gold.page:
-        return False
-    for attribute in ("section", "table", "figure", "row", "column"):
-        expected = getattr(gold, attribute)
-        if expected is not None and getattr(predicted, attribute) != expected:
-            return False
-    return True
+def _source_identity_components(predicted: SourceLocation, gold: SourceLocation) -> dict[str, bool]:
+    artifact = predicted.artifact_id == gold.artifact_id
+    page = gold.page is None or predicted.page == gold.page
+    display_item = all(
+        expected is None or getattr(predicted, attribute) == expected
+        for attribute in ("section", "table", "figure")
+        if (expected := getattr(gold, attribute)) is not None
+    )
+    row = gold.row is None or predicted.row == gold.row
+    column = gold.column is None or predicted.column == gold.column
+    return {
+        "artifact": artifact,
+        "page": page,
+        "display_item": display_item,
+        "row": row,
+        "column": column,
+        "source": artifact and page and display_item and row and column,
+    }
+
+
+def _rate(numerator: int, denominator: int) -> float:
+    return numerator / denominator if denominator else 0.0
