@@ -60,14 +60,26 @@ No current real-PDF calibration is production-certified.
 
 Primary goal: move from a four-case regression-table smoke benchmark toward a diverse, locked extraction corpus without weakening abstention.
 
+### Benchmark governance — implemented in v0.11 branch
+
+- [x] introduce article-family split locks to prevent near-duplicate leakage across development/test
+- [x] bind split locks to the exact corpus-manifest SHA-256, not only family assignments
+- [x] benchmark table/row identity separately from numeric-field accuracy
+- [x] benchmark semantic-gate extraction separately from numeric extraction
+- [x] report coverage–selectivity curves rather than a single extraction threshold
+- [x] move the four existing real-PDF cases into an explicit seed manifest
+- [x] prevent seed cases from carrying locked splits or production authority
+
+The current four PLOS cases remain **seed cases**, not locked gold. Their legacy manual checks must be replaced by two independent reviewers plus adjudication before they can enter a frozen benchmark split.
+
+### Corpus expansion and lock — remaining
+
 - [ ] expand real open-access extraction corpus across journals, layouts, and statistical object types
-- [ ] introduce article-family split locks to prevent near-duplicate leakage across development/test
-- [ ] benchmark table/row identity separately from numeric-field accuracy
-- [ ] benchmark semantic-gate extraction separately from numeric extraction
 - [ ] add adversarial negatives for repeated labels, continuation tables, footnotes, multi-panel tables, and OCR-like text corruption
+- [ ] complete independent double review and adjudication for extraction gold targets
 - [ ] calibrate geometry/native promotion thresholds on development only
 - [ ] freeze a genuinely untouched extraction TEST set
-- [ ] report coverage–selectivity curves rather than a single extraction threshold
+- [ ] publish coverage–selectivity curves on that locked development/TEST protocol
 
 ## v0.12 — end-to-end empirical claim graph
 
