@@ -122,7 +122,7 @@ def build_blinded_seed_review_packets(
         raise ValueError("seed manifest requires non-empty cases")
     for case in cases:
         if not isinstance(case, dict):
-            raise ValueError("seed cases must be objects")
+            raise TypeError("seed cases must be objects")
         if case.get("split") is not None:
             raise ValueError("seed cases must remain unsplit before independent review")
         locator = case.get("locator")
