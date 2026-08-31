@@ -1,3 +1,5 @@
+import pytest
+
 from veritas.extraction import (
     ConformalCalibration,
     ConformalExtractionGate,
@@ -6,6 +8,7 @@ from veritas.extraction import (
 from veritas.extraction_benchmark import (
     ExtractionGoldTarget,
     ExtractionPrediction,
+    build_extraction_selectivity_curve,
     evaluate_extraction_benchmark,
 )
 from veritas.ingestion import EvidenceKind
@@ -158,3 +161,24 @@ def test_noncritical_wrong_accept_does_not_contaminate_critical_family_metric():
     assert report.wrong_accepts == 1
     assert report.critical_wrong_accept_families == 0
     assert report.critical_family_wrong_accept_rate == 0.0
+
+
+def test_selectivity_curve_keeps_each_threshold_as_an_explicit_operating_point():
+    gold = [_gold("a", "fam-a", "0.18"), _gold("b", "fam-b", "0.25")]
+    strict = evaluate_extraction_benchmark(gold, [_prediction("a", "0.18")])
+    permissive = evaluate_extraction_benchmark(
+        gold,
+        [_prediction("a", "0.18"), _prediction("b", "0.52")],
+    )
+    curve = build_extraction_selectivity_curve([(0.8, strict), (0.2, permissive)])
+    assert [point.threshold for point in curve.points] == [0.2, 0.8]
+    assert curve.points[0].selective_coverage == 1.0
+    assert curve.points[0].wrong_accept_rate == 0.5
+    assert curve.points[1].selective_coverage == 0.5
+    assert curve.points[1].wrong_accept_rate == 0.0
+
+
+def test_selectivity_curve_rejects_duplicate_thresholds():
+    report = evaluate_extraction_benchmark([_gold("a", "fam-a", "0.18")], [])
+    with pytest.raises(ValueError, match="thresholds must be unique"):
+        build_extraction_selectivity_curve([(0.5, report), (0.5, report)])
