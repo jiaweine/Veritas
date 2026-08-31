@@ -37,7 +37,7 @@ from .extraction import (
     ExtractionDecision,
     ExtractionResolution,
 )
-from .group_stats import GroupSummary, TwoGroupComparison
+from .group_stats import GroupSummary, OneWayAnovaComparison, TwoGroupComparison
 from .methodology import MethodAnchor, get_method_anchor, methodology_snapshot_sha256
 from .models import (
     AuditSummary,
@@ -103,6 +103,7 @@ __all__ = [
     "Materiality",
     "MediationResult",
     "MethodAnchor",
+    "OneWayAnovaComparison",
     "PaperAuditOutcome",
     "RDDDesign",
     "RegressionResult",
