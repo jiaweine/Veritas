@@ -78,6 +78,8 @@ def _geometry_fallback_role(value: str) -> str | None:
 
     These roles do not by themselves establish statistical semantics. They only preserve column
     boundaries or expose a p-value column after an already caption-anchored table is reconstructed.
+    Directional CI anchors deliberately require the direction word first (for example `upper CI`),
+    so an overlapping `CI upper` n-gram cannot steal the anchor from the true column heading.
     """
     compact = _compact_text(value)
     if compact in {"prz", "prt", "prchi2", "prchisq"}:
@@ -87,7 +89,6 @@ def _geometry_fallback_role(value: str) -> str | None:
         "lower95ci",
         "lowerconfidenceinterval",
         "lower95confidenceinterval",
-        "cilower",
     }:
         return "separator_ci_lower"
     if compact in {
@@ -95,7 +96,6 @@ def _geometry_fallback_role(value: str) -> str | None:
         "upper95ci",
         "upperconfidenceinterval",
         "upper95confidenceinterval",
-        "ciupper",
     }:
         return "separator_ci_upper"
     return None
@@ -116,6 +116,8 @@ def _header_anchors(
             if role is None or role in anchors:
                 continue
             anchors[role] = _HeaderAnchor(role=role, text=text, x0=span[0].bbox[0])
+    if "separator_ci_lower" in anchors or "separator_ci_upper" in anchors:
+        anchors.pop("separator_ci", None)
     return anchors
 
 
@@ -292,6 +294,14 @@ def _deduplicate_tables(tables: list[PDFTable]) -> tuple[PDFTable, ...]:
     return tuple(unique.values())
 
 
+def _render_header_anchor(anchor: _HeaderAnchor) -> str:
+    if anchor.role == "p_value" and _geometry_fallback_role(anchor.text) == "p_value":
+        return "p"
+    if anchor.role.startswith("separator_ci_"):
+        return "CI"
+    return anchor.text
+
+
 def reconstruct_borderless_tables(
     snapshot: NativePDFSnapshot,
     *,
@@ -387,10 +397,7 @@ def reconstruct_borderless_tables(
                 if sum(cell is not None for cell in cells) < len(required_roles):
                     continue
 
-                header_cells = tuple(
-                    "p" if anchor.role == "p_value" else "CI" if anchor.role.startswith("separator_ci_") else anchor.text
-                    for anchor in anchors
-                )
+                header_cells = tuple(_render_header_anchor(anchor) for anchor in anchors)
                 matches.append(
                     PDFTable(
                         page=page.page,
