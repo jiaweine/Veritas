@@ -27,6 +27,7 @@ from .claims import (
 )
 from .corpus import (
     AccessTier,
+    ArticleFamilySplitLock,
     ClaimExpectation,
     ClaimGroundTruth,
     CorpusManifest,
@@ -94,6 +95,7 @@ from .types import EvidenceFamily, EvidenceGrade, Materiality
 
 __all__ = [
     "AccessTier",
+    "ArticleFamilySplitLock",
     "ArtifactRef",
     "AuditEngine",
     "AuditSummary",
@@ -179,4 +181,4 @@ __all__ = [
     "summarize_specification_robustness",
 ]
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
