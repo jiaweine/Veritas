@@ -81,6 +81,75 @@ class ClaimGroundTruth:
 
 
 @dataclass(frozen=True)
+class ArticleFamilySplitLock:
+    """Immutable benchmark split artifact keyed by article family rather than document version.
+
+    Preprints, journal articles, corrections, and supplementary versions that share an
+    ``article_family_id`` must remain in one split. The lock records the exact family universe,
+    split fractions, salt, and resulting assignments so later corpus growth cannot silently move
+    or replace held-out families.
+    """
+
+    split_salt: str
+    train_fraction: float
+    development_fraction: float
+    assignments: tuple[tuple[str, BenchmarkSplit], ...]
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        _validate_split_fractions(self.train_fraction, self.development_fraction)
+        if not self.split_salt:
+            raise ValueError("split_salt is required")
+        family_ids = [family_id for family_id, _ in self.assignments]
+        if len(set(family_ids)) != len(family_ids):
+            raise ValueError("split lock article_family_id values must be unique")
+        if any(not family_id.strip() for family_id in family_ids):
+            raise ValueError("split lock article_family_id values cannot be empty")
+
+    def split_for_family(self, article_family_id: str) -> BenchmarkSplit:
+        for family_id, split in self.assignments:
+            if family_id == article_family_id:
+                return split
+        raise KeyError(article_family_id)
+
+    def validate_manifest(self, manifest: CorpusManifest) -> None:
+        if manifest.split_salt != self.split_salt:
+            raise ValueError("manifest split_salt does not match split lock")
+        manifest_families = {paper.article_family_id for paper in manifest.papers}
+        locked_families = {family_id for family_id, _ in self.assignments}
+        if manifest_families != locked_families:
+            missing = tuple(sorted(locked_families - manifest_families))
+            added = tuple(sorted(manifest_families - locked_families))
+            raise ValueError(
+                "manifest article-family universe differs from split lock: "
+                f"missing={missing!r}, added={added!r}"
+            )
+        for family_id, locked_split in self.assignments:
+            expected = assign_article_family_split(
+                family_id,
+                salt=self.split_salt,
+                train_fraction=self.train_fraction,
+                development_fraction=self.development_fraction,
+            )
+            if expected is not locked_split:
+                raise ValueError(f"split lock assignment does not match deterministic policy: {family_id}")
+
+    def sha256(self) -> str:
+        payload = {
+            "schema_version": self.schema_version,
+            "split_salt": self.split_salt,
+            "train_fraction": self.train_fraction,
+            "development_fraction": self.development_fraction,
+            "assignments": [
+                {"article_family_id": family_id, "split": split.value}
+                for family_id, split in sorted(self.assignments, key=lambda item: item[0])
+            ],
+        }
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return sha256(raw).hexdigest()
+
+
+@dataclass(frozen=True)
 class CorpusManifest:
     papers: tuple[CorpusPaper, ...]
     labels: tuple[ClaimGroundTruth, ...]
@@ -105,6 +174,33 @@ class CorpusManifest:
         if paper is None:
             raise KeyError(paper_id)
         return assign_article_family_split(paper.article_family_id, salt=self.split_salt)
+
+    def build_split_lock(
+        self,
+        *,
+        train_fraction: float = 0.60,
+        development_fraction: float = 0.20,
+    ) -> ArticleFamilySplitLock:
+        _validate_split_fractions(train_fraction, development_fraction)
+        families = sorted({paper.article_family_id for paper in self.papers})
+        assignments = tuple(
+            (
+                family_id,
+                assign_article_family_split(
+                    family_id,
+                    salt=self.split_salt,
+                    train_fraction=train_fraction,
+                    development_fraction=development_fraction,
+                ),
+            )
+            for family_id in families
+        )
+        return ArticleFamilySplitLock(
+            split_salt=self.split_salt,
+            train_fraction=train_fraction,
+            development_fraction=development_fraction,
+            assignments=assignments,
+        )
 
     def sha256(self) -> str:
         payload = {
@@ -131,8 +227,7 @@ def assign_article_family_split(
     development_fraction: float = 0.20,
 ) -> BenchmarkSplit:
     """Split by article family so preprint/journal/correction versions cannot leak across splits."""
-    if train_fraction <= 0 or development_fraction <= 0 or train_fraction + development_fraction >= 1:
-        raise ValueError("split fractions must leave positive mass for the test split")
+    _validate_split_fractions(train_fraction, development_fraction)
     digest = sha256(f"{salt}:{article_family_id}".encode()).digest()
     value = int.from_bytes(digest[:8], "big") / float(2**64)
     if value < train_fraction:
@@ -140,6 +235,11 @@ def assign_article_family_split(
     if value < train_fraction + development_fraction:
         return BenchmarkSplit.DEVELOPMENT
     return BenchmarkSplit.TEST
+
+
+def _validate_split_fractions(train_fraction: float, development_fraction: float) -> None:
+    if train_fraction <= 0 or development_fraction <= 0 or train_fraction + development_fraction >= 1:
+        raise ValueError("split fractions must leave positive mass for the test split")
 
 
 def _paper_payload(paper: CorpusPaper) -> dict[str, object]:
