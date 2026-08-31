@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from enum import Enum
 from hashlib import sha256
 
 from scipy.stats import beta as beta_distribution
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class BenchmarkSplit(str, Enum):
@@ -57,6 +60,52 @@ class CertificationReport:
     reasons: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ProductionCalibrationCertificate:
+    """Deterministic provenance artifact for a calibration certified on held-out papers.
+
+    This is an auditable hash-bound certificate, not a cryptographic signature or external trust
+    service. It binds a calibration to the exact TEST benchmark manifest, audited detector/system
+    manifest, certification policy, and resulting paper-level certification report.
+    """
+
+    calibration_sha256: str
+    benchmark_manifest_sha256: str
+    audited_system_sha256: str
+    policy_sha256: str
+    certification_report_sha256: str
+    clean_papers: int
+    positive_papers: int
+    false_hard_alert_upper_bound: float
+    hard_alert_precision_lower_bound: float
+    certificate_version: str = "1"
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("calibration_sha256", self.calibration_sha256),
+            ("benchmark_manifest_sha256", self.benchmark_manifest_sha256),
+            ("audited_system_sha256", self.audited_system_sha256),
+            ("policy_sha256", self.policy_sha256),
+            ("certification_report_sha256", self.certification_report_sha256),
+        ):
+            if not _SHA256_RE.fullmatch(value):
+                raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
+        if self.clean_papers < 0 or self.positive_papers < 0:
+            raise ValueError("certificate paper counts cannot be negative")
+        for name, value in (
+            ("false_hard_alert_upper_bound", self.false_hard_alert_upper_bound),
+            ("hard_alert_precision_lower_bound", self.hard_alert_precision_lower_bound),
+        ):
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be in [0, 1]")
+        if not self.certificate_version.strip():
+            raise ValueError("certificate_version is required")
+
+    def sha256(self) -> str:
+        raw = json.dumps(asdict(self), sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return sha256(raw).hexdigest()
+
+
 def assign_paper_split(
     paper_id: str,
     *,
@@ -85,6 +134,16 @@ def benchmark_manifest_sha256(cases: tuple[BenchmarkCase, ...] | list[BenchmarkC
         for case in sorted(cases, key=lambda case: case.case_id)
     ]
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return sha256(raw).hexdigest()
+
+
+def certification_policy_sha256(policy: CertificationPolicy) -> str:
+    raw = json.dumps(asdict(policy), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return sha256(raw).hexdigest()
+
+
+def certification_report_sha256(report: CertificationReport) -> str:
+    raw = json.dumps(asdict(report), sort_keys=True, separators=(",", ":")).encode("utf-8")
     return sha256(raw).hexdigest()
 
 
@@ -164,6 +223,65 @@ def evaluate_hard_alert_certification(
         certified=not reasons,
         reasons=tuple(reasons),
     )
+
+
+def issue_production_calibration_certificate(
+    *,
+    calibration_sha256: str,
+    audited_system_sha256: str,
+    cases: tuple[BenchmarkCase, ...] | list[BenchmarkCase],
+    outcomes: tuple[PaperAuditOutcome, ...] | list[PaperAuditOutcome],
+    policy: CertificationPolicy | None = None,
+) -> tuple[CertificationReport, ProductionCalibrationCertificate | None]:
+    """Issue a production certificate only from a fully held-out, paper-consistent TEST corpus."""
+    for name, value in (
+        ("calibration_sha256", calibration_sha256),
+        ("audited_system_sha256", audited_system_sha256),
+    ):
+        if not _SHA256_RE.fullmatch(value):
+            raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
+    if not cases:
+        raise ValueError("production certification requires at least one benchmark case")
+    if any(case.split is not BenchmarkSplit.TEST for case in cases):
+        raise ValueError("production certification may only use TEST-split benchmark cases")
+
+    expected_by_paper: dict[str, bool] = {}
+    for case in cases:
+        expected_by_paper[case.paper_id] = expected_by_paper.get(case.paper_id, False) or case.expected_material_issue
+
+    if len({outcome.paper_id for outcome in outcomes}) != len(outcomes):
+        raise ValueError("production certification requires one paper-level outcome per paper")
+    outcome_by_paper = {outcome.paper_id: outcome for outcome in outcomes}
+    if set(outcome_by_paper) != set(expected_by_paper):
+        raise ValueError("paper ids in certification outcomes must exactly match the TEST benchmark manifest")
+    inconsistent = [
+        paper_id
+        for paper_id, expected in expected_by_paper.items()
+        if outcome_by_paper[paper_id].expected_material_issue != expected
+    ]
+    if inconsistent:
+        raise ValueError(
+            "paper-level expected-material-issue labels disagree with benchmark cases: "
+            f"{tuple(sorted(inconsistent))!r}"
+        )
+
+    policy = policy or CertificationPolicy()
+    report = evaluate_hard_alert_certification(list(outcomes), policy)
+    if not report.certified:
+        return report, None
+
+    certificate = ProductionCalibrationCertificate(
+        calibration_sha256=calibration_sha256,
+        benchmark_manifest_sha256=benchmark_manifest_sha256(list(cases)),
+        audited_system_sha256=audited_system_sha256,
+        policy_sha256=certification_policy_sha256(policy),
+        certification_report_sha256=certification_report_sha256(report),
+        clean_papers=report.clean_papers,
+        positive_papers=report.positive_papers,
+        false_hard_alert_upper_bound=report.false_hard_alert_upper_bound,
+        hard_alert_precision_lower_bound=report.hard_alert_precision_lower_bound,
+    )
+    return report, certificate
 
 
 def _validate_binomial(successes: int, trials: int, confidence: float) -> None:
