@@ -18,9 +18,12 @@ jobs:
       - run: pytest -q
       - run: python scripts/benchmark_pdf_regression.py
       - run: python scripts/benchmark_pdf_geometry_holdout.py
-      - name: Real open-access PDF smoke (non-gating)
+      - name: Real PDF extraction smoke (non-gating)
         continue-on-error: true
-        run: |
-          python scripts/smoke_real_pdf.py
-          python scripts/smoke_real_pdf_fail_closed.py
-          python scripts/benchmark_real_pdf_promotion.py
+        run: python scripts/smoke_real_pdf.py
+      - name: Real PDF fail-closed controls (non-gating)
+        continue-on-error: true
+        run: python scripts/smoke_real_pdf_fail_closed.py
+      - name: Real PDF selective-promotion benchmark (non-gating)
+        continue-on-error: true
+        run: python scripts/benchmark_real_pdf_promotion.py
