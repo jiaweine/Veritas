@@ -4,7 +4,7 @@ import json
 import urllib.request
 
 from veritas.pdf_native import parse_pdf_dual
-from veritas.pdf_regression import extract_regression_table
+from veritas.pdf_regression import RegressionLocator, extract_regression_table
 
 CASES = (
     {
@@ -12,6 +12,7 @@ CASES = (
         "doi": "10.1371/journal.pone.0318226",
         "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0318226&type=printable",
         "variable": "Age (years)",
+        "table_label": "Table 2",
         "expected_page": 5,
         "expected": {
             "beta": "-0.016",
@@ -27,6 +28,7 @@ CASES = (
         "doi": "10.1371/journal.pone.0300960",
         "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0300960&type=printable",
         "variable": "Image: neutral",
+        "table_label": "Table 2",
         "expected_page": 10,
         "expected": {
             "beta": "0.104",
@@ -60,7 +62,15 @@ def main() -> None:
         try:
             pdf = _download(str(case["pdf_url"]))
             snapshots = parse_pdf_dual(pdf, artifact_id=case_id)
-            bundle = extract_regression_table(snapshots, variable_label=str(case["variable"]))
+            locator = RegressionLocator(
+                table_label=str(case["table_label"]),
+                expected_page=int(case["expected_page"]),
+            )
+            bundle = extract_regression_table(
+                snapshots,
+                variable_label=str(case["variable"]),
+                locator=locator,
+            )
             field_results: dict[str, object] = {}
             for field, expected in dict(case["expected"]).items():
                 candidates = bundle.field_candidates[field]
@@ -70,12 +80,13 @@ def main() -> None:
                     "normalized": normalized,
                     "raw": [candidate.raw for candidate in candidates],
                     "source_pages": [candidate.source.page for candidate in candidates],
+                    "source_tables": [candidate.source.table for candidate in candidates],
                     "dual_parser": len(candidates) == 2,
                     "exact_gold_match": len(candidates) == 2 and all(value == expected for value in normalized),
                 }
             page_ok = bundle.source.page == case["expected_page"]
             fields_ok = all(bool(item["exact_gold_match"]) for item in field_results.values())
-            passed = fields_ok and page_ok
+            passed = fields_ok and page_ok and not bundle.ambiguities
             if not passed:
                 failures.append(case_id)
             results.append(
@@ -83,10 +94,12 @@ def main() -> None:
                     "case_id": case_id,
                     "doi": case["doi"],
                     "passed": passed,
+                    "table_label": case["table_label"],
                     "source_page": bundle.source.page,
                     "expected_page": case["expected_page"],
                     "page_ok": page_ok,
                     "fields": field_results,
+                    "ambiguities": bundle.ambiguities,
                     "parser_versions": bundle.parser_versions,
                     "license": case["license"],
                     "adjudication_note": case["adjudication_note"],
