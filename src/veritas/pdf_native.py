@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from importlib.metadata import version
 from io import BytesIO
-from typing import Any
-
 
 BBox = tuple[float, float, float, float]
 
 
-def _bbox(values: Any) -> BBox:
+def _bbox(values: Sequence[object]) -> BBox:
     x0, y0, x1, y1 = values
     return (round(float(x0), 4), round(float(y0), 4), round(float(x1), 4), round(float(y1), 4))
 
@@ -139,7 +138,7 @@ class PyMuPDFNativeParser:
                                     rows=rows,
                                 )
                             )
-                except Exception as exc:  # table detection is non-critical to text extraction
+                except (RuntimeError, TypeError, ValueError) as exc:
                     warnings.append(f"page {page_index}: PyMuPDF table detection failed: {type(exc).__name__}")
                 pages.append(
                     PDFPageSnapshot(
@@ -209,7 +208,7 @@ class PDFPlumberNativeParser:
                                     rows=rows,
                                 )
                             )
-                except Exception as exc:  # keep the usable text layer if table finding fails
+                except (RuntimeError, TypeError, ValueError) as exc:
                     warnings.append(f"page {page_index}: pdfplumber table detection failed: {type(exc).__name__}")
                 pages.append(
                     PDFPageSnapshot(
