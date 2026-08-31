@@ -18,7 +18,6 @@ from veritas.extraction_calibration import (
 from veritas.ingestion import EvidenceKind
 from veritas.models import SourceLocation
 
-
 _MANIFEST_SHA = "a" * 64
 _TEST_SHA = "b" * 64
 
