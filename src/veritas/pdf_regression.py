@@ -15,8 +15,8 @@ from .ingestion import (
     ResolvedEvidence,
 )
 from .models import RegressionResult, ReportedNumber, SourceLocation
-from .pdf_geometry import reconstruct_borderless_table
-from .pdf_native import NativePDFSnapshot, PDFTable, parse_pdf_dual
+from .pdf_geometry import reconstruct_borderless_tables
+from .pdf_native import NativePDFSnapshot, PDFTable, canonical_table_label, parse_pdf_dual
 from .types import ComparisonOperator, Materiality
 
 _NUMBER_RE = re.compile(
@@ -141,8 +141,31 @@ def _table_source_id(table: PDFTable) -> str:
     return f"native-table:{table.table_index}"
 
 
+def _source_table_label(table: PDFTable) -> str:
+    source_id = _table_source_id(table)
+    if table.caption:
+        return f"{table.caption} [{source_id}]"
+    return source_id
+
+
 def _extraction_mode(table: PDFTable) -> str:
     return "word_geometry_v1" if table.table_index < 0 else "native_table"
+
+
+@dataclass(frozen=True)
+class RegressionLocator:
+    """Publication-visible identity constraints for one reported regression row."""
+
+    table_label: str | None = None
+    expected_page: int | None = None
+
+    def canonical_table_label(self) -> str | None:
+        if self.table_label is None:
+            return None
+        label = canonical_table_label(self.table_label)
+        if label is None:
+            raise ValueError(f"unsupported table label: {self.table_label!r}")
+        return label
 
 
 @dataclass(frozen=True)
@@ -158,7 +181,7 @@ class RegressionTableMatch:
         return SourceLocation(
             artifact_id=self.snapshot.artifact_id,
             page=self.table.page,
-            table=_table_source_id(self.table),
+            table=_source_table_label(self.table),
             row=self.variable_text,
             bbox=self.table.bbox,
             text_quote=raw,
@@ -173,6 +196,7 @@ class RegressionExtractionBundle:
     field_candidates: dict[str, tuple[ExtractionCandidate, ...]]
     semantic_candidates: dict[str, tuple[ExtractionCandidate, ...]]
     source: SourceLocation
+    ambiguities: tuple[str, ...] = ()
 
 
 def _find_header(table: PDFTable) -> tuple[int, dict[str, int]] | None:
@@ -208,21 +232,111 @@ def _match_table(
     return None
 
 
-def _find_match(snapshot: NativePDFSnapshot, variable_label: str) -> RegressionTableMatch | None:
+def _locator_accepts(table: PDFTable, locator: RegressionLocator | None) -> bool:
+    if locator is None:
+        return True
+    if locator.expected_page is not None and table.page != locator.expected_page:
+        return False
+    requested_label = locator.canonical_table_label()
+    if requested_label is not None and table.publication_label != requested_label:
+        return False
+    return True
+
+
+def _match_numeric_signature(match: RegressionTableMatch) -> tuple[str | None, ...]:
+    row = match.table.rows[match.data_row_index]
+    signature: list[str | None] = []
+    for key in ("beta", "se", "t_stat", "p_value"):
+        index = match.columns.get(key)
+        if index is None or index >= len(row) or row[index] is None:
+            signature.append(None)
+            continue
+        raw = str(row[index])
+        try:
+            signature.append(_canonical_number(raw))
+        except ValueError:
+            signature.append(" ".join(raw.split()))
+    return tuple(signature)
+
+
+def _match_identity(match: RegressionTableMatch) -> tuple[object, ...]:
+    publication_label = match.table.publication_label
+    if publication_label is not None:
+        return (match.table.page, publication_label, match.variable_text.casefold())
+    # Unlabelled native continuations are intentionally not merged with geometry matches.
+    return (
+        match.table.page,
+        _table_source_id(match.table),
+        round(match.table.bbox[0], 1),
+        round(match.table.bbox[1], 1),
+        match.variable_text.casefold(),
+    )
+
+
+def _find_matches(
+    snapshot: NativePDFSnapshot,
+    variable_label: str,
+    *,
+    locator: RegressionLocator | None,
+) -> tuple[RegressionTableMatch, ...]:
     target = " ".join(variable_label.casefold().split())
+    matches: list[RegressionTableMatch] = []
     for table in snapshot.tables:
+        if not _locator_accepts(table, locator):
+            continue
         match = _match_table(snapshot, table, target=target)
         if match is not None:
-            return match
+            matches.append(match)
 
-    virtual = reconstruct_borderless_table(
+    requested_label = locator.table_label if locator is not None else None
+    virtual_tables = reconstruct_borderless_tables(
         snapshot,
         variable_label=variable_label,
         role_resolver=_header_role,
+        table_label=requested_label,
     )
-    if virtual is None:
-        return None
-    return _match_table(snapshot, virtual, target=target)
+    for table in virtual_tables:
+        if not _locator_accepts(table, locator):
+            continue
+        match = _match_table(snapshot, table, target=target)
+        if match is not None:
+            matches.append(match)
+    return tuple(matches)
+
+
+def _resolve_match(
+    snapshot: NativePDFSnapshot,
+    variable_label: str,
+    *,
+    locator: RegressionLocator | None,
+) -> tuple[RegressionTableMatch | None, str | None]:
+    matches = _find_matches(snapshot, variable_label, locator=locator)
+    if not matches:
+        return None, None
+
+    groups: dict[tuple[object, ...], list[RegressionTableMatch]] = {}
+    for match in matches:
+        groups.setdefault(_match_identity(match), []).append(match)
+
+    resolved: list[RegressionTableMatch] = []
+    for identity, group in groups.items():
+        signatures = {_match_numeric_signature(match) for match in group}
+        if len(signatures) > 1:
+            return None, (
+                f"{snapshot.parser_id}: conflicting extraction modes for display item {identity!r} "
+                f"and variable {variable_label!r}"
+            )
+        # Prefer a parser's native table object over its geometry reconstruction only after
+        # publication identity and numeric content agree.
+        resolved.append(sorted(group, key=lambda match: match.table.table_index < 0)[0])
+
+    if len(resolved) > 1:
+        identities = tuple(_match_identity(match) for match in resolved)
+        return None, (
+            f"{snapshot.parser_id}: ambiguous display item for variable {variable_label!r}; "
+            f"matched {identities!r}"
+        )
+    return resolved[0], None
 
 
 def _candidate(match: RegressionTableMatch, key: str, raw: str, normalized: str) -> ExtractionCandidate:
@@ -244,6 +358,7 @@ def extract_regression_table(
     snapshots: tuple[NativePDFSnapshot, ...],
     *,
     variable_label: str,
+    locator: RegressionLocator | None = None,
 ) -> RegressionExtractionBundle:
     if not snapshots:
         raise ValueError("at least one parser snapshot is required")
@@ -255,16 +370,20 @@ def extract_regression_table(
     fields: dict[str, list[ExtractionCandidate]] = {"beta": [], "se": [], "t_stat": [], "p_value": []}
     semantics: dict[str, list[ExtractionCandidate]] = {"inference_distribution": []}
     canonical_source: SourceLocation | None = None
+    ambiguities: list[str] = []
 
     for snapshot in snapshots:
-        match = _find_match(snapshot, variable_label)
+        match, ambiguity = _resolve_match(snapshot, variable_label, locator=locator)
+        if ambiguity is not None:
+            ambiguities.append(ambiguity)
+            continue
         if match is None:
             continue
         row = match.table.rows[match.data_row_index]
         canonical_source = canonical_source or SourceLocation(
             artifact_id=snapshot.artifact_id,
             page=match.table.page,
-            table=_table_source_id(match.table),
+            table=_source_table_label(match.table),
             row=match.variable_text,
             bbox=match.table.bbox,
             text_quote=match.table.text,
@@ -287,7 +406,7 @@ def extract_regression_table(
 
     source = canonical_source or SourceLocation(artifact_id=next(iter(artifact_ids)))
     parser_versions = [(snapshot.parser_id, snapshot.parser_version) for snapshot in snapshots]
-    parser_versions.append(("veritas_regression_geometry", "1.0.0"))
+    parser_versions.append(("veritas_regression_geometry", "1.1.0"))
     return RegressionExtractionBundle(
         artifact_id=next(iter(artifact_ids)),
         artifact_sha256=next(iter(artifact_hashes)),
@@ -295,6 +414,7 @@ def extract_regression_table(
         field_candidates={key: tuple(value) for key, value in fields.items()},
         semantic_candidates={key: tuple(value) for key, value in semantics.items()},
         source=source,
+        ambiguities=tuple(ambiguities),
     )
 
 
@@ -308,7 +428,7 @@ def regression_promotion_spec(*, require_p_value: bool = True) -> PromotionSpec:
         min_independent_parser_families=2,
         require_page_anchor=True,
         require_location_anchor=True,
-        spec_version="regression-native-table-v3",
+        spec_version="regression-native-table-v4",
     )
 
 
@@ -323,13 +443,14 @@ def bundle_to_ledger(
     protocol = IngestionProtocol(
         protocol_id="dual-native-pdf-regression",
         protocol_version="0.9.0",
-        object_schema_version="regression-native-table-v3",
+        object_schema_version="regression-native-table-v4",
         calibration_sha256=calibration_sha256,
         parser_versions=bundle.parser_versions,
         policy_note=(
-            "PyMuPDF and pdfplumber independently provide word/table evidence. Native table extraction is preferred; "
+            "PyMuPDF and pdfplumber independently provide word/table evidence. Publication table captions are preserved; "
             "a shared deterministic header-anchored geometry fallback is applied separately to each parser word stream. "
-            "Hard promotion still requires cross-family value agreement and explicit z-inference semantics."
+            "Ambiguous display-item identity is fail-closed, and hard promotion still requires cross-family value agreement "
+            "plus explicit z-inference semantics."
         ),
     )
     ledger = EvidenceLedger(
@@ -411,11 +532,12 @@ def prepare_regression_pdf_audit(
     *,
     variable_label: str,
     calibration_sha256: str,
+    locator: RegressionLocator | None = None,
     artifact_id: str = "paper",
     object_id: str = "regression-1",
 ) -> tuple[EvidenceLedger, PromotionSpec]:
     snapshots = parse_pdf_dual(pdf_bytes, artifact_id=artifact_id)
-    bundle = extract_regression_table(snapshots, variable_label=variable_label)
+    bundle = extract_regression_table(snapshots, variable_label=variable_label, locator=locator)
     ledger = bundle_to_ledger(
         bundle,
         gate,
