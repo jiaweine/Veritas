@@ -37,7 +37,25 @@ from .extraction import (
     ExtractionDecision,
     ExtractionResolution,
 )
+from .extraction_benchmark import (
+    ExtractionBenchmarkReport,
+    ExtractionGoldTarget,
+    ExtractionPrediction,
+    ExtractionTargetOutcome,
+    evaluate_extraction_benchmark,
+)
 from .group_stats import GroupSummary, OneWayAnovaComparison, TwoGroupComparison
+from .ingestion import (
+    DetectorInputEnvelope,
+    EvidenceKind,
+    EvidenceLedger,
+    IngestionProtocol,
+    ObjectDraft,
+    PromotionDecision,
+    PromotionReport,
+    PromotionSpec,
+    ResolvedEvidence,
+)
 from .meta_analysis import MetaAnalysisSummary, MetaStudyEffect
 from .methodology import MethodAnchor, get_method_anchor, methodology_snapshot_sha256
 from .models import (
@@ -90,29 +108,42 @@ __all__ = [
     "CorpusPaper",
     "CorrelationMatrix",
     "DIDDesign",
+    "DetectorInputEnvelope",
     "DiscreteSummary",
     "EvidenceFamily",
     "EvidenceGrade",
+    "EvidenceKind",
+    "EvidenceLedger",
     "ExtractedField",
+    "ExtractionBenchmarkReport",
     "ExtractionCandidate",
     "ExtractionDecision",
+    "ExtractionGoldTarget",
+    "ExtractionPrediction",
     "ExtractionResolution",
+    "ExtractionTargetOutcome",
     "Finding",
     "GroundTruthBasis",
     "GroupSummary",
     "IVDesign",
+    "IngestionProtocol",
     "LogitResult",
     "Materiality",
     "MediationResult",
     "MetaAnalysisSummary",
     "MetaStudyEffect",
     "MethodAnchor",
+    "ObjectDraft",
     "OneWayAnovaComparison",
     "PaperAuditOutcome",
+    "PromotionDecision",
+    "PromotionReport",
+    "PromotionSpec",
     "RDDDesign",
     "RegressionResult",
     "RelationType",
     "ReportedNumber",
+    "ResolvedEvidence",
     "SEMFitSummary",
     "SEMNestedComparison",
     "SamplePartition",
@@ -129,6 +160,7 @@ __all__ = [
     "assign_article_family_split",
     "assign_paper_split",
     "benchmark_manifest_sha256",
+    "evaluate_extraction_benchmark",
     "evaluate_hard_alert_certification",
     "get_method_anchor",
     "methodology_snapshot_sha256",
@@ -137,4 +169,4 @@ __all__ = [
     "summarize_specification_robustness",
 ]
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
