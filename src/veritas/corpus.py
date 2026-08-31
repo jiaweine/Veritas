@@ -68,14 +68,16 @@ class ClaimGroundTruth:
     corruption_manifest_sha256: str | None = None
 
     def __post_init__(self) -> None:
-        if self.basis is GroundTruthBasis.CONTROLLED_CORRUPTION:
-            if not self.corruption_manifest_sha256:
-                raise ValueError("controlled corruptions require corruption_manifest_sha256")
-        elif self.expectation in {ClaimExpectation.CONSISTENT, ClaimExpectation.INCONSISTENT}:
-            if len(set(self.reviewers)) < 2 or not self.adjudicated:
-                raise ValueError(
-                    "natural consistent/inconsistent labels require two independent reviewers and adjudication"
-                )
+        if self.basis is GroundTruthBasis.CONTROLLED_CORRUPTION and not self.corruption_manifest_sha256:
+            raise ValueError("controlled corruptions require corruption_manifest_sha256")
+        if (
+            self.basis is not GroundTruthBasis.CONTROLLED_CORRUPTION
+            and self.expectation in {ClaimExpectation.CONSISTENT, ClaimExpectation.INCONSISTENT}
+            and (len(set(self.reviewers)) < 2 or not self.adjudicated)
+        ):
+            raise ValueError(
+                "natural consistent/inconsistent labels require two independent reviewers and adjudication"
+            )
 
 
 @dataclass(frozen=True)
