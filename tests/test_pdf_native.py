@@ -74,7 +74,7 @@ def test_individual_parser_snapshots_have_stable_hashes():
     assert left.sha256() != right.sha256()
 
 
-def test_valid_pdf_regression_promotes_and_has_no_internal_contradiction():
+def test_valid_pdf_regression_is_detector_ready_but_not_production_authorized():
     pdf = _regression_pdf()
     ledger, spec = prepare_regression_pdf_audit(
         pdf,
@@ -83,14 +83,16 @@ def test_valid_pdf_regression_promotes_and_has_no_internal_contradiction():
         calibration_sha256=calibration_manifest_sha256(b"synthetic-calibration-v1"),
     )
     report, envelope = ledger.promote("regression-1", spec, regression_result_builder)
-    assert report.hard_audit_ready
+    assert report.detector_ready
+    assert not report.hard_audit_ready
     assert envelope is not None
+    assert not envelope.production_authorized
 
     audit = AuditEngine().audit_verified([envelope])
     assert not any(finding.grade >= EvidenceGrade.INTERNAL_CONTRADICTION for finding in audit.findings)
 
 
-def test_corrupted_p_value_reaches_e3_only_after_dual_parser_promotion():
+def test_corrupted_p_value_reaches_e3_only_after_dual_parser_detector_promotion():
     pdf = _regression_pdf(p_value="0.400")
     ledger, spec = prepare_regression_pdf_audit(
         pdf,
@@ -99,7 +101,8 @@ def test_corrupted_p_value_reaches_e3_only_after_dual_parser_promotion():
         calibration_sha256=calibration_manifest_sha256(b"synthetic-calibration-v1"),
     )
     report, envelope = ledger.promote("regression-1", spec, regression_result_builder)
-    assert report.hard_audit_ready
+    assert report.detector_ready
+    assert not report.hard_audit_ready
     assert envelope is not None
 
     audit = AuditEngine().audit_verified([envelope])
@@ -109,9 +112,10 @@ def test_corrupted_p_value_reaches_e3_only_after_dual_parser_promotion():
     provenance = p_findings[0].evidence["ingestion_provenance"]
     assert provenance["artifact_sha256"] == sha256(pdf).hexdigest()
     assert len(provenance["extraction_evidence_sha256"]) == 64
+    assert provenance["production_hard_finding_authorized"] is False
 
 
-def test_missing_second_parser_cannot_promote_hard_audit():
+def test_missing_second_parser_cannot_promote_to_detector():
     pdf = _regression_pdf()
     snapshot = PyMuPDFNativeParser().parse_bytes(pdf)
     bundle = extract_regression_table((snapshot,), variable_label="Treatment")
@@ -124,5 +128,6 @@ def test_missing_second_parser_cannot_promote_hard_audit():
         object_id="regression-1",
     )
     report, envelope = ledger.promote("regression-1", regression_promotion_spec(), regression_result_builder)
+    assert not report.detector_ready
     assert not report.hard_audit_ready
     assert envelope is None
