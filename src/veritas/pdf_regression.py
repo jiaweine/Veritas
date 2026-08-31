@@ -23,6 +23,7 @@ _NUMBER_RE = re.compile(
     r"^\s*(?P<op><=|>=|<|>)?\s*(?P<number>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*(?:\*+)?\s*$"
 )
 _HEADER_CLEAN_RE = re.compile(r"[^a-z0-9]+")
+_INDEXED_BETA_HEADER_RE = re.compile(r"^beta(?:[0-9]+|[ijk])?$")
 
 _HEADER_ALIASES = {
     "variable": {
@@ -85,6 +86,8 @@ def _normalized_header(value: str | None) -> str:
 
 def _header_role(value: str | None) -> str | None:
     normalized = _normalized_header(value)
+    if _INDEXED_BETA_HEADER_RE.fullmatch(normalized):
+        return "beta"
     for role, aliases in _HEADER_ALIASES.items():
         if normalized in aliases:
             return role
@@ -482,7 +485,7 @@ def extract_regression_table(
 
     source = canonical_source or SourceLocation(artifact_id=next(iter(artifact_ids)))
     parser_versions = [(snapshot.parser_id, snapshot.parser_version) for snapshot in snapshots]
-    parser_versions.append(("veritas_regression_geometry", "1.3.0"))
+    parser_versions.append(("veritas_regression_geometry", "1.4.0"))
     return RegressionExtractionBundle(
         artifact_id=next(iter(artifact_ids)),
         artifact_sha256=next(iter(artifact_hashes)),
