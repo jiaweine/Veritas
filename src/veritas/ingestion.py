@@ -8,6 +8,7 @@ from enum import Enum
 from hashlib import sha256
 from typing import Any
 
+from .benchmark import ProductionCalibrationCertificate
 from .claims import ArtifactRef, JsonScalar
 from .extraction import ExtractionDecision, ExtractionResolution
 from .models import SourceLocation
@@ -27,12 +28,7 @@ class PromotionDecision(str, Enum):
 
 
 class CalibrationScope(str, Enum):
-    """Authority carried by the calibration used for an ingestion protocol.
-
-    Scope is deliberately independent of detector arithmetic. Benchmark and research calibrations
-    may promote an object into a detector for evaluation, but only PRODUCTION_CERTIFIED calibration
-    can make the object eligible for a production hard-audit path.
-    """
+    """Authority carried by the calibration used for an ingestion protocol."""
 
     UNVERIFIED = "unverified"
     BENCHMARK = "benchmark"
@@ -50,6 +46,7 @@ class IngestionProtocol:
     calibration_sha256: str
     parser_versions: tuple[tuple[str, str], ...]
     calibration_scope: CalibrationScope = CalibrationScope.UNVERIFIED
+    production_certificate: ProductionCalibrationCertificate | None = None
     policy_note: str = ""
 
     def __post_init__(self) -> None:
@@ -63,6 +60,28 @@ class IngestionProtocol:
         if len(set(parser_ids)) != len(parser_ids):
             raise ValueError("parser_versions must contain unique parser ids")
 
+        if self.calibration_scope is CalibrationScope.PRODUCTION_CERTIFIED:
+            if self.production_certificate is None:
+                raise ValueError(
+                    "PRODUCTION_CERTIFIED calibration scope requires a held-out production certificate"
+                )
+            if self.production_certificate.calibration_sha256 != self.calibration_sha256:
+                raise ValueError("production certificate calibration SHA-256 does not match protocol calibration")
+        elif self.production_certificate is not None:
+            raise ValueError("production certificate may only be attached to PRODUCTION_CERTIFIED scope")
+
+    @property
+    def production_certificate_sha256(self) -> str | None:
+        if self.production_certificate is None:
+            return None
+        return self.production_certificate.sha256()
+
+    @property
+    def certified_system_sha256(self) -> str | None:
+        if self.production_certificate is None:
+            return None
+        return self.production_certificate.audited_system_sha256
+
     def sha256(self) -> str:
         payload = {
             "protocol_id": self.protocol_id,
@@ -70,6 +89,7 @@ class IngestionProtocol:
             "object_schema_version": self.object_schema_version,
             "calibration_sha256": self.calibration_sha256,
             "calibration_scope": self.calibration_scope.value,
+            "production_certificate_sha256": self.production_certificate_sha256,
             "parser_versions": sorted(self.parser_versions),
             "policy_note": self.policy_note,
         }
@@ -172,6 +192,8 @@ class PromotionReport:
     promotion_spec_sha256: str
     evidence_sha256: str
     calibration_scope: CalibrationScope
+    production_certificate_sha256: str | None
+    certified_system_sha256: str | None
 
     @property
     def detector_ready(self) -> bool:
@@ -180,8 +202,13 @@ class PromotionReport:
 
     @property
     def hard_audit_ready(self) -> bool:
-        """Whether the promoted object carries production-certified calibration authority."""
-        return self.detector_ready and self.calibration_scope is CalibrationScope.PRODUCTION_CERTIFIED
+        """Whether the object also carries held-out production calibration authority."""
+        return (
+            self.detector_ready
+            and self.calibration_scope is CalibrationScope.PRODUCTION_CERTIFIED
+            and self.production_certificate_sha256 is not None
+            and self.certified_system_sha256 is not None
+        )
 
 
 @dataclass(frozen=True)
@@ -195,6 +222,8 @@ class DetectorInputEnvelope:
     promotion_spec_sha256: str
     evidence_sha256: str
     calibration_scope: CalibrationScope
+    production_certificate_sha256: str | None = None
+    certified_system_sha256: str | None = None
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -205,10 +234,25 @@ class DetectorInputEnvelope:
         ):
             if not _SHA256_RE.fullmatch(value):
                 raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
+        for name, value in (
+            ("production_certificate_sha256", self.production_certificate_sha256),
+            ("certified_system_sha256", self.certified_system_sha256),
+        ):
+            if value is not None and not _SHA256_RE.fullmatch(value):
+                raise ValueError(f"{name} must be a lowercase SHA-256 hex digest when present")
+        if self.calibration_scope is CalibrationScope.PRODUCTION_CERTIFIED:
+            if self.production_certificate_sha256 is None or self.certified_system_sha256 is None:
+                raise ValueError("production-certified envelope requires certificate and system hashes")
+        elif self.production_certificate_sha256 is not None or self.certified_system_sha256 is not None:
+            raise ValueError("non-production envelope cannot carry production certificate authority")
 
     @property
     def production_authorized(self) -> bool:
-        return self.calibration_scope is CalibrationScope.PRODUCTION_CERTIFIED
+        return (
+            self.calibration_scope is CalibrationScope.PRODUCTION_CERTIFIED
+            and self.production_certificate_sha256 is not None
+            and self.certified_system_sha256 is not None
+        )
 
 
 @dataclass
@@ -306,6 +350,8 @@ class EvidenceLedger:
             promotion_spec_sha256=spec.sha256(),
             evidence_sha256=evidence_hash,
             calibration_scope=self.protocol.calibration_scope,
+            production_certificate_sha256=self.protocol.production_certificate_sha256,
+            certified_system_sha256=self.protocol.certified_system_sha256,
         )
 
     def promote(
@@ -329,6 +375,8 @@ class EvidenceLedger:
             promotion_spec_sha256=report.promotion_spec_sha256,
             evidence_sha256=report.evidence_sha256,
             calibration_scope=report.calibration_scope,
+            production_certificate_sha256=report.production_certificate_sha256,
+            certified_system_sha256=report.certified_system_sha256,
         )
         return report, envelope
 
