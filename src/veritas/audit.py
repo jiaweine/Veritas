@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from .detectors.algebra import LogitOddsRatioDetector, MediationProductDetector
+from .detectors.anova import OneWayAnovaSummaryDetector
 from .detectors.base import DetectorRegistry
 from .detectors.correlation import CorrelationPSDDetector
 from .detectors.designs import DIDDesignDetector, WeakIVDesignDetector
@@ -32,6 +33,7 @@ class AuditEngine:
                     MediationProductDetector(),
                     StandardizedRegressionReconstructionDetector(),
                     TwoGroupSummaryDetector(),
+                    OneWayAnovaSummaryDetector(),
                     DIDDesignDetector(),
                     WeakIVDesignDetector(),
                     RDDDesignDetector(),
