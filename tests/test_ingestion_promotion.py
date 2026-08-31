@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from veritas.audit import AuditEngine
+from veritas.benchmark import (
+    BenchmarkCase,
+    BenchmarkSplit,
+    PaperAuditOutcome,
+    issue_production_calibration_certificate,
+)
 from veritas.claims import ArtifactRef
 from veritas.extraction import (
     ConformalCalibration,
@@ -21,15 +29,54 @@ from veritas.ingestion import (
 )
 from veritas.models import RegressionResult, ReportedNumber, SourceLocation
 
+_CALIBRATION_SHA = "b" * 64
+_DEFAULT_ENGINE = AuditEngine()
+_CERT_CASES = [
+    BenchmarkCase(
+        case_id=f"clean-case-{i}",
+        paper_id=f"clean-{i}",
+        corruption_family="none",
+        expected_material_issue=False,
+        split=BenchmarkSplit.TEST,
+        metadata={},
+    )
+    for i in range(400)
+]
+_CERT_CASES.extend(
+    BenchmarkCase(
+        case_id=f"positive-case-{i}",
+        paper_id=f"positive-{i}",
+        corruption_family="p_value_override",
+        expected_material_issue=True,
+        split=BenchmarkSplit.TEST,
+        metadata={},
+    )
+    for i in range(100)
+)
+_CERT_OUTCOMES = [PaperAuditOutcome(f"clean-{i}", False, False) for i in range(400)]
+_CERT_OUTCOMES.extend(PaperAuditOutcome(f"positive-{i}", True, True) for i in range(100))
+_CERT_REPORT, _PRODUCTION_CERTIFICATE = issue_production_calibration_certificate(
+    calibration_sha256=_CALIBRATION_SHA,
+    audited_system_sha256=_DEFAULT_ENGINE.manifest_sha256(),
+    cases=_CERT_CASES,
+    outcomes=_CERT_OUTCOMES,
+)
+assert _CERT_REPORT.certified and _PRODUCTION_CERTIFICATE is not None
+
 
 def _protocol(*, scope: CalibrationScope = CalibrationScope.PRODUCTION_CERTIFIED) -> IngestionProtocol:
     return IngestionProtocol(
         protocol_id="pdf-paper-only",
         protocol_version="0.10.0",
         object_schema_version="regression-v1",
-        calibration_sha256="b" * 64,
+        calibration_sha256=_CALIBRATION_SHA,
         parser_versions=(("native", "1.2.0"), ("vlm", "2026-08")),
         calibration_scope=scope,
+        production_certificate=(
+            _PRODUCTION_CERTIFICATE
+            if scope is CalibrationScope.PRODUCTION_CERTIFIED
+            else None
+        ),
     )
 
 
@@ -171,12 +218,40 @@ def _builder(fields, semantic, draft):
     )
 
 
+def test_production_scope_requires_heldout_certificate():
+    with pytest.raises(ValueError, match="held-out production certificate"):
+        IngestionProtocol(
+            protocol_id="pdf-paper-only",
+            protocol_version="0.10.0",
+            object_schema_version="regression-v1",
+            calibration_sha256=_CALIBRATION_SHA,
+            parser_versions=(("native", "1.2.0"), ("vlm", "2026-08")),
+            calibration_scope=CalibrationScope.PRODUCTION_CERTIFIED,
+        )
+
+
+def test_production_certificate_must_match_protocol_calibration():
+    mismatched = replace(_PRODUCTION_CERTIFICATE, calibration_sha256="c" * 64)
+    with pytest.raises(ValueError, match="does not match protocol calibration"):
+        IngestionProtocol(
+            protocol_id="pdf-paper-only",
+            protocol_version="0.10.0",
+            object_schema_version="regression-v1",
+            calibration_sha256=_CALIBRATION_SHA,
+            parser_versions=(("native", "1.2.0"), ("vlm", "2026-08")),
+            calibration_scope=CalibrationScope.PRODUCTION_CERTIFIED,
+            production_certificate=mismatched,
+        )
+
+
 def test_precisely_sourced_production_calibration_is_hard_audit_ready():
     report, envelope = _ledger().promote("reg-1", _spec(), _builder)
     assert report.decision is PromotionDecision.PROMOTE
     assert report.detector_ready
     assert report.hard_audit_ready
     assert report.calibration_scope is CalibrationScope.PRODUCTION_CERTIFIED
+    assert report.production_certificate_sha256 == _PRODUCTION_CERTIFICATE.sha256()
+    assert report.certified_system_sha256 == _DEFAULT_ENGINE.manifest_sha256()
     assert envelope is not None
     assert envelope.production_authorized
     assert envelope.artifact_sha256 == "a" * 64
@@ -197,9 +272,10 @@ def test_benchmark_calibration_can_enter_detector_but_not_gain_production_author
     finding = next(finding for finding in summary.findings if finding.grade.value >= 3)
     provenance = finding.evidence["ingestion_provenance"]
     assert provenance["calibration_scope"] == CalibrationScope.BENCHMARK.value
+    assert provenance["production_certificate_sha256"] is None
     assert provenance["production_hard_finding_authorized"] is False
 
-    with pytest.raises(ValueError, match="PRODUCTION_CERTIFIED"):
+    with pytest.raises(ValueError, match="held-out certificate"):
         AuditEngine().audit_production_verified([envelope])
 
 
@@ -241,7 +317,7 @@ def test_missing_critical_semantic_gate_is_unverifiable():
     assert any("missing critical semantic gate" in reason for reason in report.reasons)
 
 
-def test_production_verified_audit_binds_ingestion_hashes_and_authority_to_e3_finding():
+def test_production_verified_audit_binds_certificate_and_system_to_e3_finding():
     report, envelope = _ledger().promote("reg-1", _spec(), _builder)
     assert report.hard_audit_ready and envelope is not None
     summary = AuditEngine().audit_production_verified([envelope])
@@ -253,23 +329,38 @@ def test_production_verified_audit_binds_ingestion_hashes_and_authority_to_e3_fi
     assert provenance["promotion_spec_sha256"] == envelope.promotion_spec_sha256
     assert provenance["extraction_evidence_sha256"] == envelope.evidence_sha256
     assert provenance["calibration_scope"] == CalibrationScope.PRODUCTION_CERTIFIED.value
+    assert provenance["production_certificate_sha256"] == _PRODUCTION_CERTIFICATE.sha256()
+    assert provenance["certified_system_sha256"] == _DEFAULT_ENGINE.manifest_sha256()
+    assert provenance["executed_system_sha256"] == _DEFAULT_ENGINE.manifest_sha256()
     assert provenance["production_hard_finding_authorized"] is True
 
 
-def test_research_verified_audit_never_confers_production_authority_even_with_production_scope():
+def test_production_certificate_cannot_authorize_a_different_detector_system():
+    report, envelope = _ledger().promote("reg-1", _spec(), _builder)
+    assert report.hard_audit_ready and envelope is not None
+    changed_engine = AuditEngine(include_experimental=True)
+    assert changed_engine.manifest_sha256() != _DEFAULT_ENGINE.manifest_sha256()
+    with pytest.raises(ValueError, match="different detector/numerical system manifest"):
+        changed_engine.audit_production_verified([envelope])
+
+
+def test_research_verified_audit_never_confers_production_authority_even_with_certificate():
     report, envelope = _ledger().promote("reg-1", _spec(), _builder)
     assert report.hard_audit_ready and envelope is not None
     summary = AuditEngine().audit_verified([envelope])
     finding = next(finding for finding in summary.findings if finding.grade.value >= 3)
     provenance = finding.evidence["ingestion_provenance"]
     assert provenance["calibration_scope"] == CalibrationScope.PRODUCTION_CERTIFIED.value
+    assert provenance["production_certificate_sha256"] == _PRODUCTION_CERTIFICATE.sha256()
     assert provenance["production_hard_finding_authorized"] is False
 
 
-def test_protocol_hash_changes_with_calibration_scope():
+def test_protocol_hash_changes_with_calibration_scope_and_certificate():
     production = _protocol(scope=CalibrationScope.PRODUCTION_CERTIFIED)
     benchmark = _protocol(scope=CalibrationScope.BENCHMARK)
     assert production.sha256() != benchmark.sha256()
+    assert production.production_certificate_sha256 == _PRODUCTION_CERTIFICATE.sha256()
+    assert benchmark.production_certificate_sha256 is None
 
 
 def test_evidence_hash_is_stable_to_parser_candidate_order():
