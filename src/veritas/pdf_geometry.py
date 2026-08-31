@@ -279,6 +279,19 @@ def _leading_row_label(
     return prefix
 
 
+def _deduplicate_tables(tables: list[PDFTable]) -> tuple[PDFTable, ...]:
+    """Collapse only identical virtual reconstructions of the same publication display item."""
+    unique: dict[tuple[object, ...], PDFTable] = {}
+    for table in tables:
+        key = (
+            table.page,
+            canonical_table_label(table.caption),
+            table.rows,
+        )
+        unique.setdefault(key, table)
+    return tuple(unique.values())
+
+
 def reconstruct_borderless_tables(
     snapshot: NativePDFSnapshot,
     *,
@@ -387,7 +400,7 @@ def reconstruct_borderless_tables(
                         caption=caption,
                     )
                 )
-    return tuple(matches)
+    return _deduplicate_tables(matches)
 
 
 def reconstruct_borderless_table(
