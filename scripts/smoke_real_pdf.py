@@ -13,6 +13,7 @@ CASES = (
         "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0318226&type=printable",
         "variable": "Age (years)",
         "table_label": "Table 2",
+        # 1-based physical PDF page, matching NativePDFSnapshot.page semantics.
         "expected_page": 5,
         "expected": {
             "beta": "-0.016",
@@ -29,7 +30,8 @@ CASES = (
         "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0300960&type=printable",
         "variable": "Image: neutral",
         "table_label": "Table 2",
-        "expected_page": 10,
+        # Table 1 is on PDF page 10; Table 2 starts on the following physical page (11 / 20).
+        "expected_page": 11,
         "expected": {
             "beta": "0.104",
             "se": "0.038",
