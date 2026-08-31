@@ -37,6 +37,13 @@ from .extraction import (
     ExtractionDecision,
     ExtractionResolution,
 )
+from .extraction_benchmark import (
+    ExtractionBenchmarkReport,
+    ExtractionGoldTarget,
+    ExtractionPrediction,
+    ExtractionTargetOutcome,
+    evaluate_extraction_benchmark,
+)
 from .group_stats import GroupSummary, OneWayAnovaComparison, TwoGroupComparison
 from .ingestion import (
     DetectorInputEnvelope,
@@ -108,9 +115,13 @@ __all__ = [
     "EvidenceKind",
     "EvidenceLedger",
     "ExtractedField",
+    "ExtractionBenchmarkReport",
     "ExtractionCandidate",
     "ExtractionDecision",
+    "ExtractionGoldTarget",
+    "ExtractionPrediction",
     "ExtractionResolution",
+    "ExtractionTargetOutcome",
     "Finding",
     "GroundTruthBasis",
     "GroupSummary",
@@ -149,6 +160,7 @@ __all__ = [
     "assign_article_family_split",
     "assign_paper_split",
     "benchmark_manifest_sha256",
+    "evaluate_extraction_benchmark",
     "evaluate_hard_alert_certification",
     "get_method_anchor",
     "methodology_snapshot_sha256",
