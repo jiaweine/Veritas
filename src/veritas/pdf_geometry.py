@@ -17,6 +17,20 @@ class _HeaderAnchor:
     x0: float
 
 
+@dataclass(frozen=True)
+class _HeaderBand:
+    anchors: dict[str, _HeaderAnchor]
+    line_indices: tuple[int, ...]
+
+    @property
+    def start(self) -> int:
+        return min(self.line_indices)
+
+    @property
+    def end(self) -> int:
+        return max(self.line_indices)
+
+
 def _center_y(word: PDFWord) -> float:
     return (word.bbox[1] + word.bbox[3]) / 2.0
 
@@ -66,6 +80,49 @@ def _header_anchors(
                 continue
             anchors[role] = _HeaderAnchor(role=role, text=text, x0=span[0].bbox[0])
     return anchors
+
+
+def _header_band(
+    lines: tuple[tuple[PDFWord, ...], ...],
+    *,
+    header_index: int,
+    role_resolver: Callable[[str | None], str | None],
+    required_roles: frozenset[str],
+    max_header_line_gap: float,
+) -> _HeaderBand | None:
+    """Build a bounded header band without changing global line clustering.
+
+    The primary line must itself identify the variable column. At most the immediately adjacent
+    lines may contribute missing statistical roles, and only when their vertical centers are
+    within ``max_header_line_gap`` of the primary line. This handles journal headers where a beta
+    symbol/subscript is typeset a few points above or below the other column labels while keeping
+    captions, body prose, and data rows outside the header identity decision.
+    """
+    primary = _header_anchors(lines[header_index], role_resolver)
+    if "variable" not in primary:
+        return None
+
+    anchors = dict(primary)
+    line_indices = [header_index]
+    primary_y = _line_y(lines[header_index])
+    for neighbor_index in (header_index - 1, header_index + 1):
+        if neighbor_index < 0 or neighbor_index >= len(lines):
+            continue
+        neighbor = lines[neighbor_index]
+        if abs(_line_y(neighbor) - primary_y) > max_header_line_gap:
+            continue
+        neighbor_anchors = _header_anchors(neighbor, role_resolver)
+        added = False
+        for role, anchor in neighbor_anchors.items():
+            if role not in anchors:
+                anchors[role] = anchor
+                added = True
+        if added:
+            line_indices.append(neighbor_index)
+
+    if not required_roles.issubset(anchors):
+        return None
+    return _HeaderBand(anchors=anchors, line_indices=tuple(sorted(line_indices)))
 
 
 def _column_bounds(anchors: tuple[_HeaderAnchor, ...]) -> tuple[tuple[float, float], ...]:
@@ -161,6 +218,7 @@ def reconstruct_borderless_tables(
     table_label: str | None = None,
     allow_token_boundary: bool = True,
     required_roles: frozenset[str] = frozenset({"variable", "beta", "se", "t_stat"}),
+    max_header_line_gap: float = 10.0,
     max_data_line_gap: int = 40,
     max_data_vertical_gap: float = 180.0,
     max_caption_lines: int = 5,
@@ -171,18 +229,26 @@ def reconstruct_borderless_tables(
     Returning all matches is intentional: hard-audit callers must detect display-item ambiguity
     rather than silently selecting the first table when the same variable occurs multiple times.
     ``allow_token_boundary=False`` is the exact identity pass used to establish an anchor.
+    Header reconstruction may combine only immediately adjacent lines inside a bounded header band;
+    global line clustering remains strict.
     """
     requested_label = canonical_table_label(table_label) if table_label is not None else None
     matches: list[PDFTable] = []
     for page in snapshot.pages:
         lines = _cluster_lines(page.words)
-        for header_index, header_line in enumerate(lines):
-            anchors_by_role = _header_anchors(header_line, role_resolver)
-            if not required_roles.issubset(anchors_by_role):
+        for header_index in range(len(lines)):
+            band = _header_band(
+                lines,
+                header_index=header_index,
+                role_resolver=role_resolver,
+                required_roles=required_roles,
+                max_header_line_gap=max_header_line_gap,
+            )
+            if band is None:
                 continue
             caption = _nearby_table_caption(
                 lines,
-                header_index=header_index,
+                header_index=band.start,
                 max_caption_lines=max_caption_lines,
                 max_caption_vertical_gap=max_caption_vertical_gap,
             )
@@ -190,16 +256,17 @@ def reconstruct_borderless_tables(
                 continue
             if requested_label is not None and canonical_table_label(caption) != requested_label:
                 continue
-            anchors = tuple(sorted(anchors_by_role.values(), key=lambda item: item.x0))
+            anchors = tuple(sorted(band.anchors.values(), key=lambda item: item.x0))
             if not anchors or anchors[0].role != "variable":
                 continue
             bounds = _column_bounds(anchors)
             if not bounds:
                 continue
             header_cells = tuple(anchor.text for anchor in anchors)
-            header_y = _line_y(header_line)
-            stop = min(len(lines), header_index + 1 + max_data_line_gap)
-            for data_line in lines[header_index + 1 : stop]:
+            header_lines = tuple(lines[index] for index in band.line_indices)
+            header_y = max(_line_y(line) for line in header_lines)
+            stop = min(len(lines), band.end + 1 + max_data_line_gap)
+            for data_line in lines[band.end + 1 : stop]:
                 if _line_y(data_line) - header_y > max_data_vertical_gap:
                     break
                 cells = _cells_for_line(data_line, bounds)
@@ -216,7 +283,7 @@ def reconstruct_borderless_tables(
                     PDFTable(
                         page=page.page,
                         table_index=-(header_index + 1),
-                        bbox=_bbox_for_lines(header_line, data_line),
+                        bbox=_bbox_for_lines(*header_lines, data_line),
                         rows=(header_cells, cells),
                         caption=caption,
                     )
@@ -232,6 +299,7 @@ def reconstruct_borderless_table(
     table_label: str | None = None,
     allow_token_boundary: bool = True,
     required_roles: frozenset[str] = frozenset({"variable", "beta", "se", "t_stat"}),
+    max_header_line_gap: float = 10.0,
     max_data_line_gap: int = 40,
     max_data_vertical_gap: float = 180.0,
     max_caption_lines: int = 5,
@@ -245,6 +313,7 @@ def reconstruct_borderless_table(
         table_label=table_label,
         allow_token_boundary=allow_token_boundary,
         required_roles=required_roles,
+        max_header_line_gap=max_header_line_gap,
         max_data_line_gap=max_data_line_gap,
         max_data_vertical_gap=max_data_vertical_gap,
         max_caption_lines=max_caption_lines,
