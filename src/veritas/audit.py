@@ -9,6 +9,7 @@ from .detectors.correlation import CorrelationPSDDetector
 from .detectors.designs import DIDDesignDetector, WeakIVDesignDetector
 from .detectors.discrete import DiscreteSummaryFeasibilityDetector
 from .detectors.group_stats import TwoGroupSummaryDetector
+from .detectors.meta_analysis import MetaAnalysisArithmeticDetector
 from .detectors.rdd import RDDDesignDetector
 from .detectors.regression import RegressionConsistencyDetector
 from .detectors.sample import SampleAccountingDetector
@@ -34,6 +35,7 @@ class AuditEngine:
                     StandardizedRegressionReconstructionDetector(),
                     TwoGroupSummaryDetector(),
                     OneWayAnovaSummaryDetector(),
+                    MetaAnalysisArithmeticDetector(),
                     DIDDesignDetector(),
                     WeakIVDesignDetector(),
                     RDDDesignDetector(),
