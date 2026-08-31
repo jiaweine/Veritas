@@ -36,9 +36,9 @@ A detector may be exercised for benchmark or research purposes without being all
 - `UNVERIFIED`: no calibration authority claim;
 - `BENCHMARK`: evaluation-only calibration;
 - `RESEARCH`: research use without production authority;
-- `PRODUCTION_CERTIFIED`: the only scope eligible for the production hard-audit path.
+- `PRODUCTION_CERTIFIED`: eligible for production authority only when accompanied by a matching held-out certificate.
 
-The calibration scope is included in the `IngestionProtocol` SHA-256. Relabeling a benchmark calibration as production-certified therefore changes the protocol identity and cannot be invisible in provenance.
+The calibration scope and production-certificate identity are included in the `IngestionProtocol` SHA-256. Relabeling a benchmark calibration or swapping a certificate therefore changes the protocol identity and cannot be invisible in provenance.
 
 ## Evidence ledger
 
@@ -58,6 +58,7 @@ The ledger also locks:
 - source artifact SHA-256;
 - calibration SHA-256;
 - calibration scope;
+- production-certificate SHA-256 when present;
 - parser versions;
 - object-schema version;
 - promotion-policy version.
@@ -78,24 +79,92 @@ Failure modes are intentionally asymmetric:
 
 - parser conflict -> `REVIEW`;
 - accepted but below confidence policy -> `REVIEW`;
-- missing field/gate, missing artifact hash, domain shift, or inadequate provenance -> `UNVERIFIABLE`;
+- missing field/gate, missing artifact hash, domain shift, inadequate provenance, or a production certificate that does not cover the current promotion spec -> `UNVERIFIABLE`;
 - only `PROMOTE` objects receive a detector envelope.
 
 `PromotionReport.detector_ready` means the extraction/promotion contract was satisfied. It does **not** mean the calibration is production-certified.
 
+## Held-out production certification
+
+`ProductionCalibrationCertificate` is a deterministic, hash-bound provenance artifact. It is **not** a cryptographic signature, institutional endorsement, or external trust service.
+
+A production certificate may be issued only when:
+
+1. every certification case belongs to the locked `TEST` split;
+2. exactly one paper-level outcome is supplied for every paper in that TEST manifest;
+3. paper-level expected-material-issue labels agree with the benchmark cases;
+4. the paper-level certification policy passes.
+
+The default strict policy requires, among other conditions:
+
+- at least 300 applicable clean papers;
+- at least 50 applicable positive papers;
+- a 95% one-sided exact Clopper-Pearson upper bound on the paper-level false hard-alert rate of at most 1%;
+- a 95% one-sided exact lower bound on hard-alert precision of at least 95%.
+
+Multiple findings from one paper count once for certification. This prevents correlated consequences of one underlying error from artificially inflating evidence.
+
+Certificate v2 binds all of the following:
+
+- calibration SHA-256;
+- exact parser ids and versions;
+- object-schema version;
+- promotion-spec SHA-256;
+- TEST benchmark-manifest SHA-256;
+- audited Veritas-system SHA-256;
+- certification-policy SHA-256;
+- certification-report SHA-256;
+- resulting paper-level uncertainty bounds and corpus counts.
+
+`IngestionProtocol(PRODUCTION_CERTIFIED)` rejects a certificate whose calibration, parser versions, or object schema differ from the protocol. During promotion, a different `PromotionSpec` is rejected as `UNVERIFIABLE` and receives no detector envelope.
+
+## Audited system identity
+
+`AuditEngine.manifest_sha256()` binds three independent identities:
+
+1. the SHA-256 of the installed `veritas/**/*.py` source tree;
+2. the registered detector ids and declared detector versions;
+3. the numerical backend identity, including Python, NumPy, SciPy, CVXPY, and SCS versions.
+
+Hashing the source tree is deliberately stricter than relying on detector version strings alone. A detector implementation, parser helper, scoring helper, or other Veritas Python source change invalidates a previously certified system manifest even when a developer forgets to bump a detector version.
+
+External PDF parser versions remain separately locked by the ingestion protocol and the production certificate.
+
 ## Hard-audit authority
 
-`PromotionReport.hard_audit_ready` is true only when both conditions hold:
+`PromotionReport.hard_audit_ready` is true only when all of the following hold:
 
-1. the object is detector-ready; and
-2. `calibration_scope == PRODUCTION_CERTIFIED`.
+1. the object is detector-ready;
+2. the scope is `PRODUCTION_CERTIFIED`;
+3. a held-out certificate is attached;
+4. the current promotion-spec SHA-256 equals the certificate's certified promotion-spec SHA-256;
+5. a certified audited-system SHA-256 is present.
 
 Veritas then adds a second explicit gate at audit execution:
 
 - `AuditEngine.audit_verified()` is for research/benchmark verification and always records `production_hard_finding_authorized = false`;
-- `AuditEngine.audit_production_verified()` rejects every envelope whose calibration scope is not `PRODUCTION_CERTIFIED` and records `production_hard_finding_authorized = true` for resulting findings.
+- `AuditEngine.audit_production_verified()` rejects envelopes without certificate authority and rejects certificates issued for a different current Veritas/numerical system manifest.
+
+Production findings preserve:
+
+- source artifact SHA-256;
+- ingestion-protocol SHA-256;
+- promotion-spec SHA-256;
+- extraction-evidence SHA-256;
+- calibration scope;
+- production-certificate SHA-256;
+- certified promotion-spec SHA-256;
+- certified system SHA-256;
+- actually executed system SHA-256;
+- whether production hard-finding authority was active.
 
 This intentionally separates **detector arithmetic severity** from **publication/production authority**. A benchmark run can reveal an E3 mathematical contradiction for evaluation without that output being presented as an authorized production research-integrity finding.
+
+## Current certification status
+
+The current open-access real-PDF smoke and selective-promotion benchmarks are explicitly **not production certification**. They validate extraction, fail-closed behavior, and experimental detector promotion. Their `CalibrationScope` remains `BENCHMARK`, and production hard-authority coverage is expected to remain zero.
+
+A real production certificate should not be issued until a sufficiently large locked TEST corpus meets the paper-level certification policy for the exact parser/schema/spec/system combination being deployed.
 
 ## Numeric evidence vs semantic evidence
 
@@ -110,7 +179,7 @@ Agreement about the number does not prove agreement about the estimator or infer
 
 ## Reproducibility
 
-`IngestionProtocol`, `PromotionSpec`, and the evidence payload each have stable SHA-256 identities. Findings produced from an envelope preserve the source PDF hash, calibration identity and scope, parser versions, extraction evidence, promotion policy, and whether the audit execution path carried production authority.
+`IngestionProtocol`, `PromotionSpec`, extraction evidence, production certificate, benchmark manifest, certification policy/report, Veritas source tree, detector registry, and numerical backend all have stable SHA-256 identities. Production authorization is therefore tied to the exact evaluated pipeline rather than to a mutable label.
 
 ## Method anchors
 
