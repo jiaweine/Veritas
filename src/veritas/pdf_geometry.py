@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .pdf_native import PDFTable, PDFWord, NativePDFSnapshot
+from .pdf_native import NativePDFSnapshot, PDFTable, PDFWord
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ def _header_anchors(
 ) -> dict[str, _HeaderAnchor]:
     anchors: dict[str, _HeaderAnchor] = {}
     for width in range(1, max_ngram + 1):
-        for start in range(0, len(line) - width + 1):
+        for start in range(len(line) - width + 1):
             span = line[start : start + width]
             text = " ".join(word.text for word in span)
             role = role_resolver(text)
