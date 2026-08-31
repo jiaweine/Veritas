@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from smoke_real_pdf import CASES, _download
 from veritas.audit import AuditEngine
 from veritas.extraction import ConformalCalibration, ConformalExtractionGate
+from veritas.ingestion import CalibrationScope
 from veritas.pdf_native import parse_pdf_dual
 from veritas.pdf_regression import (
     RegressionLocator,
@@ -64,11 +66,14 @@ def _evaluate_policy(
         calibration_sha256=calibration_sha,
         object_id=object_id,
     )
+    ledger.protocol = replace(ledger.protocol, calibration_scope=CalibrationScope.BENCHMARK)
     spec = regression_promotion_spec()
     report, envelope = ledger.promote(object_id, spec, regression_result_builder)
     result: dict[str, object] = {
         "decision": report.decision.value,
+        "detector_ready": report.detector_ready,
         "hard_audit_ready": report.hard_audit_ready,
+        "calibration_scope": report.calibration_scope.value,
         "reasons": report.reasons,
         "protocol_sha256": report.protocol_sha256,
         "promotion_spec_sha256": report.promotion_spec_sha256,
@@ -77,8 +82,10 @@ def _evaluate_policy(
     if envelope is None:
         result["checks"] = []
         result["e3_findings"] = 0
+        result["production_authorized"] = False
         return result
 
+    result["production_authorized"] = envelope.production_authorized
     summary = AuditEngine().audit_verified((envelope,))
     result["checks"] = [
         {
@@ -90,14 +97,20 @@ def _evaluate_policy(
     ]
     result["e3_findings"] = len(summary.findings)
     result["verification_coverage"] = summary.verification_coverage
+    if summary.findings:
+        result["finding_production_authority"] = [
+            finding.evidence["ingestion_provenance"]["production_hard_finding_authorized"]
+            for finding in summary.findings
+        ]
     return result
 
 
 def main() -> None:
     case_results: list[dict[str, object]] = []
     extraction_ok_count = 0
-    conservative_promoted = 0
-    geometry_promoted = 0
+    conservative_detector_promoted = 0
+    geometry_detector_promoted = 0
+    production_authorized = 0
     geometry_e3_cases: list[str] = []
     failures: list[str] = []
 
@@ -129,10 +142,15 @@ def main() -> None:
             gate_score=0.02,
             object_id=f"{case_id}-geometry-threshold",
         )
-        conservative_promoted += int(bool(conservative["hard_audit_ready"]))
-        geometry_promoted += int(bool(geometry["hard_audit_ready"]))
+        conservative_detector_promoted += int(bool(conservative["detector_ready"]))
+        geometry_detector_promoted += int(bool(geometry["detector_ready"]))
+        production_authorized += int(bool(geometry["hard_audit_ready"]))
         if int(geometry["e3_findings"]) > 0:
             geometry_e3_cases.append(case_id)
+        if geometry["calibration_scope"] != CalibrationScope.BENCHMARK.value:
+            failures.append(f"{case_id}:benchmark-scope")
+        if bool(geometry["production_authorized"]) or bool(geometry["hard_audit_ready"]):
+            failures.append(f"{case_id}:benchmark-gained-production-authority")
 
         case_results.append(
             {
@@ -149,18 +167,24 @@ def main() -> None:
         )
 
     total = len(CASES)
-    # The geometry threshold is deliberately a benchmark-only synthetic probe. Because the
-    # extraction gold is already manually fixed for these cases, failure to promote here means
-    # the promotion plumbing—not the real paper's correctness—has regressed.
-    if geometry_promoted != extraction_ok_count:
-        failures.append("experimental-geometry-promotion-coverage")
+    # The geometry threshold is deliberately benchmark-only. It may exercise the full detector
+    # pipeline, but it must never acquire production hard-finding authority.
+    if geometry_detector_promoted != extraction_ok_count:
+        failures.append("experimental-geometry-detector-promotion-coverage")
+    if production_authorized != 0:
+        failures.append("benchmark-production-authority-must-be-zero")
 
     report = {
         "scope": "real_open_access_selective_promotion_benchmark_not_production_certification",
         "cases": total,
         "exact_extraction_coverage": extraction_ok_count / total if total else 0.0,
-        "conservative_native_threshold_promotion_coverage": conservative_promoted / total if total else 0.0,
-        "experimental_geometry_threshold_promotion_coverage": geometry_promoted / total if total else 0.0,
+        "conservative_native_threshold_detector_promotion_coverage": (
+            conservative_detector_promoted / total if total else 0.0
+        ),
+        "experimental_geometry_threshold_detector_promotion_coverage": (
+            geometry_detector_promoted / total if total else 0.0
+        ),
+        "benchmark_production_hard_authority_coverage": production_authorized / total if total else 0.0,
         "experimental_promoted_e3_case_ids": geometry_e3_cases,
         "failed_checks": failures,
         "results": case_results,
