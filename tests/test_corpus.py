@@ -11,7 +11,7 @@ from veritas.corpus import (
 )
 
 
-def _paper(paper_id: str, family: str) -> CorpusPaper:
+def _paper(paper_id: str, family: str, *, source_url: str = "https://example.org/paper") -> CorpusPaper:
     return CorpusPaper(
         paper_id=paper_id,
         article_family_id=family,
@@ -19,7 +19,7 @@ def _paper(paper_id: str, family: str) -> CorpusPaper:
         title=f"Paper {paper_id}",
         discipline="psychology",
         year=2025,
-        source_url="https://example.org/paper",
+        source_url=source_url,
         access_tier=AccessTier.PAPER_ONLY,
     )
 
@@ -51,6 +51,7 @@ def test_split_lock_is_stable_to_paper_order_and_versions():
     )
     lock_a = first.build_split_lock()
     lock_b = second.build_split_lock()
+    assert lock_a.manifest_sha256 == first.sha256()
     assert lock_a.sha256() == lock_b.sha256()
     assert len(lock_a.assignments) == 2
     assert lock_a.split_for_family("family-1") is first.split_for_paper("preprint")
@@ -69,7 +70,7 @@ def test_split_lock_rejects_corpus_growth_without_explicit_relock():
         labels=(),
         split_salt="locked-salt",
     )
-    with pytest.raises(ValueError, match="article-family universe differs"):
+    with pytest.raises(ValueError, match="corpus manifest SHA-256"):
         lock.validate_manifest(expanded)
 
 
@@ -85,8 +86,24 @@ def test_split_lock_rejects_changed_salt():
         labels=(),
         split_salt="different-salt",
     )
-    with pytest.raises(ValueError, match="split_salt"):
+    with pytest.raises(ValueError, match="corpus manifest SHA-256"):
         lock.validate_manifest(changed)
+
+
+def test_split_lock_rejects_metadata_edits_inside_same_family_universe():
+    manifest = CorpusManifest(
+        papers=(_paper("p1", "family-1"),),
+        labels=(),
+        split_salt="locked-salt",
+    )
+    lock = manifest.build_split_lock()
+    edited = CorpusManifest(
+        papers=(_paper("p1", "family-1", source_url="https://example.org/replaced"),),
+        labels=(),
+        split_salt="locked-salt",
+    )
+    with pytest.raises(ValueError, match="corpus manifest SHA-256"):
+        lock.validate_manifest(edited)
 
 
 def test_natural_binary_label_requires_two_reviewers_and_adjudication():
