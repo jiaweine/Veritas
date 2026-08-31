@@ -1,4 +1,5 @@
 from .algebra import LogitOddsRatioDetector, MediationProductDetector
+from .anova import OneWayAnovaSummaryDetector
 from .base import Detector, DetectorRegistry
 from .correlation import CorrelationPSDDetector
 from .designs import DIDDesignDetector, WeakIVDesignDetector
@@ -17,6 +18,7 @@ __all__ = [
     "DiscreteSummaryFeasibilityDetector",
     "LogitOddsRatioDetector",
     "MediationProductDetector",
+    "OneWayAnovaSummaryDetector",
     "RDDDesignDetector",
     "RegressionConsistencyDetector",
     "SampleAccountingDetector",
