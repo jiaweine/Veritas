@@ -16,20 +16,29 @@ def _gate() -> ConformalExtractionGate:
     return ConformalExtractionGate(ConformalCalibration((0.01, 0.02, 0.03, 0.04, 0.05), alpha=0.2))
 
 
-def _source(*, page: int = 5, row: str = "Treatment") -> SourceLocation:
-    return SourceLocation(artifact_id="paper", page=page, table="2", row=row, column="Estimate")
+def _source(*, page: int = 5, row: str = "Treatment", table: str = "2") -> SourceLocation:
+    return SourceLocation(artifact_id="paper", page=page, table=table, row=row, column="Estimate")
 
 
-def _gold(target_id: str, family: str, value: str, *, critical: bool = True) -> ExtractionGoldTarget:
+def _gold(
+    target_id: str,
+    family: str,
+    value: str,
+    *,
+    critical: bool = True,
+    kind: EvidenceKind = EvidenceKind.FIELD,
+    key: str = "beta",
+    source: SourceLocation | None = None,
+) -> ExtractionGoldTarget:
     return ExtractionGoldTarget(
         target_id=target_id,
         paper_id=f"paper-{family}",
         article_family_id=family,
         object_type="RegressionResult",
-        key="beta",
-        kind=EvidenceKind.FIELD,
+        key=key,
+        kind=kind,
         accepted_normalized_values=(value,),
-        source=_source(),
+        source=source or _source(),
         critical_for_hard_audit=critical,
         reviewers=("reviewer-a", "reviewer-b"),
         adjudicated=True,
@@ -58,6 +67,59 @@ def test_correct_accept_requires_both_value_and_source_identity():
     assert report.fully_correct_accepts == 1
     assert report.wrong_accepts == 1
     assert report.accepted_full_accuracy == 0.5
+    assert report.accepted_value_accuracy == 1.0
+    assert report.accepted_source_accuracy == 0.5
+
+
+def test_same_value_wrong_row_is_visible_in_table_row_identity_metric():
+    gold = [
+        _gold("correct", "fam-a", "0.18"),
+        _gold("wrong-row", "fam-b", "0.18"),
+    ]
+    predictions = [
+        _prediction("correct", "0.18"),
+        _prediction("wrong-row", "0.18", source=_source(row="Control")),
+    ]
+    report = evaluate_extraction_benchmark(gold, predictions)
+    assert report.accepted_field_value_accuracy == 1.0
+    assert report.table_row_targets == 2
+    assert report.accepted_table_row_targets == 2
+    assert report.accepted_table_row_identity_accuracy == 0.5
+    wrong = next(outcome for outcome in report.outcomes if outcome.target_id == "wrong-row")
+    assert wrong.value_correct is True
+    assert wrong.display_item_correct is True
+    assert wrong.row_correct is False
+    assert wrong.source_correct is False
+
+
+def test_semantic_gate_accuracy_is_reported_separately_from_numeric_fields():
+    methods_source = SourceLocation(
+        artifact_id="paper",
+        page=9,
+        section="Methods",
+        text_quote="Inference uses a normal approximation.",
+    )
+    gold = [
+        _gold("beta", "fam-a", "0.18"),
+        _gold(
+            "inference",
+            "fam-a",
+            "normal",
+            kind=EvidenceKind.SEMANTIC_GATE,
+            key="inference_distribution",
+            source=methods_source,
+        ),
+    ]
+    predictions = [
+        _prediction("beta", "0.18"),
+        _prediction("inference", "student_t", source=methods_source),
+    ]
+    report = evaluate_extraction_benchmark(gold, predictions)
+    assert report.field_targets == 1
+    assert report.accepted_field_value_accuracy == 1.0
+    assert report.semantic_gate_targets == 1
+    assert report.accepted_semantic_gate_targets == 1
+    assert report.accepted_semantic_gate_accuracy == 0.0
 
 
 def test_missing_prediction_counts_as_abstention_not_wrong_accept():
