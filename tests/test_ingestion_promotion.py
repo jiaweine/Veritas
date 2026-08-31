@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from veritas.audit import AuditEngine
 from veritas.claims import ArtifactRef
 from veritas.extraction import (
@@ -8,6 +10,7 @@ from veritas.extraction import (
     ExtractionCandidate,
 )
 from veritas.ingestion import (
+    CalibrationScope,
     EvidenceKind,
     EvidenceLedger,
     IngestionProtocol,
@@ -19,13 +22,14 @@ from veritas.ingestion import (
 from veritas.models import RegressionResult, ReportedNumber, SourceLocation
 
 
-def _protocol() -> IngestionProtocol:
+def _protocol(*, scope: CalibrationScope = CalibrationScope.PRODUCTION_CERTIFIED) -> IngestionProtocol:
     return IngestionProtocol(
         protocol_id="pdf-paper-only",
-        protocol_version="0.8.0",
+        protocol_version="0.10.0",
         object_schema_version="regression-v1",
         calibration_sha256="b" * 64,
         parser_versions=(("native", "1.2.0"), ("vlm", "2026-08")),
+        calibration_scope=scope,
     )
 
 
@@ -137,7 +141,12 @@ def _spec() -> PromotionSpec:
     )
 
 
-def _ledger(*, with_hash: bool = True, draft: ObjectDraft | None = None) -> EvidenceLedger:
+def _ledger(
+    *,
+    with_hash: bool = True,
+    draft: ObjectDraft | None = None,
+    scope: CalibrationScope = CalibrationScope.PRODUCTION_CERTIFIED,
+) -> EvidenceLedger:
     ledger = EvidenceLedger(
         artifact=ArtifactRef(
             artifact_id="paper",
@@ -145,7 +154,7 @@ def _ledger(*, with_hash: bool = True, draft: ObjectDraft | None = None) -> Evid
             sha256="a" * 64 if with_hash else None,
             uri="https://example.invalid/paper.pdf",
         ),
-        protocol=_protocol(),
+        protocol=_protocol(scope=scope),
     )
     ledger.add_draft(draft or _draft())
     return ledger
@@ -162,24 +171,47 @@ def _builder(fields, semantic, draft):
     )
 
 
-def test_precisely_sourced_calibrated_object_is_promoted():
+def test_precisely_sourced_production_calibration_is_hard_audit_ready():
     report, envelope = _ledger().promote("reg-1", _spec(), _builder)
     assert report.decision is PromotionDecision.PROMOTE
+    assert report.detector_ready
     assert report.hard_audit_ready
+    assert report.calibration_scope is CalibrationScope.PRODUCTION_CERTIFIED
     assert envelope is not None
+    assert envelope.production_authorized
     assert envelope.artifact_sha256 == "a" * 64
     assert len(envelope.protocol_sha256) == 64
     assert len(envelope.evidence_sha256) == 64
 
 
-def test_missing_artifact_hash_blocks_hard_audit_promotion():
+def test_benchmark_calibration_can_enter_detector_but_not_gain_production_authority():
+    report, envelope = _ledger(scope=CalibrationScope.BENCHMARK).promote("reg-1", _spec(), _builder)
+    assert report.decision is PromotionDecision.PROMOTE
+    assert report.detector_ready
+    assert not report.hard_audit_ready
+    assert envelope is not None
+    assert not envelope.production_authorized
+
+    summary = AuditEngine().audit_verified([envelope])
+    assert summary.findings
+    finding = next(finding for finding in summary.findings if finding.grade.value >= 3)
+    provenance = finding.evidence["ingestion_provenance"]
+    assert provenance["calibration_scope"] == CalibrationScope.BENCHMARK.value
+    assert provenance["production_hard_finding_authorized"] is False
+
+    with pytest.raises(ValueError, match="PRODUCTION_CERTIFIED"):
+        AuditEngine().audit_production_verified([envelope])
+
+
+def test_missing_artifact_hash_blocks_detector_promotion():
     report, envelope = _ledger(with_hash=False).promote("reg-1", _spec(), _builder)
     assert report.decision is PromotionDecision.UNVERIFIABLE
+    assert not report.detector_ready
     assert envelope is None
     assert any("no content SHA-256" in reason for reason in report.reasons)
 
 
-def test_imprecise_source_anchor_blocks_hard_audit_promotion():
+def test_imprecise_source_anchor_blocks_detector_promotion():
     report, envelope = _ledger(draft=_draft(precise=False)).promote("reg-1", _spec(), _builder)
     assert report.decision is PromotionDecision.UNVERIFIABLE
     assert envelope is None
@@ -209,10 +241,10 @@ def test_missing_critical_semantic_gate_is_unverifiable():
     assert any("missing critical semantic gate" in reason for reason in report.reasons)
 
 
-def test_verified_audit_binds_ingestion_hashes_to_e3_finding():
+def test_production_verified_audit_binds_ingestion_hashes_and_authority_to_e3_finding():
     report, envelope = _ledger().promote("reg-1", _spec(), _builder)
     assert report.hard_audit_ready and envelope is not None
-    summary = AuditEngine().audit_verified([envelope])
+    summary = AuditEngine().audit_production_verified([envelope])
     assert summary.findings
     finding = next(finding for finding in summary.findings if finding.grade.value >= 3)
     provenance = finding.evidence["ingestion_provenance"]
@@ -220,6 +252,24 @@ def test_verified_audit_binds_ingestion_hashes_to_e3_finding():
     assert provenance["ingestion_protocol_sha256"] == envelope.protocol_sha256
     assert provenance["promotion_spec_sha256"] == envelope.promotion_spec_sha256
     assert provenance["extraction_evidence_sha256"] == envelope.evidence_sha256
+    assert provenance["calibration_scope"] == CalibrationScope.PRODUCTION_CERTIFIED.value
+    assert provenance["production_hard_finding_authorized"] is True
+
+
+def test_research_verified_audit_never_confers_production_authority_even_with_production_scope():
+    report, envelope = _ledger().promote("reg-1", _spec(), _builder)
+    assert report.hard_audit_ready and envelope is not None
+    summary = AuditEngine().audit_verified([envelope])
+    finding = next(finding for finding in summary.findings if finding.grade.value >= 3)
+    provenance = finding.evidence["ingestion_provenance"]
+    assert provenance["calibration_scope"] == CalibrationScope.PRODUCTION_CERTIFIED.value
+    assert provenance["production_hard_finding_authorized"] is False
+
+
+def test_protocol_hash_changes_with_calibration_scope():
+    production = _protocol(scope=CalibrationScope.PRODUCTION_CERTIFIED)
+    benchmark = _protocol(scope=CalibrationScope.BENCHMARK)
+    assert production.sha256() != benchmark.sha256()
 
 
 def test_evidence_hash_is_stable_to_parser_candidate_order():
