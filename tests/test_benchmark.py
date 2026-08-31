@@ -5,12 +5,17 @@ from veritas.benchmark import (
     BenchmarkSplit,
     CertificationPolicy,
     PaperAuditOutcome,
+    ProductionCalibrationCertificate,
     assign_paper_split,
     benchmark_manifest_sha256,
     binomial_upper_bound,
     evaluate_hard_alert_certification,
     issue_production_calibration_certificate,
 )
+
+_PARSER_VERSIONS = (("native", "1.2.0"), ("vlm", "2026-08"))
+_OBJECT_SCHEMA_VERSION = "regression-v1"
+_PROMOTION_SPEC_SHA = "c" * 64
 
 
 def test_paper_split_prevents_case_level_leakage():
@@ -84,23 +89,54 @@ def _certification_corpus() -> tuple[list[BenchmarkCase], list[PaperAuditOutcome
     return cases, outcomes
 
 
-def test_production_certificate_binds_calibration_test_manifest_and_system():
-    cases, outcomes = _certification_corpus()
-    report, certificate = issue_production_calibration_certificate(
+def _issue(cases, outcomes):
+    return issue_production_calibration_certificate(
         calibration_sha256="a" * 64,
+        parser_versions=_PARSER_VERSIONS,
+        object_schema_version=_OBJECT_SCHEMA_VERSION,
+        promotion_spec_sha256=_PROMOTION_SPEC_SHA,
         audited_system_sha256="b" * 64,
         cases=cases,
         outcomes=outcomes,
     )
 
+
+def test_production_certificate_binds_full_ingestion_contract_test_manifest_and_system():
+    cases, outcomes = _certification_corpus()
+    report, certificate = _issue(cases, outcomes)
+
     assert report.certified
     assert certificate is not None
     assert certificate.calibration_sha256 == "a" * 64
+    assert certificate.parser_versions == tuple(sorted(_PARSER_VERSIONS))
+    assert certificate.object_schema_version == _OBJECT_SCHEMA_VERSION
+    assert certificate.promotion_spec_sha256 == _PROMOTION_SPEC_SHA
     assert certificate.audited_system_sha256 == "b" * 64
     assert certificate.benchmark_manifest_sha256 == benchmark_manifest_sha256(cases)
     assert certificate.clean_papers == 400
     assert certificate.positive_papers == 100
     assert len(certificate.sha256()) == 64
+
+
+def test_certificate_hash_is_invariant_to_parser_version_order():
+    certificate = ProductionCalibrationCertificate(
+        calibration_sha256="a" * 64,
+        parser_versions=_PARSER_VERSIONS,
+        object_schema_version=_OBJECT_SCHEMA_VERSION,
+        promotion_spec_sha256=_PROMOTION_SPEC_SHA,
+        benchmark_manifest_sha256="d" * 64,
+        audited_system_sha256="b" * 64,
+        policy_sha256="e" * 64,
+        certification_report_sha256="f" * 64,
+        clean_papers=400,
+        positive_papers=100,
+        false_hard_alert_upper_bound=0.01,
+        hard_alert_precision_lower_bound=0.95,
+    )
+    reordered = ProductionCalibrationCertificate(
+        **{**certificate.__dict__, "parser_versions": tuple(reversed(_PARSER_VERSIONS))}
+    )
+    assert certificate.sha256() == reordered.sha256()
 
 
 def test_production_certificate_rejects_non_test_cases():
@@ -116,12 +152,7 @@ def test_production_certificate_rejects_non_test_cases():
     )
 
     with pytest.raises(ValueError, match="TEST-split"):
-        issue_production_calibration_certificate(
-            calibration_sha256="a" * 64,
-            audited_system_sha256="b" * 64,
-            cases=cases,
-            outcomes=outcomes,
-        )
+        _issue(cases, outcomes)
 
 
 def test_production_certificate_rejects_manifest_outcome_label_mismatch():
@@ -129,12 +160,7 @@ def test_production_certificate_rejects_manifest_outcome_label_mismatch():
     outcomes[0] = PaperAuditOutcome("clean-0", True, False)
 
     with pytest.raises(ValueError, match="expected-material-issue"):
-        issue_production_calibration_certificate(
-            calibration_sha256="a" * 64,
-            audited_system_sha256="b" * 64,
-            cases=cases,
-            outcomes=outcomes,
-        )
+        _issue(cases, outcomes)
 
 
 def test_failed_certification_never_issues_certificate():
@@ -151,12 +177,7 @@ def test_failed_certification_never_issues_certificate():
     ]
     outcomes = [PaperAuditOutcome(f"paper-{i}", False, False) for i in range(20)]
 
-    report, certificate = issue_production_calibration_certificate(
-        calibration_sha256="a" * 64,
-        audited_system_sha256="b" * 64,
-        cases=cases,
-        outcomes=outcomes,
-    )
+    report, certificate = _issue(cases, outcomes)
 
     assert not report.certified
     assert certificate is None
