@@ -68,6 +68,7 @@ from .extraction_review import (
     ExtractionReviewTarget,
     resolve_extraction_reviews,
 )
+from .extraction_test_seal import ExtractionTestSetSeal, seal_extraction_test_set
 from .group_stats import GroupSummary, OneWayAnovaComparison, TwoGroupComparison
 from .ingestion import (
     CalibrationScope,
@@ -157,6 +158,7 @@ __all__ = [
     "ExtractionSelectivityPoint",
     "ExtractionTargetOutcome",
     "ExtractionTestEvaluationLock",
+    "ExtractionTestSetSeal",
     "ExtractionThresholdObservation",
     "ExtractionThresholdPolicy",
     "Finding",
@@ -211,6 +213,7 @@ __all__ = [
     "numerical_backend_sha256",
     "numerical_backend_versions",
     "resolve_extraction_reviews",
+    "seal_extraction_test_set",
     "select_development_threshold",
     "summarize_specification_robustness",
 ]
