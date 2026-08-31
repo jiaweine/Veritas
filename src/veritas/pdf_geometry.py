@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -98,8 +99,15 @@ def _cells_for_line(line: tuple[PDFWord, ...], bounds: tuple[tuple[float, float]
     return tuple(cells)
 
 
-def _normalized_text(value: str) -> str:
-    return " ".join(value.casefold().split())
+def canonical_row_label(value: str) -> str:
+    """Normalize only parser-induced Unicode/whitespace tokenization differences.
+
+    Punctuation and characters are preserved exactly after NFKC/casefold. Removing whitespace
+    lets independent PDF parsers agree on labels such as ``Image: neutral`` vs ``Image:neutral``
+    without introducing fuzzy string matching. Downstream ambiguity handling remains fail-closed.
+    """
+    normalized = unicodedata.normalize("NFKC", value).casefold().replace("\u00a0", " ")
+    return "".join(normalized.split())
 
 
 def _bbox_for_lines(*lines: tuple[PDFWord, ...]) -> tuple[float, float, float, float]:
@@ -176,7 +184,7 @@ def reconstruct_borderless_tables(
             if not bounds:
                 continue
             header_cells = tuple(anchor.text for anchor in anchors)
-            target = _normalized_text(variable_label)
+            target = canonical_row_label(variable_label)
             header_y = _line_y(header_line)
             stop = min(len(lines), header_index + 1 + max_data_line_gap)
             for data_line in lines[header_index + 1 : stop]:
@@ -184,7 +192,7 @@ def reconstruct_borderless_tables(
                     break
                 cells = _cells_for_line(data_line, bounds)
                 first = cells[0]
-                if first is None or _normalized_text(first) != target:
+                if first is None or canonical_row_label(first) != target:
                     continue
                 if sum(cell is not None for cell in cells) < len(required_roles):
                     continue
@@ -197,7 +205,6 @@ def reconstruct_borderless_tables(
                         caption=caption,
                     )
                 )
-                break
     return tuple(matches)
 
 
