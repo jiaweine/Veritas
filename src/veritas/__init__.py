@@ -46,7 +46,10 @@ from .extraction_benchmark import (
     ExtractionBenchmarkReport,
     ExtractionGoldTarget,
     ExtractionPrediction,
+    ExtractionSelectivityCurve,
+    ExtractionSelectivityPoint,
     ExtractionTargetOutcome,
+    build_extraction_selectivity_curve,
     evaluate_extraction_benchmark,
 )
 from .group_stats import GroupSummary, OneWayAnovaComparison, TwoGroupComparison
@@ -129,6 +132,8 @@ __all__ = [
     "ExtractionGoldTarget",
     "ExtractionPrediction",
     "ExtractionResolution",
+    "ExtractionSelectivityCurve",
+    "ExtractionSelectivityPoint",
     "ExtractionTargetOutcome",
     "Finding",
     "GroundTruthBasis",
@@ -169,6 +174,7 @@ __all__ = [
     "assign_article_family_split",
     "assign_paper_split",
     "benchmark_manifest_sha256",
+    "build_extraction_selectivity_curve",
     "certification_policy_sha256",
     "certification_report_sha256",
     "evaluate_extraction_benchmark",
