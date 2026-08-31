@@ -92,6 +92,63 @@ class ExtractionBenchmarkReport:
     outcomes: tuple[ExtractionTargetOutcome, ...]
 
 
+@dataclass(frozen=True)
+class ExtractionSelectivityPoint:
+    """One operating point; not a probability and not a production certification score."""
+
+    threshold: float
+    selective_coverage: float
+    accepted_full_accuracy: float
+    accepted_field_value_accuracy: float
+    accepted_table_row_identity_accuracy: float
+    accepted_semantic_gate_accuracy: float
+    wrong_accept_rate: float
+    critical_family_wrong_accept_upper_bound: float
+
+
+@dataclass(frozen=True)
+class ExtractionSelectivityCurve:
+    """Ordered operating points without collapsing the trade-off to one scalar."""
+
+    points: tuple[ExtractionSelectivityPoint, ...]
+
+    def __post_init__(self) -> None:
+        thresholds = [point.threshold for point in self.points]
+        if len(set(thresholds)) != len(thresholds):
+            raise ValueError("selectivity-curve thresholds must be unique")
+        if thresholds != sorted(thresholds):
+            raise ValueError("selectivity-curve points must be sorted by threshold")
+
+
+def build_extraction_selectivity_curve(
+    reports: tuple[tuple[float, ExtractionBenchmarkReport], ...]
+    | list[tuple[float, ExtractionBenchmarkReport]],
+) -> ExtractionSelectivityCurve:
+    """Expose the coverage/error trade-off across frozen thresholds.
+
+    The returned object intentionally has no AUC or aggregate score. For integrity auditing,
+    a single scalar can hide the difference between abstaining aggressively and accepting a larger
+    fraction of fields with more wrong accepts.
+    """
+    thresholds = [threshold for threshold, _ in reports]
+    if len(set(thresholds)) != len(thresholds):
+        raise ValueError("selectivity-curve thresholds must be unique")
+    points = tuple(
+        ExtractionSelectivityPoint(
+            threshold=threshold,
+            selective_coverage=report.selective_coverage,
+            accepted_full_accuracy=report.accepted_full_accuracy,
+            accepted_field_value_accuracy=report.accepted_field_value_accuracy,
+            accepted_table_row_identity_accuracy=report.accepted_table_row_identity_accuracy,
+            accepted_semantic_gate_accuracy=report.accepted_semantic_gate_accuracy,
+            wrong_accept_rate=report.wrong_accept_rate,
+            critical_family_wrong_accept_upper_bound=report.critical_family_wrong_accept_upper_bound,
+        )
+        for threshold, report in sorted(reports, key=lambda item: item[0])
+    )
+    return ExtractionSelectivityCurve(points=points)
+
+
 def evaluate_extraction_benchmark(
     gold: tuple[ExtractionGoldTarget, ...] | list[ExtractionGoldTarget],
     predictions: tuple[ExtractionPrediction, ...] | list[ExtractionPrediction],
@@ -263,11 +320,12 @@ def evaluate_extraction_benchmark(
 def _source_identity_components(predicted: SourceLocation, gold: SourceLocation) -> dict[str, bool]:
     artifact = predicted.artifact_id == gold.artifact_id
     page = gold.page is None or predicted.page == gold.page
-    display_item = all(
-        expected is None or getattr(predicted, attribute) == expected
-        for attribute in ("section", "table", "figure")
-        if (expected := getattr(gold, attribute)) is not None
-    )
+    display_item = True
+    for attribute in ("section", "table", "figure"):
+        expected = getattr(gold, attribute)
+        if expected is not None and getattr(predicted, attribute) != expected:
+            display_item = False
+            break
     row = gold.row is None or predicted.row == gold.row
     column = gold.column is None or predicted.column == gold.column
     return {
