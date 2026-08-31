@@ -41,6 +41,23 @@ CASES = (
         "license": "CC BY",
         "adjudication_note": "Values manually checked against PLOS ONE Table 2 (linear mixed regression); extraction gold only.",
     },
+    {
+        "case_id": "plosone-0337826-table2-edtr",
+        "doi": "10.1371/journal.pone.0337826",
+        "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0337826&type=printable",
+        "variable": "EDTR",
+        "table_label": "Table 2",
+        # Table 2 is on the physical PDF page carrying the journal footer 10 / 16.
+        "expected_page": 10,
+        "expected": {
+            "beta": "0.3596",
+            "se": "0.1386",
+            "t_stat": "2.5938",
+            "p_value": "0.0095",
+        },
+        "license": "CC BY",
+        "adjudication_note": "Values manually checked against PLOS ONE Table 2 (ordinal logistic regression); extraction gold only.",
+    },
 )
 
 
