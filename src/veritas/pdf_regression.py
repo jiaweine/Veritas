@@ -15,7 +15,7 @@ from .ingestion import (
     ResolvedEvidence,
 )
 from .models import RegressionResult, ReportedNumber, SourceLocation
-from .pdf_geometry import canonical_row_label, reconstruct_borderless_tables
+from .pdf_geometry import canonical_row_label, normalized_row_label, reconstruct_borderless_tables
 from .pdf_native import NativePDFSnapshot, PDFTable, canonical_table_label, parse_pdf_dual
 from .types import ComparisonOperator, Materiality
 
@@ -211,11 +211,18 @@ def _find_header(table: PDFTable) -> tuple[int, dict[str, int]] | None:
     return None
 
 
+def _row_matches(value: str, target: str, *, allow_token_boundary: bool) -> bool:
+    if allow_token_boundary:
+        return canonical_row_label(value) == canonical_row_label(target)
+    return normalized_row_label(value) == normalized_row_label(target)
+
+
 def _match_table(
     snapshot: NativePDFSnapshot,
     table: PDFTable,
     *,
     target: str,
+    allow_token_boundary: bool,
 ) -> tuple[RegressionTableMatch, ...]:
     header = _find_header(table)
     if header is None:
@@ -228,7 +235,7 @@ def _match_table(
         if variable_column >= len(row) or row[variable_column] is None:
             continue
         variable_text = str(row[variable_column])
-        if canonical_row_label(variable_text) == target:
+        if _row_matches(variable_text, target, allow_token_boundary=allow_token_boundary):
             matches.append(
                 RegressionTableMatch(snapshot, table, header_index, row_index, columns, variable_text)
             )
@@ -280,13 +287,20 @@ def _find_matches(
     variable_label: str,
     *,
     locator: RegressionLocator | None,
+    allow_token_boundary: bool,
 ) -> tuple[RegressionTableMatch, ...]:
-    target = canonical_row_label(variable_label)
     matches: list[RegressionTableMatch] = []
     for table in snapshot.tables:
         if not _locator_accepts(table, locator):
             continue
-        matches.extend(_match_table(snapshot, table, target=target))
+        matches.extend(
+            _match_table(
+                snapshot,
+                table,
+                target=variable_label,
+                allow_token_boundary=allow_token_boundary,
+            )
+        )
 
     requested_label = locator.table_label if locator is not None else None
     virtual_tables = reconstruct_borderless_tables(
@@ -294,11 +308,19 @@ def _find_matches(
         variable_label=variable_label,
         role_resolver=_header_role,
         table_label=requested_label,
+        allow_token_boundary=allow_token_boundary,
     )
     for table in virtual_tables:
         if not _locator_accepts(table, locator):
             continue
-        matches.extend(_match_table(snapshot, table, target=target))
+        matches.extend(
+            _match_table(
+                snapshot,
+                table,
+                target=variable_label,
+                allow_token_boundary=allow_token_boundary,
+            )
+        )
     return tuple(matches)
 
 
@@ -307,8 +329,14 @@ def _resolve_match(
     variable_label: str,
     *,
     locator: RegressionLocator | None,
+    allow_token_boundary: bool,
 ) -> tuple[RegressionTableMatch | None, str | None]:
-    matches = _find_matches(snapshot, variable_label, locator=locator)
+    matches = _find_matches(
+        snapshot,
+        variable_label,
+        locator=locator,
+        allow_token_boundary=allow_token_boundary,
+    )
     if not matches:
         return None, None
 
@@ -369,12 +397,62 @@ def extract_regression_table(
     semantics: dict[str, list[ExtractionCandidate]] = {"inference_distribution": []}
     canonical_source: SourceLocation | None = None
     ambiguities: list[str] = []
+    resolved_by_parser: dict[str, RegressionTableMatch] = {}
+    blocked_parsers: set[str] = set()
 
+    # Pass 1 establishes row identity using Unicode-normalized, whitespace-preserving exact labels.
     for snapshot in snapshots:
-        match, ambiguity = _resolve_match(snapshot, variable_label, locator=locator)
+        match, ambiguity = _resolve_match(
+            snapshot,
+            variable_label,
+            locator=locator,
+            allow_token_boundary=False,
+        )
         if ambiguity is not None:
             ambiguities.append(ambiguity)
+            blocked_parsers.add(snapshot.parser_id)
             continue
+        if match is not None:
+            resolved_by_parser[snapshot.parser_id] = match
+
+    exact_matches = tuple(resolved_by_parser.values())
+    exact_identities = {_match_identity(match) for match in exact_matches}
+    exact_signatures = {_match_numeric_signature(match) for match in exact_matches}
+
+    # No parser can establish the requested label exactly: do not let whitespace erasure invent identity.
+    if exact_matches:
+        for snapshot in snapshots:
+            if snapshot.parser_id in resolved_by_parser or snapshot.parser_id in blocked_parsers:
+                continue
+            match, ambiguity = _resolve_match(
+                snapshot,
+                variable_label,
+                locator=locator,
+                allow_token_boundary=True,
+            )
+            if ambiguity is not None:
+                ambiguities.append(ambiguity)
+                continue
+            if match is None:
+                continue
+            identity = _match_identity(match)
+            signature = _match_numeric_signature(match)
+            if identity not in exact_identities:
+                ambiguities.append(
+                    f"{snapshot.parser_id}: relaxed row identity does not match an exact display-item anchor "
+                    f"for variable {variable_label!r}"
+                )
+                continue
+            if signature not in exact_signatures:
+                ambiguities.append(
+                    f"{snapshot.parser_id}: relaxed row identity conflicts with exact-anchor numerical content "
+                    f"for variable {variable_label!r}"
+                )
+                continue
+            resolved_by_parser[snapshot.parser_id] = match
+
+    for snapshot in snapshots:
+        match = resolved_by_parser.get(snapshot.parser_id)
         if match is None:
             continue
         row = match.table.rows[match.data_row_index]
@@ -404,7 +482,7 @@ def extract_regression_table(
 
     source = canonical_source or SourceLocation(artifact_id=next(iter(artifact_ids)))
     parser_versions = [(snapshot.parser_id, snapshot.parser_version) for snapshot in snapshots]
-    parser_versions.append(("veritas_regression_geometry", "1.2.0"))
+    parser_versions.append(("veritas_regression_geometry", "1.3.0"))
     return RegressionExtractionBundle(
         artifact_id=next(iter(artifact_ids)),
         artifact_sha256=next(iter(artifact_hashes)),
@@ -447,9 +525,9 @@ def bundle_to_ledger(
         policy_note=(
             "PyMuPDF and pdfplumber independently provide word/table evidence. Publication table captions are preserved; "
             "a shared deterministic header-anchored geometry fallback is applied separately to each parser word stream. "
-            "Row labels permit only deterministic Unicode/whitespace token-boundary normalization; ambiguous or "
-            "conflicting display-item identity remains fail-closed. Hard promotion still requires cross-family value "
-            "agreement plus explicit z-inference semantics."
+            "At least one parser must establish the row label with whitespace-preserving exact identity before another "
+            "parser may join via deterministic Unicode/whitespace token-boundary normalization; the relaxed join must "
+            "also match the exact anchor's display-item identity and numerical signature. Ambiguity remains fail-closed."
         ),
     )
     ledger = EvidenceLedger(
