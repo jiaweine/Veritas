@@ -46,6 +46,7 @@ from .extraction_benchmark import (
 )
 from .group_stats import GroupSummary, OneWayAnovaComparison, TwoGroupComparison
 from .ingestion import (
+    CalibrationScope,
     DetectorInputEnvelope,
     EvidenceKind,
     EvidenceLedger,
@@ -94,6 +95,7 @@ __all__ = [
     "AuditSummary",
     "BenchmarkCase",
     "BenchmarkSplit",
+    "CalibrationScope",
     "CertificationPolicy",
     "CertificationReport",
     "CheckResult",
@@ -169,4 +171,4 @@ __all__ = [
     "summarize_specification_robustness",
 ]
 
-__version__ = "0.8.0"
+__version__ = "0.10.0"
