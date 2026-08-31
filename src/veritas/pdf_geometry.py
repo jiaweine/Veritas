@@ -68,12 +68,28 @@ def _header_anchors(
 
 
 def _column_bounds(anchors: tuple[_HeaderAnchor, ...]) -> tuple[tuple[float, float], ...]:
+    """Build finite Voronoi-like column bounds from ordered header anchors.
+
+    Interior boundaries are midpoints between adjacent header starts. Edge columns extrapolate
+    half of the nearest header spacing instead of extending to infinity; this prevents unrelated
+    same-line prose in page margins from being absorbed into the first or last statistical cell.
+    """
     if len(anchors) < 2:
+        return ()
+    first_gap = anchors[1].x0 - anchors[0].x0
+    last_gap = anchors[-1].x0 - anchors[-2].x0
+    if first_gap <= 0 or last_gap <= 0:
         return ()
     bounds: list[tuple[float, float]] = []
     for index, anchor in enumerate(anchors):
-        left = float("-inf") if index == 0 else (anchors[index - 1].x0 + anchor.x0) / 2.0
-        right = float("inf") if index == len(anchors) - 1 else (anchor.x0 + anchors[index + 1].x0) / 2.0
+        if index == 0:
+            left = anchor.x0 - first_gap / 2.0
+        else:
+            left = (anchors[index - 1].x0 + anchor.x0) / 2.0
+        if index == len(anchors) - 1:
+            right = anchor.x0 + last_gap / 2.0
+        else:
+            right = (anchor.x0 + anchors[index + 1].x0) / 2.0
         bounds.append((left, right))
     return tuple(bounds)
 
@@ -132,9 +148,9 @@ def reconstruct_borderless_table(
     """Reconstruct one header-aligned table from independent parser word geometry.
 
     The hard-audit fallback requires a nearby explicit table caption, a recognizable statistical
-    header, a caller-requested variable label, and bounded header-to-row vertical distance. The
-    same deterministic reconstruction is applied separately to each parser family's word stream;
-    downstream promotion still requires cross-family agreement.
+    header, a caller-requested variable label, bounded column geometry, and bounded header-to-row
+    vertical distance. The same deterministic reconstruction is applied separately to each parser
+    family's word stream; downstream promotion still requires cross-family agreement.
     """
     for page in snapshot.pages:
         lines = _cluster_lines(page.words)
