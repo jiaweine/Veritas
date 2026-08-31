@@ -44,3 +44,30 @@ class TwoGroupComparison:
     p_value_adjusted: bool = False
     materiality: Materiality = Materiality.SECONDARY_RESULT
     source: SourceLocation = field(default_factory=SourceLocation)
+
+
+@dataclass(frozen=True)
+class OneWayAnovaComparison:
+    """Classical independent-groups one-way ANOVA reconstructed from group summaries."""
+
+    object_id: str
+    groups: tuple[GroupSummary, ...]
+    reported_f: ReportedNumber | None = None
+    reported_df_between: ReportedNumber | None = None
+    reported_df_within: ReportedNumber | None = None
+    reported_p_value: ReportedNumber | None = None
+    reported_eta_squared: ReportedNumber | None = None
+    test_definition: str = "unknown"  # classic_one_way | unknown
+    independent_groups_verified: bool = False
+    same_outcome_scale_verified: bool = False
+    eta_squared_definition_verified: bool = False
+    p_value_adjusted: bool = False
+    materiality: Materiality = Materiality.SECONDARY_RESULT
+    source: SourceLocation = field(default_factory=SourceLocation)
+
+    def __post_init__(self) -> None:
+        if len(self.groups) < 2:
+            raise ValueError("one-way ANOVA requires at least two groups")
+        labels = [group.label for group in self.groups]
+        if len(set(labels)) != len(labels):
+            raise ValueError("ANOVA group labels must be unique")
