@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 MANIFEST_PATH = (
     Path(__file__).resolve().parents[1]
     / "benchmark"
