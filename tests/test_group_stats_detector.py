@@ -16,23 +16,23 @@ def _group(label: str, n: int, mean: float, sd: float) -> GroupSummary:
 
 
 def _student(**overrides) -> TwoGroupComparison:
-    values = dict(
-        object_id="student",
-        group_a=_group("A", 20, 5.00, 2.00),
-        group_b=_group("B", 20, 4.00, 2.00),
-        reported_mean_difference=ReportedNumber(1.00, decimals=2),
-        reported_t=ReportedNumber(1.58, decimals=2),
-        reported_df=ReportedNumber(38.0, decimals=0),
-        reported_p_value=ReportedNumber(0.122, decimals=3),
-        reported_cohen_d=ReportedNumber(0.50, decimals=2),
-        reported_hedges_g=ReportedNumber(0.49, decimals=2),
-        test_definition="student_equal_var",
-        hedges_correction="exact_gamma",
-        independent_groups_verified=True,
-        same_outcome_scale_verified=True,
-        difference_direction_verified=True,
-        pooled_sd_effect_size_verified=True,
-    )
+    values = {
+        "object_id": "student",
+        "group_a": _group("A", 20, 5.00, 2.00),
+        "group_b": _group("B", 20, 4.00, 2.00),
+        "reported_mean_difference": ReportedNumber(1.00, decimals=2),
+        "reported_t": ReportedNumber(1.58, decimals=2),
+        "reported_df": ReportedNumber(38.0, decimals=0),
+        "reported_p_value": ReportedNumber(0.122, decimals=3),
+        "reported_cohen_d": ReportedNumber(0.50, decimals=2),
+        "reported_hedges_g": ReportedNumber(0.49, decimals=2),
+        "test_definition": "student_equal_var",
+        "hedges_correction": "exact_gamma",
+        "independent_groups_verified": True,
+        "same_outcome_scale_verified": True,
+        "difference_direction_verified": True,
+        "pooled_sd_effect_size_verified": True,
+    }
     values.update(overrides)
     return TwoGroupComparison(**values)
 
