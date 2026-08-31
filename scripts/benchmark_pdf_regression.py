@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+from dataclasses import replace
 from hashlib import sha256
 
 import pymupdf
@@ -9,6 +10,7 @@ from scipy.stats import norm
 
 from veritas.audit import AuditEngine
 from veritas.extraction import ConformalCalibration, ConformalExtractionGate
+from veritas.ingestion import CalibrationScope
 from veritas.pdf_native import parse_pdf_dual
 from veritas.pdf_regression import (
     calibration_manifest_sha256,
@@ -32,7 +34,15 @@ def make_pdf(beta: str, se: str, z: str, p_value: str, *, layout: str = "grid") 
     if layout == "journal_wide":
         xs = (60, 210, 300, 390, 470, 535, 605, 690)
         header = ("Variable", "Coefficient", "Standard Error", "z value", "Wald", "P value", "OR")
-        data = ("Treatment", beta, se, z, f"{float(z) ** 2:.3f}", p_value, f"{pow(2.718281828, float(beta)):.3f}")
+        data = (
+            "Treatment",
+            beta,
+            se,
+            z,
+            f"{float(z) ** 2:.3f}",
+            p_value,
+            f"{pow(2.718281828, float(beta)):.3f}",
+        )
         header_size = 7
     else:
         xs = (72, 220, 300, 380, 460, 540)
@@ -58,41 +68,64 @@ def make_pdf(beta: str, se: str, z: str, p_value: str, *, layout: str = "grid") 
 
 
 def gate() -> ConformalExtractionGate:
-    return ConformalExtractionGate(ConformalCalibration((0.01,) * 100, alpha=0.05), min_independent_families=2)
+    return ConformalExtractionGate(
+        ConformalCalibration((0.01,) * 100, alpha=0.05),
+        min_independent_families=2,
+    )
 
 
-def audit_pdf(pdf: bytes) -> tuple[bool, bool, bool]:
+def audit_pdf(pdf: bytes) -> tuple[bool, bool, bool, bool]:
     snapshots = parse_pdf_dual(pdf)
     bundle = extract_regression_table(snapshots, variable_label="Treatment")
-    dual_parse = all(len(bundle.field_candidates[key]) == 2 for key in ("beta", "se", "t_stat", "p_value"))
+    dual_parse = all(
+        len(bundle.field_candidates[key]) == 2
+        for key in ("beta", "se", "t_stat", "p_value")
+    )
     ledger, spec = prepare_regression_pdf_audit(
         pdf,
         gate(),
         variable_label="Treatment",
-        calibration_sha256=calibration_manifest_sha256(b"synthetic-pdf-regression-calibration-v1"),
+        calibration_sha256=calibration_manifest_sha256(
+            b"synthetic-pdf-regression-calibration-v1"
+        ),
+    )
+    ledger.protocol = replace(
+        ledger.protocol,
+        calibration_scope=CalibrationScope.BENCHMARK,
     )
     report, envelope = ledger.promote("regression-1", spec, regression_result_builder)
     if envelope is None:
-        return dual_parse, False, False
+        return dual_parse, False, False, False
     audit = AuditEngine().audit_verified([envelope])
-    hard = any(finding.grade >= EvidenceGrade.INTERNAL_CONTRADICTION for finding in audit.findings)
-    return dual_parse, report.hard_audit_ready, hard
+    hard = any(
+        finding.grade >= EvidenceGrade.INTERNAL_CONTRADICTION
+        for finding in audit.findings
+    )
+    return dual_parse, report.detector_ready, hard, envelope.production_authorized
 
 
 def stress_coverage(layout: str) -> dict[str, float]:
-    parsed = promoted = 0
+    parsed = promoted = production_authorized = 0
     for index in range(STRESS_CASES):
         se = 0.04 + 0.01 * index
         z = 1.4 + 0.2 * index
         beta = se * z
         p = float(2.0 * norm.sf(abs(z)))
-        pdf = make_pdf(f"{beta:.3f}", f"{se:.3f}", f"{z:.3f}", f"{p:.3f}", layout=layout)
-        dual, promote, _ = audit_pdf(pdf)
+        pdf = make_pdf(
+            f"{beta:.3f}",
+            f"{se:.3f}",
+            f"{z:.3f}",
+            f"{p:.3f}",
+            layout=layout,
+        )
+        dual, promote, _, authorized = audit_pdf(pdf)
         parsed += int(dual)
         promoted += int(promote)
+        production_authorized += int(authorized)
     return {
         f"{layout}_dual_parser_coverage": parsed / STRESS_CASES,
-        f"{layout}_promotion_coverage": promoted / STRESS_CASES,
+        f"{layout}_detector_promotion_coverage": promoted / STRESS_CASES,
+        f"{layout}_production_hard_authority_coverage": production_authorized / STRESS_CASES,
     }
 
 
@@ -103,6 +136,7 @@ def main() -> None:
     valid_false_alerts = 0
     promoted_corrupt = 0
     corrupt_detected = 0
+    production_authorized = 0
     artifact_hashes: set[str] = set()
 
     for _ in range(CASES):
@@ -112,24 +146,28 @@ def main() -> None:
         p = float(2.0 * norm.sf(abs(z)))
         valid_pdf = make_pdf(f"{beta:.3f}", f"{se:.3f}", f"{z:.3f}", f"{p:.3f}")
         artifact_hashes.add(sha256(valid_pdf).hexdigest())
-        dual, promoted, hard = audit_pdf(valid_pdf)
+        dual, promoted, hard, authorized = audit_pdf(valid_pdf)
         parse_ok += int(dual)
         promoted_valid += int(promoted)
         valid_false_alerts += int(hard)
+        production_authorized += int(authorized)
 
         corrupt_pdf = make_pdf(f"{beta:.3f}", f"{se:.3f}", f"{z:.3f}", "0.500")
         artifact_hashes.add(sha256(corrupt_pdf).hexdigest())
-        _, corrupt_promoted, corrupt_hard = audit_pdf(corrupt_pdf)
+        _, corrupt_promoted, corrupt_hard, corrupt_authorized = audit_pdf(corrupt_pdf)
         promoted_corrupt += int(corrupt_promoted)
         corrupt_detected += int(corrupt_hard)
+        production_authorized += int(corrupt_authorized)
 
     report = {
+        "calibration_scope": CalibrationScope.BENCHMARK.value,
         "cases_per_arm": CASES,
         "dual_parser_field_coverage": parse_ok / CASES,
-        "valid_promotion_coverage": promoted_valid / CASES,
+        "valid_detector_promotion_coverage": promoted_valid / CASES,
         "valid_e3_false_alert_rate": valid_false_alerts / CASES,
-        "corrupt_promotion_coverage": promoted_corrupt / CASES,
+        "corrupt_detector_promotion_coverage": promoted_corrupt / CASES,
         "corruption_e3_detection_rate": corrupt_detected / CASES,
+        "benchmark_production_hard_authority_coverage": production_authorized / (2 * CASES),
         "unique_pdf_artifacts": len(artifact_hashes),
         "seed": SEED,
         **stress_coverage("journal_wide"),
@@ -138,14 +176,21 @@ def main() -> None:
     print(json.dumps(report, sort_keys=True))
 
     if parse_ok != CASES or promoted_valid != CASES or promoted_corrupt != CASES:
-        raise SystemExit("native PDF grid parsing/promotion coverage regressed")
+        raise SystemExit("native PDF grid parsing/detector-promotion coverage regressed")
+    if production_authorized != 0:
+        raise SystemExit("synthetic benchmark calibration acquired production hard authority")
     if valid_false_alerts != 0:
         raise SystemExit("valid synthetic PDFs produced E3 false alerts")
     if corrupt_detected != CASES:
         raise SystemExit("obvious p-value corruptions were not all detected")
-    if report["journal_wide_dual_parser_coverage"] != 1.0 or report["journal_wide_promotion_coverage"] != 1.0:
+    if (
+        report["journal_wide_dual_parser_coverage"] != 1.0
+        or report["journal_wide_detector_promotion_coverage"] != 1.0
+    ):
         raise SystemExit("journal-style wide tables regressed")
-    # Borderless coverage is diagnostic in v0.9 until the independent geometry fallback is calibrated.
+    if report["journal_wide_production_hard_authority_coverage"] != 0.0:
+        raise SystemExit("journal-style synthetic benchmark acquired production authority")
+    # Borderless coverage remains diagnostic under the conservative 0.01 synthetic calibration.
 
 
 if __name__ == "__main__":
