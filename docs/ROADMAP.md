@@ -72,17 +72,19 @@ Primary goal: move from a four-case regression-table smoke benchmark toward a di
 - [x] require independent double review and review-record hashes before extraction targets can enter locked gold
 - [x] expose DEVELOPMENT-only threshold selection; TEST observations are rejected from calibration APIs
 - [x] bind frozen extraction thresholds to development-manifest and policy hashes before TEST evaluation
+- [x] seal untouched extraction TEST membership to exact gold-manifest and split-lock hashes
 - [x] register adversarial negative families as a non-production benchmark contract
+- [x] execute gating synthetic adversarial fixtures for repeated labels, continuation tables, footnotes, multi-panel tables, and OCR-like text corruption
 
-The current four PLOS cases remain **seed cases**, not locked gold. Their legacy manual checks must be replaced by two independent reviewers plus adjudication before they can enter a frozen benchmark split.
+The current four PLOS cases remain **seed cases**, not locked gold. Their legacy manual checks must be replaced by two independent reviewers plus adjudication before they can enter a frozen benchmark split. The synthetic adversarial benchmark is a deterministic fail-closed regression gate; it does not substitute for diverse real-paper negative examples.
 
 ### Corpus expansion and lock — remaining
 
 - [ ] expand real open-access extraction corpus across journals, layouts, and statistical object types
-- [ ] instantiate and execute adversarial fixtures for repeated labels, continuation tables, footnotes, multi-panel tables, and OCR-like text corruption
+- [ ] add real-world adversarial examples for continuation tables, multi-panel layouts, footnotes, repeated labels, and OCR-like extraction failures
 - [ ] complete independent double review and adjudication for extraction gold targets
 - [ ] run geometry/native threshold calibration on locked DEVELOPMENT data using the development-only selection API
-- [ ] freeze a genuinely untouched extraction TEST set
+- [ ] freeze a genuinely untouched extraction TEST set from reviewed real-paper gold
 - [ ] publish coverage–selectivity curves on that locked development/TEST protocol
 
 ## v0.12 — end-to-end empirical claim graph
