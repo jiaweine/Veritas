@@ -2,86 +2,57 @@ from __future__ import annotations
 
 import json
 import urllib.request
+from pathlib import Path
 
 from veritas.pdf_native import NativePDFSnapshot, parse_pdf_dual
 from veritas.pdf_regression import RegressionLocator, extract_regression_table
 
-CASES = (
-    {
-        "case_id": "plosone-0318226-table2-age",
-        "doi": "10.1371/journal.pone.0318226",
-        "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0318226&type=printable",
-        "variable": "Age (years)",
-        "table_label": "Table 2",
-        # 1-based physical PDF page, matching NativePDFSnapshot.page semantics.
-        "expected_page": 5,
-        "expected": {
-            "beta": "-0.016",
-            "se": "0.004",
-            "t_stat": "-3.650",
-            "p_value": "<0.001",
-        },
-        "license": "CC BY",
-        "adjudication_note": "Values manually checked against PLOS ONE Table 2; this is extraction gold, not a clean-paper label.",
-    },
-    {
-        "case_id": "plosone-0300960-table2-image-neutral",
-        "doi": "10.1371/journal.pone.0300960",
-        "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0300960&type=printable",
-        "variable": "Image: neutral",
-        "table_label": "Table 2",
-        # Table 1 is on PDF page 10; Table 2 starts on the following physical page (11 / 20).
-        "expected_page": 11,
-        "expected": {
-            "beta": "0.104",
-            "se": "0.038",
-            "t_stat": "2.735",
-            "p_value": "0.006",
-        },
-        "license": "CC BY",
-        "adjudication_note": "Values manually checked against PLOS ONE Table 2 (linear mixed regression); extraction gold only.",
-    },
-    {
-        "case_id": "plosone-0337826-table2-edtr",
-        "doi": "10.1371/journal.pone.0337826",
-        "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0337826&type=printable",
-        "variable": "EDTR",
-        "table_label": "Table 2",
-        # Table 2 is on the physical PDF page carrying the journal footer 10 / 16.
-        "expected_page": 10,
-        "expected": {
-            "beta": "0.3596",
-            "se": "0.1386",
-            "t_stat": "2.5938",
-            "p_value": "0.0095",
-        },
-        "license": "CC BY",
-        "adjudication_note": "Values manually checked against PLOS ONE Table 2 (ordinal logistic regression); extraction gold only.",
-    },
-    {
-        "case_id": "plosone-0197932-table2-beta",
-        "doi": "10.1371/journal.pone.0197932",
-        "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0197932&type=printable",
-        "variable": "β",
-        "table_label": "Table 2",
-        # Table 2 is on physical PDF page 10; first column contains coefficient names but has no explicit header.
-        "expected_page": 10,
-        "expected": {
-            "beta": "0.1848905",
-            "se": "0.03399295",
-            "t_stat": "5.439085",
-            "p_value": "5.355501e-08",
-        },
-        "license": "CC BY",
-        "adjudication_note": "Values manually checked against PLOS ONE Table 2 (ordinal logistic regression); extraction gold only.",
-    },
+SEED_MANIFEST = (
+    Path(__file__).resolve().parents[1]
+    / "benchmark"
+    / "extraction"
+    / "seed_cases_v0.11.json"
 )
+
+
+def _load_cases() -> tuple[dict[str, object], ...]:
+    payload = json.loads(SEED_MANIFEST.read_text(encoding="utf-8"))
+    if payload.get("status") != "seed_corpus_not_locked_gold":
+        raise RuntimeError("real-PDF smoke harness requires the explicit seed-corpus manifest")
+    if payload.get("production_hard_finding_authorized") is not False:
+        raise RuntimeError("seed corpus must never carry production hard-finding authority")
+
+    cases: list[dict[str, object]] = []
+    for case in payload["cases"]:
+        if case.get("split") is not None:
+            raise RuntimeError("seed cases cannot be assigned to a locked benchmark split")
+        locator = case["locator"]
+        cases.append(
+            {
+                "case_id": case["case_id"],
+                "doi": case["doi"],
+                "pdf_url": case["pdf_url"],
+                "variable": locator["row_label"],
+                "table_label": locator["table_label"],
+                "expected_page": locator["expected_page"],
+                "expected": dict(case["expected_fields"]),
+                "license": case["license_note"],
+                "adjudication_note": (
+                    "Legacy manual extraction check only; pending two independent reviewers "
+                    "and adjudication before locked benchmark gold."
+                ),
+            }
+        )
+    return tuple(cases)
+
+
+CASES = _load_cases()
 
 
 def _download(url: str) -> bytes:
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "Veritas real-PDF smoke benchmark/0.9 (+research integrity audit)"},
+        headers={"User-Agent": "Veritas real-PDF smoke benchmark/0.11 (+research integrity audit)"},
     )
     with urllib.request.urlopen(request, timeout=30) as response:
         payload = response.read()
