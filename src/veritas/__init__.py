@@ -68,6 +68,11 @@ from .extraction_review import (
     ExtractionReviewTarget,
     resolve_extraction_reviews,
 )
+from .extraction_review_packet import (
+    ExtractionReviewerPacket,
+    ExtractionReviewPacketTarget,
+    build_blinded_seed_review_packets,
+)
 from .extraction_test_seal import ExtractionTestSetSeal, seal_extraction_test_set
 from .group_stats import GroupSummary, OneWayAnovaComparison, TwoGroupComparison
 from .ingestion import (
@@ -151,6 +156,8 @@ __all__ = [
     "ExtractionGoldTarget",
     "ExtractionPrediction",
     "ExtractionResolution",
+    "ExtractionReviewPacketTarget",
+    "ExtractionReviewerPacket",
     "ExtractionReviewRecord",
     "ExtractionReviewSubmission",
     "ExtractionReviewTarget",
@@ -201,6 +208,7 @@ __all__ = [
     "assign_article_family_split",
     "assign_paper_split",
     "benchmark_manifest_sha256",
+    "build_blinded_seed_review_packets",
     "build_extraction_selectivity_curve",
     "certification_policy_sha256",
     "certification_report_sha256",
