@@ -85,11 +85,12 @@ class ArticleFamilySplitLock:
     """Immutable benchmark split artifact keyed by article family rather than document version.
 
     Preprints, journal articles, corrections, and supplementary versions that share an
-    ``article_family_id`` must remain in one split. The lock records the exact family universe,
-    split fractions, salt, and resulting assignments so later corpus growth cannot silently move
-    or replace held-out families.
+    ``article_family_id`` must remain in one split. The lock binds both the exact corpus manifest
+    and the family-level assignments so later metadata, labels, artifacts, or corpus growth cannot
+    silently alter held-out evidence.
     """
 
+    manifest_sha256: str
     split_salt: str
     train_fraction: float
     development_fraction: float
@@ -100,6 +101,8 @@ class ArticleFamilySplitLock:
         _validate_split_fractions(self.train_fraction, self.development_fraction)
         if not self.split_salt:
             raise ValueError("split_salt is required")
+        if len(self.manifest_sha256) != 64 or any(char not in "0123456789abcdef" for char in self.manifest_sha256):
+            raise ValueError("manifest_sha256 must be a lowercase SHA-256 hex digest")
         family_ids = [family_id for family_id, _ in self.assignments]
         if len(set(family_ids)) != len(family_ids):
             raise ValueError("split lock article_family_id values must be unique")
@@ -113,6 +116,8 @@ class ArticleFamilySplitLock:
         raise KeyError(article_family_id)
 
     def validate_manifest(self, manifest: CorpusManifest) -> None:
+        if manifest.sha256() != self.manifest_sha256:
+            raise ValueError("corpus manifest SHA-256 does not match split lock")
         if manifest.split_salt != self.split_salt:
             raise ValueError("manifest split_salt does not match split lock")
         manifest_families = {paper.article_family_id for paper in manifest.papers}
@@ -137,6 +142,7 @@ class ArticleFamilySplitLock:
     def sha256(self) -> str:
         payload = {
             "schema_version": self.schema_version,
+            "manifest_sha256": self.manifest_sha256,
             "split_salt": self.split_salt,
             "train_fraction": self.train_fraction,
             "development_fraction": self.development_fraction,
@@ -196,6 +202,7 @@ class CorpusManifest:
             for family_id in families
         )
         return ArticleFamilySplitLock(
+            manifest_sha256=self.sha256(),
             split_salt=self.split_salt,
             train_fraction=train_fraction,
             development_fraction=development_fraction,
