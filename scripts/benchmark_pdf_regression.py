@@ -18,26 +18,40 @@ from veritas.pdf_regression import (
 )
 from veritas.types import EvidenceGrade
 
-
 CASES = 24
+STRESS_CASES = 8
 SEED = 90210
 
 
-def make_pdf(beta: str, se: str, z: str, p_value: str) -> bytes:
+def make_pdf(beta: str, se: str, z: str, p_value: str, *, layout: str = "grid") -> bytes:
     doc = pymupdf.open()
-    page = doc.new_page(width=612, height=792)
-    page.insert_text((72, 72), "Synthetic Social Science Article", fontsize=14)
-    page.insert_text((72, 112), "Table 2. Main regression", fontsize=11)
-    xs = (72, 220, 300, 380, 460, 540)
+    page = doc.new_page(width=720 if layout == "journal_wide" else 612, height=792)
+    page.insert_text((60, 72), "Synthetic Social Science Article", fontsize=14)
+    page.insert_text((60, 112), "Table 2. Main regression", fontsize=11)
+
+    if layout == "journal_wide":
+        xs = (60, 210, 300, 390, 470, 535, 605, 690)
+        header = ("Variable", "Coefficient", "Standard Error", "z value", "Wald", "P value", "OR")
+        data = ("Treatment", beta, se, z, f"{float(z) ** 2:.3f}", p_value, f"{pow(2.718281828, float(beta)):.3f}")
+        header_size = 7
+    else:
+        xs = (72, 220, 300, 380, 460, 540)
+        header = ("Variable", "Coef.", "SE", "z", "p")
+        data = ("Treatment", beta, se, z, p_value)
+        header_size = 9
+
     ys = (140, 170, 200)
-    for x in xs:
-        page.draw_line((x, ys[0]), (x, ys[-1]), width=0.8)
-    for y in ys:
-        page.draw_line((xs[0], y), (xs[-1], y), width=0.8)
-    for column, text in enumerate(("Variable", "Coef.", "SE", "z", "p")):
-        page.insert_text((xs[column] + 4, 160), text, fontsize=9)
-    for column, text in enumerate(("Treatment", beta, se, z, p_value)):
-        page.insert_text((xs[column] + 4, 190), text, fontsize=9)
+    if layout != "borderless":
+        for x in xs:
+            page.draw_line((x, ys[0]), (x, ys[-1]), width=0.8)
+        for y in ys:
+            page.draw_line((xs[0], y), (xs[-1], y), width=0.8)
+
+    for column, text in enumerate(header):
+        page.insert_text((xs[column] + 4, 160), text, fontsize=header_size)
+    for column, text in enumerate(data):
+        page.insert_text((xs[column] + 4, 190), text, fontsize=8 if layout == "journal_wide" else 9)
+
     payload = doc.tobytes(garbage=4, deflate=True)
     doc.close()
     return payload
@@ -63,6 +77,23 @@ def audit_pdf(pdf: bytes) -> tuple[bool, bool, bool]:
     audit = AuditEngine().audit_verified([envelope])
     hard = any(finding.grade >= EvidenceGrade.INTERNAL_CONTRADICTION for finding in audit.findings)
     return dual_parse, report.hard_audit_ready, hard
+
+
+def stress_coverage(layout: str) -> dict[str, float]:
+    parsed = promoted = 0
+    for index in range(STRESS_CASES):
+        se = 0.04 + 0.01 * index
+        z = 1.4 + 0.2 * index
+        beta = se * z
+        p = float(2.0 * norm.sf(abs(z)))
+        pdf = make_pdf(f"{beta:.3f}", f"{se:.3f}", f"{z:.3f}", f"{p:.3f}", layout=layout)
+        dual, promote, _ = audit_pdf(pdf)
+        parsed += int(dual)
+        promoted += int(promote)
+    return {
+        f"{layout}_dual_parser_coverage": parsed / STRESS_CASES,
+        f"{layout}_promotion_coverage": promoted / STRESS_CASES,
+    }
 
 
 def main() -> None:
@@ -101,15 +132,20 @@ def main() -> None:
         "corruption_e3_detection_rate": corrupt_detected / CASES,
         "unique_pdf_artifacts": len(artifact_hashes),
         "seed": SEED,
+        **stress_coverage("journal_wide"),
+        **stress_coverage("borderless"),
     }
     print(json.dumps(report, sort_keys=True))
 
     if parse_ok != CASES or promoted_valid != CASES or promoted_corrupt != CASES:
-        raise SystemExit("native PDF parsing/promotion coverage regressed")
+        raise SystemExit("native PDF grid parsing/promotion coverage regressed")
     if valid_false_alerts != 0:
         raise SystemExit("valid synthetic PDFs produced E3 false alerts")
     if corrupt_detected != CASES:
         raise SystemExit("obvious p-value corruptions were not all detected")
+    if report["journal_wide_dual_parser_coverage"] != 1.0 or report["journal_wide_promotion_coverage"] != 1.0:
+        raise SystemExit("journal-style wide tables regressed")
+    # Borderless coverage is diagnostic in v0.9 until the independent geometry fallback is calibrated.
 
 
 if __name__ == "__main__":
