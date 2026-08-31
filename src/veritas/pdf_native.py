@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from hashlib import sha256
@@ -8,6 +9,7 @@ from importlib.metadata import version
 from io import BytesIO
 
 BBox = tuple[float, float, float, float]
+_TABLE_CAPTION_RE = re.compile(r"\btable\s*(?P<label>(?:[a-z]\s*)?\d+|[ivxlcdm]+)\b", re.IGNORECASE)
 
 
 def _bbox(values: Sequence[object]) -> BBox:
@@ -35,6 +37,17 @@ def _clean_rows(rows: object) -> tuple[tuple[str | None, ...], ...]:
     return tuple(cleaned)
 
 
+def canonical_table_label(value: str | None) -> str | None:
+    """Return a stable publication-visible table identity such as ``table2`` or ``tablea1``."""
+    if value is None:
+        return None
+    match = _TABLE_CAPTION_RE.search(value)
+    if match is None:
+        return None
+    label = re.sub(r"\s+", "", match.group("label").casefold())
+    return f"table{label}"
+
+
 @dataclass(frozen=True)
 class PDFWord:
     page: int
@@ -55,10 +68,15 @@ class PDFTable:
     table_index: int
     bbox: BBox
     rows: tuple[tuple[str | None, ...], ...]
+    caption: str | None = None
 
     @property
     def text(self) -> str:
         return "\n".join(" | ".join(cell or "" for cell in row) for row in self.rows)
+
+    @property
+    def publication_label(self) -> str | None:
+        return canonical_table_label(self.caption)
 
 
 @dataclass(frozen=True)
@@ -93,6 +111,48 @@ class NativePDFSnapshot:
     @property
     def words(self) -> tuple[PDFWord, ...]:
         return tuple(word for page in self.pages for word in page.words)
+
+
+def _word_center_y(word: PDFWord) -> float:
+    return (word.bbox[1] + word.bbox[3]) / 2.0
+
+
+def _word_lines(words: tuple[PDFWord, ...], *, y_tolerance: float = 3.5) -> tuple[tuple[PDFWord, ...], ...]:
+    ordered = sorted(words, key=lambda item: (_word_center_y(item), item.bbox[0]))
+    lines: list[list[PDFWord]] = []
+    means: list[float] = []
+    for word in ordered:
+        y = _word_center_y(word)
+        if lines and abs(y - means[-1]) <= y_tolerance:
+            lines[-1].append(word)
+            means[-1] = sum(_word_center_y(item) for item in lines[-1]) / len(lines[-1])
+        else:
+            lines.append([word])
+            means.append(y)
+    return tuple(tuple(sorted(line, key=lambda item: item.bbox[0])) for line in lines)
+
+
+def _nearest_table_caption(
+    words: tuple[PDFWord, ...],
+    table_bbox: BBox,
+    *,
+    max_vertical_gap: float = 140.0,
+) -> str | None:
+    """Find the closest publication table caption above a detected table region on the same page."""
+    table_top = table_bbox[1]
+    candidates: list[tuple[float, str]] = []
+    for line in _word_lines(words):
+        line_y = sum(_word_center_y(word) for word in line) / len(line)
+        if line_y > table_top + 6.0:
+            continue
+        if table_top - line_y > max_vertical_gap:
+            continue
+        text = " ".join(word.text for word in line).strip()
+        if canonical_table_label(text) is not None:
+            candidates.append((line_y, text))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
 
 
 class PyMuPDFNativeParser:
@@ -130,12 +190,14 @@ class PyMuPDFNativeParser:
                     for table_index, table in enumerate(finder.tables, start=1):
                         rows = _clean_rows(table.extract())
                         if rows:
+                            table_bbox = _bbox(table.bbox)
                             tables.append(
                                 PDFTable(
                                     page=page_index,
                                     table_index=table_index,
-                                    bbox=_bbox(table.bbox),
+                                    bbox=table_bbox,
                                     rows=rows,
+                                    caption=_nearest_table_caption(words, table_bbox),
                                 )
                             )
                 except (RuntimeError, TypeError, ValueError) as exc:
@@ -200,12 +262,14 @@ class PDFPlumberNativeParser:
                     for table_index, table in enumerate(page.find_tables(), start=1):
                         rows = _clean_rows(table.extract())
                         if rows:
+                            table_bbox = _bbox(table.bbox)
                             tables.append(
                                 PDFTable(
                                     page=page_index,
                                     table_index=table_index,
-                                    bbox=_bbox(table.bbox),
+                                    bbox=table_bbox,
                                     rows=rows,
+                                    caption=_nearest_table_caption(words, table_bbox),
                                 )
                             )
                 except (RuntimeError, TypeError, ValueError) as exc:
