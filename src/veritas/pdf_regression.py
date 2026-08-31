@@ -238,9 +238,7 @@ def _locator_accepts(table: PDFTable, locator: RegressionLocator | None) -> bool
     if locator.expected_page is not None and table.page != locator.expected_page:
         return False
     requested_label = locator.canonical_table_label()
-    if requested_label is not None and table.publication_label != requested_label:
-        return False
-    return True
+    return requested_label is None or table.publication_label == requested_label
 
 
 def _match_numeric_signature(match: RegressionTableMatch) -> tuple[str | None, ...]:
@@ -328,7 +326,7 @@ def _resolve_match(
             )
         # Prefer a parser's native table object over its geometry reconstruction only after
         # publication identity and numeric content agree.
-        resolved.append(sorted(group, key=lambda match: match.table.table_index < 0)[0])
+        resolved.append(min(group, key=lambda match: match.table.table_index < 0))
 
     if len(resolved) > 1:
         identities = tuple(_match_identity(match) for match in resolved)
