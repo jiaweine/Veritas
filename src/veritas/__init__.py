@@ -58,6 +58,7 @@ from .models import (
     StandardizedRegressionReconstruction,
 )
 from .runtime import numerical_backend_sha256, numerical_backend_versions
+from .sem import SEMFitSummary, SEMNestedComparison
 from .specifications import (
     Specification,
     SpecificationConstraint,
@@ -112,6 +113,8 @@ __all__ = [
     "RegressionResult",
     "RelationType",
     "ReportedNumber",
+    "SEMFitSummary",
+    "SEMNestedComparison",
     "SamplePartition",
     "SourceLocation",
     "Specification",
@@ -134,4 +137,4 @@ __all__ = [
     "summarize_specification_robustness",
 ]
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
