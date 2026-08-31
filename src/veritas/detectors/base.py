@@ -48,9 +48,10 @@ class DetectorRegistry:
         registry hash is therefore suitable for binding held-out certification to the detector set
         that was actually evaluated, without depending on import order.
         """
-        payload = sorted(
+        payload = [
             {"detector_id": detector.detector_id, "version": detector.version}
             for detector in self._detectors
-        )
+        ]
+        payload.sort(key=lambda item: (item["detector_id"], item["version"]))
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return sha256(raw).hexdigest()
