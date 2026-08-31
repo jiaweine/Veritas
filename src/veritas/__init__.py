@@ -52,6 +52,14 @@ from .extraction_benchmark import (
     build_extraction_selectivity_curve,
     evaluate_extraction_benchmark,
 )
+from .extraction_review import (
+    ExtractionAdjudication,
+    ExtractionGoldManifest,
+    ExtractionReviewRecord,
+    ExtractionReviewSubmission,
+    ExtractionReviewTarget,
+    resolve_extraction_reviews,
+)
 from .group_stats import GroupSummary, OneWayAnovaComparison, TwoGroupComparison
 from .ingestion import (
     CalibrationScope,
@@ -126,12 +134,17 @@ __all__ = [
     "EvidenceKind",
     "EvidenceLedger",
     "ExtractedField",
+    "ExtractionAdjudication",
     "ExtractionBenchmarkReport",
     "ExtractionCandidate",
     "ExtractionDecision",
+    "ExtractionGoldManifest",
     "ExtractionGoldTarget",
     "ExtractionPrediction",
     "ExtractionResolution",
+    "ExtractionReviewRecord",
+    "ExtractionReviewSubmission",
+    "ExtractionReviewTarget",
     "ExtractionSelectivityCurve",
     "ExtractionSelectivityPoint",
     "ExtractionTargetOutcome",
@@ -184,6 +197,7 @@ __all__ = [
     "methodology_snapshot_sha256",
     "numerical_backend_sha256",
     "numerical_backend_versions",
+    "resolve_extraction_reviews",
     "summarize_specification_robustness",
 ]
 
