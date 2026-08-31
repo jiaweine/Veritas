@@ -1,10 +1,10 @@
-# PDF ingestion and hard-audit promotion contract
+# PDF ingestion, detector promotion, and production authority
 
 Method snapshot date: 2026-08-31.
 
-Veritas treats document parsing as an uncertain measurement process. A parser, VLM, or LLM never directly creates a detector-ready statistical object.
+Veritas treats document parsing as an uncertain measurement process. A parser, VLM, or LLM never directly creates a production-authorized statistical finding.
 
-## Two separate evaluation layers
+## Three separate evaluation layers
 
 ### Document parsing
 Evaluate the fidelity of PDF structure recovery separately for:
@@ -30,6 +30,16 @@ A separate benchmark must score:
 
 A high document-parsing score does not certify semantic applicability.
 
+### Production authority
+A detector may be exercised for benchmark or research purposes without being allowed to issue a production hard finding. Calibration authority is therefore carried explicitly by `CalibrationScope`:
+
+- `UNVERIFIED`: no calibration authority claim;
+- `BENCHMARK`: evaluation-only calibration;
+- `RESEARCH`: research use without production authority;
+- `PRODUCTION_CERTIFIED`: the only scope eligible for the production hard-audit path.
+
+The calibration scope is included in the `IngestionProtocol` SHA-256. Relabeling a benchmark calibration as production-certified therefore changes the protocol identity and cannot be invisible in provenance.
+
 ## Evidence ledger
 
 Every candidate field and semantic gate is stored with:
@@ -47,13 +57,12 @@ The ledger also locks:
 
 - source artifact SHA-256;
 - calibration SHA-256;
+- calibration scope;
 - parser versions;
 - object-schema version;
 - promotion-policy version.
 
-The resulting hashes are attached to any finding produced through `AuditEngine.audit_verified()`.
-
-## Hard-audit promotion
+## Detector promotion
 
 Promotion to `DetectorInputEnvelope` requires all of the following for every required field and critical semantic gate:
 
@@ -70,7 +79,23 @@ Failure modes are intentionally asymmetric:
 - parser conflict -> `REVIEW`;
 - accepted but below confidence policy -> `REVIEW`;
 - missing field/gate, missing artifact hash, domain shift, or inadequate provenance -> `UNVERIFIABLE`;
-- only fully promoted objects may enter the verified hard-audit path.
+- only `PROMOTE` objects receive a detector envelope.
+
+`PromotionReport.detector_ready` means the extraction/promotion contract was satisfied. It does **not** mean the calibration is production-certified.
+
+## Hard-audit authority
+
+`PromotionReport.hard_audit_ready` is true only when both conditions hold:
+
+1. the object is detector-ready; and
+2. `calibration_scope == PRODUCTION_CERTIFIED`.
+
+Veritas then adds a second explicit gate at audit execution:
+
+- `AuditEngine.audit_verified()` is for research/benchmark verification and always records `production_hard_finding_authorized = false`;
+- `AuditEngine.audit_production_verified()` rejects every envelope whose calibration scope is not `PRODUCTION_CERTIFIED` and records `production_hard_finding_authorized = true` for resulting findings.
+
+This intentionally separates **detector arithmetic severity** from **publication/production authority**. A benchmark run can reveal an E3 mathematical contradiction for evaluation without that output being presented as an authorized production research-integrity finding.
 
 ## Numeric evidence vs semantic evidence
 
@@ -85,7 +110,7 @@ Agreement about the number does not prove agreement about the estimator or infer
 
 ## Reproducibility
 
-`IngestionProtocol`, `PromotionSpec`, and the evidence payload each have stable SHA-256 identities. Re-running a finding therefore records which PDF bytes, calibration set, parser versions, extraction evidence, and promotion policy produced the detector input.
+`IngestionProtocol`, `PromotionSpec`, and the evidence payload each have stable SHA-256 identities. Findings produced from an envelope preserve the source PDF hash, calibration identity and scope, parser versions, extraction evidence, promotion policy, and whether the audit execution path carried production authority.
 
 ## Method anchors
 
