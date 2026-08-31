@@ -52,6 +52,14 @@ from .extraction_benchmark import (
     build_extraction_selectivity_curve,
     evaluate_extraction_benchmark,
 )
+from .extraction_calibration import (
+    ExtractionTestEvaluationLock,
+    ExtractionThresholdObservation,
+    ExtractionThresholdPolicy,
+    FrozenExtractionThreshold,
+    lock_test_evaluation,
+    select_development_threshold,
+)
 from .extraction_review import (
     ExtractionAdjudication,
     ExtractionGoldManifest,
@@ -148,7 +156,11 @@ __all__ = [
     "ExtractionSelectivityCurve",
     "ExtractionSelectivityPoint",
     "ExtractionTargetOutcome",
+    "ExtractionTestEvaluationLock",
+    "ExtractionThresholdObservation",
+    "ExtractionThresholdPolicy",
     "Finding",
+    "FrozenExtractionThreshold",
     "GroundTruthBasis",
     "GroupSummary",
     "IVDesign",
@@ -194,10 +206,12 @@ __all__ = [
     "evaluate_hard_alert_certification",
     "get_method_anchor",
     "issue_production_calibration_certificate",
+    "lock_test_evaluation",
     "methodology_snapshot_sha256",
     "numerical_backend_sha256",
     "numerical_backend_versions",
     "resolve_extraction_reviews",
+    "select_development_threshold",
     "summarize_specification_robustness",
 ]
 
