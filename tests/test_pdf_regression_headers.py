@@ -17,6 +17,12 @@ def test_indexed_beta_header_maps_to_coefficient_role() -> None:
     assert _header_role("beta estimate adjusted") is None
 
 
+def test_punctuated_standard_error_header_maps_to_se() -> None:
+    assert _normalized_header("Std.Error") == "stderror"
+    assert _header_role("Std.Error") == "se"
+    assert _header_role("Std. Error") == "se"
+
+
 def test_independent_variable_header_maps_to_variable_role() -> None:
     assert _normalized_header("Independent variable") == "independentvariable"
     assert _header_role("Independent variable") == "variable"
