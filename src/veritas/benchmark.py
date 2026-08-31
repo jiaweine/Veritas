@@ -62,14 +62,17 @@ class CertificationReport:
 
 @dataclass(frozen=True)
 class ProductionCalibrationCertificate:
-    """Deterministic provenance artifact for a calibration certified on held-out papers.
+    """Hash-bound production authority issued from a held-out paper-level certification.
 
-    This is an auditable hash-bound certificate, not a cryptographic signature or external trust
-    service. It binds a calibration to the exact TEST benchmark manifest, audited detector/system
-    manifest, certification policy, and resulting paper-level certification report.
+    This is an auditable deterministic provenance artifact, not a cryptographic signature or an
+    external trust service. It binds the calibration and extraction contract to the exact TEST
+    benchmark manifest, audited Veritas system, certification policy, and certification report.
     """
 
     calibration_sha256: str
+    parser_versions: tuple[tuple[str, str], ...]
+    object_schema_version: str
+    promotion_spec_sha256: str
     benchmark_manifest_sha256: str
     audited_system_sha256: str
     policy_sha256: str
@@ -78,11 +81,12 @@ class ProductionCalibrationCertificate:
     positive_papers: int
     false_hard_alert_upper_bound: float
     hard_alert_precision_lower_bound: float
-    certificate_version: str = "1"
+    certificate_version: str = "2"
 
     def __post_init__(self) -> None:
         for name, value in (
             ("calibration_sha256", self.calibration_sha256),
+            ("promotion_spec_sha256", self.promotion_spec_sha256),
             ("benchmark_manifest_sha256", self.benchmark_manifest_sha256),
             ("audited_system_sha256", self.audited_system_sha256),
             ("policy_sha256", self.policy_sha256),
@@ -90,6 +94,13 @@ class ProductionCalibrationCertificate:
         ):
             if not _SHA256_RE.fullmatch(value):
                 raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
+        if not self.object_schema_version.strip():
+            raise ValueError("object_schema_version is required")
+        parser_ids = [parser_id for parser_id, _ in self.parser_versions]
+        if len(set(parser_ids)) != len(parser_ids):
+            raise ValueError("parser_versions must contain unique parser ids")
+        if any(not parser_id.strip() or not version.strip() for parser_id, version in self.parser_versions):
+            raise ValueError("parser_versions entries require non-empty ids and versions")
         if self.clean_papers < 0 or self.positive_papers < 0:
             raise ValueError("certificate paper counts cannot be negative")
         for name, value in (
@@ -102,7 +113,9 @@ class ProductionCalibrationCertificate:
             raise ValueError("certificate_version is required")
 
     def sha256(self) -> str:
-        raw = json.dumps(asdict(self), sort_keys=True, separators=(",", ":")).encode("utf-8")
+        payload = asdict(self)
+        payload["parser_versions"] = sorted(self.parser_versions)
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return sha256(raw).hexdigest()
 
 
@@ -228,6 +241,9 @@ def evaluate_hard_alert_certification(
 def issue_production_calibration_certificate(
     *,
     calibration_sha256: str,
+    parser_versions: tuple[tuple[str, str], ...],
+    object_schema_version: str,
+    promotion_spec_sha256: str,
     audited_system_sha256: str,
     cases: tuple[BenchmarkCase, ...] | list[BenchmarkCase],
     outcomes: tuple[PaperAuditOutcome, ...] | list[PaperAuditOutcome],
@@ -236,10 +252,18 @@ def issue_production_calibration_certificate(
     """Issue a production certificate only from a fully held-out, paper-consistent TEST corpus."""
     for name, value in (
         ("calibration_sha256", calibration_sha256),
+        ("promotion_spec_sha256", promotion_spec_sha256),
         ("audited_system_sha256", audited_system_sha256),
     ):
         if not _SHA256_RE.fullmatch(value):
             raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
+    if not object_schema_version.strip():
+        raise ValueError("object_schema_version is required")
+    parser_ids = [parser_id for parser_id, _ in parser_versions]
+    if len(set(parser_ids)) != len(parser_ids):
+        raise ValueError("parser_versions must contain unique parser ids")
+    if any(not parser_id.strip() or not version.strip() for parser_id, version in parser_versions):
+        raise ValueError("parser_versions entries require non-empty ids and versions")
     if not cases:
         raise ValueError("production certification requires at least one benchmark case")
     if any(case.split is not BenchmarkSplit.TEST for case in cases):
@@ -272,6 +296,9 @@ def issue_production_calibration_certificate(
 
     certificate = ProductionCalibrationCertificate(
         calibration_sha256=calibration_sha256,
+        parser_versions=tuple(sorted(parser_versions)),
+        object_schema_version=object_schema_version,
+        promotion_spec_sha256=promotion_spec_sha256,
         benchmark_manifest_sha256=benchmark_manifest_sha256(list(cases)),
         audited_system_sha256=audited_system_sha256,
         policy_sha256=certification_policy_sha256(policy),
