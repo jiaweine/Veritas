@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import urllib.request
 
-from veritas.pdf_native import parse_pdf_dual
+from veritas.pdf_native import NativePDFSnapshot, parse_pdf_dual
 from veritas.pdf_regression import RegressionLocator, extract_regression_table
 
 CASES = (
@@ -54,6 +54,93 @@ def _download(url: str) -> bytes:
     return payload
 
 
+def _center_y(word: object) -> float:
+    bbox = getattr(word, "bbox")
+    return (bbox[1] + bbox[3]) / 2.0
+
+
+def _cluster_page_lines(snapshot: NativePDFSnapshot, page_number: int) -> list[dict[str, object]]:
+    page = next(page for page in snapshot.pages if page.page == page_number)
+    ordered = sorted(page.words, key=lambda item: (_center_y(item), item.bbox[0]))
+    grouped: list[list[object]] = []
+    means: list[float] = []
+    for word in ordered:
+        y = _center_y(word)
+        if grouped and abs(y - means[-1]) <= 3.0:
+            grouped[-1].append(word)
+            means[-1] = sum(_center_y(item) for item in grouped[-1]) / len(grouped[-1])
+        else:
+            grouped.append([word])
+            means.append(y)
+    lines: list[dict[str, object]] = []
+    for words, y in zip(grouped, means, strict=True):
+        words.sort(key=lambda item: item.bbox[0])
+        lines.append(
+            {
+                "y": round(y, 2),
+                "text": " ".join(str(item.text) for item in words),
+                "words": [
+                    {
+                        "text": str(item.text),
+                        "x0": round(item.bbox[0], 2),
+                        "x1": round(item.bbox[2], 2),
+                    }
+                    for item in words
+                ],
+            }
+        )
+    return lines
+
+
+def _failure_probe(
+    snapshots: tuple[NativePDFSnapshot, ...],
+    *,
+    page_number: int,
+    variable: str,
+    table_label: str,
+) -> list[dict[str, object]]:
+    probes: list[dict[str, object]] = []
+    variable_casefold = variable.casefold()
+    table_casefold = table_label.casefold()
+    header_terms = ("independent", "variable", "beta", "β", "se", "z-value", "z value", "p-value", "p value")
+    for snapshot in snapshots:
+        lines = _cluster_page_lines(snapshot, page_number)
+        interesting_indices = {
+            index
+            for index, line in enumerate(lines)
+            if variable_casefold in str(line["text"]).casefold()
+            or table_casefold in str(line["text"]).casefold()
+            or sum(term in str(line["text"]).casefold() for term in header_terms) >= 3
+        }
+        expanded = sorted(
+            {
+                neighbor
+                for index in interesting_indices
+                for neighbor in range(max(0, index - 2), min(len(lines), index + 3))
+            }
+        )
+        page = next(page for page in snapshot.pages if page.page == page_number)
+        probes.append(
+            {
+                "parser_id": snapshot.parser_id,
+                "parser_family": snapshot.parser_family,
+                "page": page_number,
+                "interesting_lines": [lines[index] for index in expanded],
+                "native_tables": [
+                    {
+                        "table_index": table.table_index,
+                        "caption": table.caption,
+                        "publication_label": table.publication_label,
+                        "bbox": table.bbox,
+                        "rows_preview": table.rows[:4],
+                    }
+                    for table in page.tables
+                ],
+            }
+        )
+    return probes
+
+
 def main() -> None:
     results: list[dict[str, object]] = []
     failures: list[str] = []
@@ -89,22 +176,28 @@ def main() -> None:
             passed = fields_ok and page_ok and not bundle.ambiguities
             if not passed:
                 failures.append(case_id)
-            results.append(
-                {
-                    "case_id": case_id,
-                    "doi": case["doi"],
-                    "passed": passed,
-                    "table_label": case["table_label"],
-                    "source_page": bundle.source.page,
-                    "expected_page": case["expected_page"],
-                    "page_ok": page_ok,
-                    "fields": field_results,
-                    "ambiguities": bundle.ambiguities,
-                    "parser_versions": bundle.parser_versions,
-                    "license": case["license"],
-                    "adjudication_note": case["adjudication_note"],
-                }
-            )
+            result: dict[str, object] = {
+                "case_id": case_id,
+                "doi": case["doi"],
+                "passed": passed,
+                "table_label": case["table_label"],
+                "source_page": bundle.source.page,
+                "expected_page": case["expected_page"],
+                "page_ok": page_ok,
+                "fields": field_results,
+                "ambiguities": bundle.ambiguities,
+                "parser_versions": bundle.parser_versions,
+                "license": case["license"],
+                "adjudication_note": case["adjudication_note"],
+            }
+            if not passed:
+                result["failure_probe"] = _failure_probe(
+                    snapshots,
+                    page_number=int(case["expected_page"]),
+                    variable=str(case["variable"]),
+                    table_label=str(case["table_label"]),
+                )
+            results.append(result)
         except Exception as exc:  # smoke harness must surface network/parser failures as data
             failures.append(case_id)
             results.append(
