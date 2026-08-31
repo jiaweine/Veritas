@@ -15,15 +15,13 @@ from .ingestion import (
     ResolvedEvidence,
 )
 from .models import RegressionResult, ReportedNumber, SourceLocation
-from .pdf_native import NativePDFSnapshot, PDFTable, parse_pdf_dual
+from .pdf_native import PDFTable, NativePDFSnapshot, parse_pdf_dual
 from .types import ComparisonOperator, Materiality
-
 
 _NUMBER_RE = re.compile(
     r"^\s*(?P<op><=|>=|<|>)?\s*(?P<number>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*(?:\*+)?\s*$"
 )
 _HEADER_CLEAN_RE = re.compile(r"[^a-z0-9]+")
-
 
 _HEADER_ALIASES = {
     "variable": {"variable", "term", "predictor", "regressor"},
@@ -147,7 +145,6 @@ def _find_match(snapshot: NativePDFSnapshot, variable_label: str) -> RegressionT
 
 
 def _candidate(match: RegressionTableMatch, key: str, raw: str, normalized: str) -> ExtractionCandidate:
-    # Structural nonconformity score. The split-conformal gate calibrates this score on held-out tables.
     header_penalty = 0.0 if key in match.columns else 0.02
     table_penalty = 0.0 if len(match.table.rows) >= 2 else 0.02
     return ExtractionCandidate(
@@ -203,9 +200,7 @@ def extract_regression_table(
         stat_header = match.table.rows[match.header_row_index][match.columns["t_stat"]]
         normalized_header = _normalized_header(stat_header)
         if normalized_header in {"z", "zstat", "zstatistic"}:
-            semantics["inference_distribution"].append(
-                _candidate(match, "t_stat", str(stat_header), "normal")
-            )
+            semantics["inference_distribution"].append(_candidate(match, "t_stat", str(stat_header), "normal"))
 
     source = canonical_source or SourceLocation(artifact_id=next(iter(artifact_ids)))
     return RegressionExtractionBundle(
@@ -297,7 +292,7 @@ def bundle_to_ledger(
 
 def _reported_from_scalar(value: object) -> ReportedNumber:
     if not isinstance(value, str):
-        raise ValueError("promoted regression numeric fields must be normalized strings")
+        raise TypeError("promoted regression numeric fields must be normalized strings")
     return parse_reported_number(value)
 
 
