@@ -36,6 +36,11 @@ class MetaAnalysisSummary:
     reported_ci_upper: ReportedNumber | None = None
     confidence_level: float = 0.95
     inference_method: str = "unknown"  # normal | hksj | hksj_modified | unknown
+    reported_hksj_q: ReportedNumber | None = None
+    reported_prediction_lower: ReportedNumber | None = None
+    reported_prediction_upper: ReportedNumber | None = None
+    prediction_level: float = 0.95
+    prediction_method: str = "unknown"  # hts_t_k_minus_2_conventional | unknown
     reported_q: ReportedNumber | None = None
     reported_q_df: ReportedNumber | None = None
     reported_q_p_value: ReportedNumber | None = None
@@ -56,3 +61,5 @@ class MetaAnalysisSummary:
             raise ValueError("meta-analysis study_id values must be unique")
         if not 0.0 < self.confidence_level < 1.0:
             raise ValueError("confidence_level must lie strictly between 0 and 1")
+        if not 0.0 < self.prediction_level < 1.0:
+            raise ValueError("prediction_level must lie strictly between 0 and 1")
