@@ -21,6 +21,7 @@ class ExtractionGoldTarget:
     critical_for_hard_audit: bool = True
     reviewers: tuple[str, ...] = ()
     adjudicated: bool = False
+    review_record_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if not self.target_id.strip() or not self.paper_id.strip() or not self.article_family_id.strip():
@@ -29,6 +30,11 @@ class ExtractionGoldTarget:
             raise ValueError("at least one accepted normalized value is required")
         if len(set(self.reviewers)) < 2 or not self.adjudicated:
             raise ValueError("extraction gold targets require two independent reviewers and adjudication")
+        if self.review_record_sha256 is not None:
+            if len(self.review_record_sha256) != 64 or any(
+                char not in "0123456789abcdef" for char in self.review_record_sha256
+            ):
+                raise ValueError("review_record_sha256 must be a lowercase SHA-256 hex digest")
 
 
 @dataclass(frozen=True)
