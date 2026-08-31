@@ -9,6 +9,7 @@ from .meta_analysis import MetaAnalysisArithmeticDetector
 from .rdd import RDDDesignDetector
 from .regression import RegressionConsistencyDetector
 from .sample import SampleAccountingDetector
+from .sem import SEMFitArithmeticDetector, SEMNestedDifferenceDetector
 from .standardized_regression import StandardizedRegressionReconstructionDetector
 
 __all__ = [
@@ -23,6 +24,8 @@ __all__ = [
     "OneWayAnovaSummaryDetector",
     "RDDDesignDetector",
     "RegressionConsistencyDetector",
+    "SEMFitArithmeticDetector",
+    "SEMNestedDifferenceDetector",
     "SampleAccountingDetector",
     "StandardizedRegressionReconstructionDetector",
     "TwoGroupSummaryDetector",
