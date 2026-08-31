@@ -57,8 +57,32 @@ class AuditEngine:
         return self._summarize(checks)
 
     def audit_verified(self, envelopes: Iterable[DetectorInputEnvelope]) -> AuditSummary:
-        """Audit only promotion-gated objects and bind ingestion provenance to every finding."""
+        """Run promotion-gated research/benchmark audits without production authority.
 
+        The statistical detector output is preserved, including E3 arithmetic contradictions, but
+        every finding is explicitly marked as not production-authorized. This lets held-out and
+        benchmark calibrations exercise the complete detector pipeline without being mistaken for a
+        production research-integrity finding.
+        """
+        return self._audit_envelopes(envelopes, production_authorized=False)
+
+    def audit_production_verified(self, envelopes: Iterable[DetectorInputEnvelope]) -> AuditSummary:
+        """Run a production-authorized audit only for production-certified calibration envelopes."""
+        materialized = tuple(envelopes)
+        unauthorized = [envelope.object_id for envelope in materialized if not envelope.production_authorized]
+        if unauthorized:
+            raise ValueError(
+                "production audit requires PRODUCTION_CERTIFIED calibration scope; "
+                f"unauthorized object ids: {tuple(unauthorized)!r}"
+            )
+        return self._audit_envelopes(materialized, production_authorized=True)
+
+    def _audit_envelopes(
+        self,
+        envelopes: Iterable[DetectorInputEnvelope],
+        *,
+        production_authorized: bool,
+    ) -> AuditSummary:
         checks: list[CheckResult] = []
         for envelope in envelopes:
             obj = envelope.statistical_object
@@ -70,6 +94,8 @@ class AuditEngine:
                 "ingestion_protocol_sha256": envelope.protocol_sha256,
                 "promotion_spec_sha256": envelope.promotion_spec_sha256,
                 "extraction_evidence_sha256": envelope.evidence_sha256,
+                "calibration_scope": envelope.calibration_scope.value,
+                "production_hard_finding_authorized": production_authorized,
             }
             for detector in self.registry.for_object(obj):
                 for check in detector.run(obj):
