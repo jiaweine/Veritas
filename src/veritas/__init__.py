@@ -38,6 +38,7 @@ from .extraction import (
     ExtractionResolution,
 )
 from .group_stats import GroupSummary, OneWayAnovaComparison, TwoGroupComparison
+from .meta_analysis import MetaAnalysisSummary, MetaStudyEffect
 from .methodology import MethodAnchor, get_method_anchor, methodology_snapshot_sha256
 from .models import (
     AuditSummary,
@@ -102,6 +103,8 @@ __all__ = [
     "LogitResult",
     "Materiality",
     "MediationResult",
+    "MetaAnalysisSummary",
+    "MetaStudyEffect",
     "MethodAnchor",
     "OneWayAnovaComparison",
     "PaperAuditOutcome",
@@ -131,4 +134,4 @@ __all__ = [
     "summarize_specification_robustness",
 ]
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
