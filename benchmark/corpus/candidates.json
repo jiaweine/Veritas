@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "status": "sampling_frame_only_unlabeled",
+  "rule": "Presence in this file is never evidence of consistency, inconsistency, reproducibility, or misconduct. Claim-level labels require the locked AuditBench corpus protocol.",
+  "as_of": "2026-08-31",
+  "papers": [
+    {
+      "paper_id": "doi:10.1257/aer.20160256",
+      "article_family_id": "doi:10.1257/aer.20160256",
+      "doi": "10.1257/aer.20160256",
+      "title": "The Effects of Income Transparency on Well-Being: Evidence from a Natural Experiment",
+      "discipline": "economics",
+      "year": 2020,
+      "source_url": "https://doi.org/10.1257/aer.20160256",
+      "access_tier": "public_replication",
+      "artifact_urls": [
+        "https://doi.org/10.3886/E111682V2",
+        "https://www.socialsciencereproduction.org/reproductions/385/published/select-paper"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "Verify artifact-level redistribution rights before local mirroring."
+    },
+    {
+      "paper_id": "doi:10.1093/qje/qjz010",
+      "article_family_id": "doi:10.1093/qje/qjz010",
+      "doi": "10.1093/qje/qjz010",
+      "title": "Inputs, Incentives, and Complementarities in Education: Experimental Evidence from Tanzania",
+      "discipline": "economics_education",
+      "year": 2019,
+      "source_url": "https://doi.org/10.1093/qje/qjz010",
+      "access_tier": "public_replication",
+      "artifact_urls": [
+        "https://doi.org/10.7910/DVN/AKVGQ7",
+        "https://www.socialsciencereproduction.org/reproductions/2071/published/select-paper"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "Verify Dataverse file licenses before local mirroring."
+    },
+    {
+      "paper_id": "openicpsr:E223703V4",
+      "article_family_id": "openicpsr:E223703",
+      "doi": "10.3886/E223703V4",
+      "title": "Extracting Statistical Relationships from Observational Data: Predicting with Full or Partial Information",
+      "discipline": "economics",
+      "year": 2025,
+      "source_url": "https://doi.org/10.3886/E223703V4",
+      "access_tier": "public_data_and_code",
+      "artifact_urls": [
+        "https://www.openicpsr.org/openicpsr/project/223703/version/V4/view"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "Candidate metadata only until repository/file licenses are programmatically verified."
+    },
+    {
+      "paper_id": "openicpsr:E230463V1",
+      "article_family_id": "openicpsr:E230463",
+      "doi": "10.3886/E230463V1",
+      "title": "Trade Sanctions Against Russia: Stylized Facts",
+      "discipline": "economics_international_trade",
+      "year": 2025,
+      "source_url": "https://doi.org/10.3886/E230463V1",
+      "access_tier": "public_data_and_code",
+      "artifact_urls": [
+        "https://www.openicpsr.org/openicpsr/project/230463/version/V1/view"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "Candidate metadata only until repository/file licenses are programmatically verified."
+    },
+    {
+      "paper_id": "openicpsr:E237301V1",
+      "article_family_id": "openicpsr:E237301",
+      "doi": "10.3886/E237301V1",
+      "title": "Polluted IPOs",
+      "discipline": "finance",
+      "year": 2026,
+      "source_url": "https://doi.org/10.3886/E237301V1",
+      "access_tier": "public_data_and_code",
+      "artifact_urls": [
+        "https://www.openicpsr.org/openicpsr/project/237301/view"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "Candidate metadata only until repository/file licenses are programmatically verified."
+    }
+  ]
+}
