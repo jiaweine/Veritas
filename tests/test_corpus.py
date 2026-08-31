@@ -34,6 +34,61 @@ def test_article_versions_share_one_split():
     assert manifest.split_for_paper("preprint") in set(BenchmarkSplit)
 
 
+def test_split_lock_is_stable_to_paper_order_and_versions():
+    first = CorpusManifest(
+        papers=(
+            _paper("preprint", "family-1"),
+            _paper("journal", "family-1"),
+            _paper("other", "family-2"),
+        ),
+        labels=(),
+        split_salt="locked-salt",
+    )
+    second = CorpusManifest(
+        papers=tuple(reversed(first.papers)),
+        labels=(),
+        split_salt="locked-salt",
+    )
+    lock_a = first.build_split_lock()
+    lock_b = second.build_split_lock()
+    assert lock_a.sha256() == lock_b.sha256()
+    assert len(lock_a.assignments) == 2
+    assert lock_a.split_for_family("family-1") is first.split_for_paper("preprint")
+    lock_a.validate_manifest(first)
+
+
+def test_split_lock_rejects_corpus_growth_without_explicit_relock():
+    original = CorpusManifest(
+        papers=(_paper("p1", "family-1"),),
+        labels=(),
+        split_salt="locked-salt",
+    )
+    lock = original.build_split_lock()
+    expanded = CorpusManifest(
+        papers=(_paper("p1", "family-1"), _paper("p2", "family-2")),
+        labels=(),
+        split_salt="locked-salt",
+    )
+    with pytest.raises(ValueError, match="article-family universe differs"):
+        lock.validate_manifest(expanded)
+
+
+def test_split_lock_rejects_changed_salt():
+    manifest = CorpusManifest(
+        papers=(_paper("p1", "family-1"),),
+        labels=(),
+        split_salt="locked-salt",
+    )
+    lock = manifest.build_split_lock()
+    changed = CorpusManifest(
+        papers=manifest.papers,
+        labels=(),
+        split_salt="different-salt",
+    )
+    with pytest.raises(ValueError, match="split_salt"):
+        lock.validate_manifest(changed)
+
+
 def test_natural_binary_label_requires_two_reviewers_and_adjudication():
     with pytest.raises(ValueError):
         ClaimGroundTruth(
