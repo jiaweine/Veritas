@@ -89,6 +89,19 @@ class TwoGroupSummaryDetector(Detector):
             return [self._unverifiable(obj, "Two-group reconstruction currently requires sample SDs.")]
         if obj.group_a.weighted is not False or obj.group_b.weighted is not False:
             return [self._unverifiable(obj, "Weighted or unknown-weight group summaries are not supported.")]
+        summary_numbers = (
+            obj.group_a.mean,
+            obj.group_a.sd,
+            obj.group_b.mean,
+            obj.group_b.sd,
+        )
+        if any(number.operator is not ComparisonOperator.EQ for number in summary_numbers):
+            return [
+                self._unverifiable(
+                    obj,
+                    "Group means and SDs must be equality-reported values before rounding intervals can be reconstructed.",
+                )
+            ]
 
         mean_a = obj.group_a.mean.rounding_interval()
         mean_b = obj.group_b.mean.rounding_interval()
