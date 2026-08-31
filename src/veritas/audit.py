@@ -13,6 +13,7 @@ from .detectors.meta_analysis import MetaAnalysisArithmeticDetector
 from .detectors.rdd import RDDDesignDetector
 from .detectors.regression import RegressionConsistencyDetector
 from .detectors.sample import SampleAccountingDetector
+from .detectors.sem import SEMFitArithmeticDetector, SEMNestedDifferenceDetector
 from .detectors.standardized_regression import StandardizedRegressionReconstructionDetector
 from .models import AuditSummary, CheckResult, Finding
 from .scoring import review_priority, verification_coverage
@@ -36,6 +37,8 @@ class AuditEngine:
                     TwoGroupSummaryDetector(),
                     OneWayAnovaSummaryDetector(),
                     MetaAnalysisArithmeticDetector(),
+                    SEMFitArithmeticDetector(),
+                    SEMNestedDifferenceDetector(),
                     DIDDesignDetector(),
                     WeakIVDesignDetector(),
                     RDDDesignDetector(),
