@@ -20,7 +20,7 @@ from .detectors.sem import SEMFitArithmeticDetector, SEMNestedDifferenceDetector
 from .detectors.standardized_regression import StandardizedRegressionReconstructionDetector
 from .ingestion import DetectorInputEnvelope
 from .models import AuditSummary, CheckResult, Finding
-from .runtime import numerical_backend_sha256
+from .runtime import numerical_backend_sha256, veritas_source_sha256
 from .scoring import review_priority, verification_coverage
 
 
@@ -52,8 +52,9 @@ class AuditEngine:
         self.registry = DetectorRegistry(detectors)
 
     def manifest_sha256(self) -> str:
-        """Stable identity of detector declarations plus numerical software that affects results."""
+        """Stable identity of Veritas source, detector declarations, and numerical software."""
         payload = {
+            "veritas_source_sha256": veritas_source_sha256(),
             "detector_registry_sha256": self.registry.sha256(),
             "numerical_backend_sha256": numerical_backend_sha256(),
         }
@@ -73,7 +74,7 @@ class AuditEngine:
         return self._audit_envelopes(envelopes, production_authorized=False)
 
     def audit_production_verified(self, envelopes: Iterable[DetectorInputEnvelope]) -> AuditSummary:
-        """Run only envelopes certified for this exact detector/numerical system manifest."""
+        """Run only envelopes certified for this exact Veritas/numerical system manifest."""
         materialized = tuple(envelopes)
         unauthorized = [
             envelope.object_id for envelope in materialized if not envelope.production_authorized
@@ -92,7 +93,7 @@ class AuditEngine:
         ]
         if mismatched:
             raise ValueError(
-                "production certificate was issued for a different detector/numerical system manifest; "
+                "production certificate was issued for a different Veritas/numerical system manifest; "
                 f"mismatched object ids: {tuple(mismatched)!r}"
             )
         return self._audit_envelopes(materialized, production_authorized=True)
