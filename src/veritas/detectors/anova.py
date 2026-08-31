@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from itertools import product
-from math import inf
 from uuid import uuid4
 
 from scipy.stats import f as f_distribution
