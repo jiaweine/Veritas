@@ -30,6 +30,15 @@ from veritas.ingestion import (
 from veritas.models import RegressionResult, ReportedNumber, SourceLocation
 
 _CALIBRATION_SHA = "b" * 64
+_PARSER_VERSIONS = (("native", "1.2.0"), ("vlm", "2026-08"))
+_OBJECT_SCHEMA_VERSION = "regression-v1"
+_SPEC = PromotionSpec(
+    object_type="RegressionResult",
+    required_fields=("beta", "se", "p_value"),
+    critical_semantic_gates=("inference_distribution",),
+    min_extraction_confidence=0.98,
+    min_independent_parser_families=2,
+)
 _DEFAULT_ENGINE = AuditEngine()
 _CERT_CASES = [
     BenchmarkCase(
@@ -57,6 +66,9 @@ _CERT_OUTCOMES = [PaperAuditOutcome(f"clean-{i}", False, False) for i in range(4
 _CERT_OUTCOMES.extend(PaperAuditOutcome(f"positive-{i}", True, True) for i in range(100))
 _CERT_REPORT, _PRODUCTION_CERTIFICATE = issue_production_calibration_certificate(
     calibration_sha256=_CALIBRATION_SHA,
+    parser_versions=_PARSER_VERSIONS,
+    object_schema_version=_OBJECT_SCHEMA_VERSION,
+    promotion_spec_sha256=_SPEC.sha256(),
     audited_system_sha256=_DEFAULT_ENGINE.manifest_sha256(),
     cases=_CERT_CASES,
     outcomes=_CERT_OUTCOMES,
@@ -68,9 +80,9 @@ def _protocol(*, scope: CalibrationScope = CalibrationScope.PRODUCTION_CERTIFIED
     return IngestionProtocol(
         protocol_id="pdf-paper-only",
         protocol_version="0.10.0",
-        object_schema_version="regression-v1",
+        object_schema_version=_OBJECT_SCHEMA_VERSION,
         calibration_sha256=_CALIBRATION_SHA,
-        parser_versions=(("native", "1.2.0"), ("vlm", "2026-08")),
+        parser_versions=_PARSER_VERSIONS,
         calibration_scope=scope,
         production_certificate=(
             _PRODUCTION_CERTIFICATE
@@ -179,13 +191,7 @@ def _draft(
 
 
 def _spec() -> PromotionSpec:
-    return PromotionSpec(
-        object_type="RegressionResult",
-        required_fields=("beta", "se", "p_value"),
-        critical_semantic_gates=("inference_distribution",),
-        min_extraction_confidence=0.98,
-        min_independent_parser_families=2,
-    )
+    return _SPEC
 
 
 def _ledger(
@@ -223,9 +229,9 @@ def test_production_scope_requires_heldout_certificate():
         IngestionProtocol(
             protocol_id="pdf-paper-only",
             protocol_version="0.10.0",
-            object_schema_version="regression-v1",
+            object_schema_version=_OBJECT_SCHEMA_VERSION,
             calibration_sha256=_CALIBRATION_SHA,
-            parser_versions=(("native", "1.2.0"), ("vlm", "2026-08")),
+            parser_versions=_PARSER_VERSIONS,
             calibration_scope=CalibrationScope.PRODUCTION_CERTIFIED,
         )
 
@@ -236,12 +242,51 @@ def test_production_certificate_must_match_protocol_calibration():
         IngestionProtocol(
             protocol_id="pdf-paper-only",
             protocol_version="0.10.0",
-            object_schema_version="regression-v1",
+            object_schema_version=_OBJECT_SCHEMA_VERSION,
             calibration_sha256=_CALIBRATION_SHA,
-            parser_versions=(("native", "1.2.0"), ("vlm", "2026-08")),
+            parser_versions=_PARSER_VERSIONS,
             calibration_scope=CalibrationScope.PRODUCTION_CERTIFIED,
             production_certificate=mismatched,
         )
+
+
+def test_production_certificate_must_match_protocol_parser_versions():
+    mismatched = replace(
+        _PRODUCTION_CERTIFICATE,
+        parser_versions=(("native", "9.9.9"), ("vlm", "2026-08")),
+    )
+    with pytest.raises(ValueError, match="parser versions"):
+        IngestionProtocol(
+            protocol_id="pdf-paper-only",
+            protocol_version="0.10.0",
+            object_schema_version=_OBJECT_SCHEMA_VERSION,
+            calibration_sha256=_CALIBRATION_SHA,
+            parser_versions=_PARSER_VERSIONS,
+            calibration_scope=CalibrationScope.PRODUCTION_CERTIFIED,
+            production_certificate=mismatched,
+        )
+
+
+def test_production_certificate_must_match_protocol_object_schema():
+    mismatched = replace(_PRODUCTION_CERTIFICATE, object_schema_version="regression-v2")
+    with pytest.raises(ValueError, match="object schema"):
+        IngestionProtocol(
+            protocol_id="pdf-paper-only",
+            protocol_version="0.10.0",
+            object_schema_version=_OBJECT_SCHEMA_VERSION,
+            calibration_sha256=_CALIBRATION_SHA,
+            parser_versions=_PARSER_VERSIONS,
+            calibration_scope=CalibrationScope.PRODUCTION_CERTIFIED,
+            production_certificate=mismatched,
+        )
+
+
+def test_uncertified_promotion_spec_is_unverifiable():
+    changed_spec = replace(_SPEC, min_extraction_confidence=0.99)
+    report, envelope = _ledger().promote("reg-1", changed_spec, _builder)
+    assert report.decision is PromotionDecision.UNVERIFIABLE
+    assert envelope is None
+    assert any("promotion spec SHA-256" in reason for reason in report.reasons)
 
 
 def test_precisely_sourced_production_calibration_is_hard_audit_ready():
@@ -251,6 +296,7 @@ def test_precisely_sourced_production_calibration_is_hard_audit_ready():
     assert report.hard_audit_ready
     assert report.calibration_scope is CalibrationScope.PRODUCTION_CERTIFIED
     assert report.production_certificate_sha256 == _PRODUCTION_CERTIFICATE.sha256()
+    assert report.certified_promotion_spec_sha256 == _SPEC.sha256()
     assert report.certified_system_sha256 == _DEFAULT_ENGINE.manifest_sha256()
     assert envelope is not None
     assert envelope.production_authorized
@@ -273,6 +319,7 @@ def test_benchmark_calibration_can_enter_detector_but_not_gain_production_author
     provenance = finding.evidence["ingestion_provenance"]
     assert provenance["calibration_scope"] == CalibrationScope.BENCHMARK.value
     assert provenance["production_certificate_sha256"] is None
+    assert provenance["certified_promotion_spec_sha256"] is None
     assert provenance["production_hard_finding_authorized"] is False
 
     with pytest.raises(ValueError, match="held-out certificate"):
@@ -317,7 +364,7 @@ def test_missing_critical_semantic_gate_is_unverifiable():
     assert any("missing critical semantic gate" in reason for reason in report.reasons)
 
 
-def test_production_verified_audit_binds_certificate_and_system_to_e3_finding():
+def test_production_verified_audit_binds_certificate_pipeline_and_system_to_e3_finding():
     report, envelope = _ledger().promote("reg-1", _spec(), _builder)
     assert report.hard_audit_ready and envelope is not None
     summary = AuditEngine().audit_production_verified([envelope])
@@ -330,6 +377,7 @@ def test_production_verified_audit_binds_certificate_and_system_to_e3_finding():
     assert provenance["extraction_evidence_sha256"] == envelope.evidence_sha256
     assert provenance["calibration_scope"] == CalibrationScope.PRODUCTION_CERTIFIED.value
     assert provenance["production_certificate_sha256"] == _PRODUCTION_CERTIFICATE.sha256()
+    assert provenance["certified_promotion_spec_sha256"] == _SPEC.sha256()
     assert provenance["certified_system_sha256"] == _DEFAULT_ENGINE.manifest_sha256()
     assert provenance["executed_system_sha256"] == _DEFAULT_ENGINE.manifest_sha256()
     assert provenance["production_hard_finding_authorized"] is True
@@ -340,7 +388,7 @@ def test_production_certificate_cannot_authorize_a_different_detector_system():
     assert report.hard_audit_ready and envelope is not None
     changed_engine = AuditEngine(include_experimental=True)
     assert changed_engine.manifest_sha256() != _DEFAULT_ENGINE.manifest_sha256()
-    with pytest.raises(ValueError, match="different detector/numerical system manifest"):
+    with pytest.raises(ValueError, match="different Veritas/numerical system manifest"):
         changed_engine.audit_production_verified([envelope])
 
 
