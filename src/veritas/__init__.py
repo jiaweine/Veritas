@@ -21,6 +21,15 @@ from .claims import (
     StatisticalClaimGraph,
     StatisticalObjectNode,
 )
+from .corpus import (
+    AccessTier,
+    ClaimExpectation,
+    ClaimGroundTruth,
+    CorpusManifest,
+    CorpusPaper,
+    GroundTruthBasis,
+    assign_article_family_split,
+)
 from .extraction import (
     ConformalCalibration,
     ConformalExtractionGate,
@@ -28,6 +37,7 @@ from .extraction import (
     ExtractionDecision,
     ExtractionResolution,
 )
+from .group_stats import GroupSummary, TwoGroupComparison
 from .methodology import MethodAnchor, get_method_anchor, methodology_snapshot_sha256
 from .models import (
     AuditSummary,
@@ -58,6 +68,7 @@ from .specifications import (
 from .types import EvidenceFamily, EvidenceGrade, Materiality
 
 __all__ = [
+    "AccessTier",
     "ArtifactRef",
     "AuditEngine",
     "AuditSummary",
@@ -67,10 +78,14 @@ __all__ = [
     "CertificationReport",
     "CheckResult",
     "ClaimEdge",
+    "ClaimExpectation",
+    "ClaimGroundTruth",
     "ClaimNode",
     "ClaimRole",
     "ConformalCalibration",
     "ConformalExtractionGate",
+    "CorpusManifest",
+    "CorpusPaper",
     "CorrelationMatrix",
     "DIDDesign",
     "DiscreteSummary",
@@ -81,6 +96,8 @@ __all__ = [
     "ExtractionDecision",
     "ExtractionResolution",
     "Finding",
+    "GroundTruthBasis",
+    "GroupSummary",
     "IVDesign",
     "LogitResult",
     "Materiality",
@@ -101,6 +118,8 @@ __all__ = [
     "StandardizedRegressionReconstruction",
     "StatisticalClaimGraph",
     "StatisticalObjectNode",
+    "TwoGroupComparison",
+    "assign_article_family_split",
     "assign_paper_split",
     "benchmark_manifest_sha256",
     "evaluate_hard_alert_certification",
@@ -111,4 +130,4 @@ __all__ = [
     "summarize_specification_robustness",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
