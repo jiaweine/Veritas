@@ -52,7 +52,10 @@ def _insert_table(
         page.insert_text((xs[4], y + 28), p, fontsize=font_size)
 
 
-def _positive_pdf(index: int, rng: random.Random, *, corrupt: bool = False) -> tuple[bytes, str]:
+def _positive_pdf(index: int, *, corrupt: bool = False) -> tuple[bytes, str]:
+    # Each index owns a deterministic layout/statistics seed. The valid and corruption arms
+    # therefore differ only in the p-value cell, which makes corruption detection a paired test.
+    rng = random.Random(SEED + index * 10007)
     doc = pymupdf.open()
     page = doc.new_page(width=612, height=792)
     page.insert_text((48, 48), "Empirical results", fontsize=12)
@@ -198,25 +201,32 @@ def _audit(pdf: bytes, variable: str, *, gate: ConformalExtractionGate) -> tuple
 
 
 def main() -> None:
-    rng = random.Random(SEED)
     gate = _synthetic_geometry_gate()
     valid_dual = valid_promoted = valid_false_alerts = 0
-    corrupt_promoted = corrupt_detected = 0
+    corrupt_dual = corrupt_promoted = corrupt_detected = 0
     negative_false_extractions = 0
     latencies: list[float] = []
+    corrupt_failures: list[int] = []
 
     for index in range(POSITIVE_CASES):
-        pdf, variable = _positive_pdf(index, rng, corrupt=False)
+        pdf, variable = _positive_pdf(index, corrupt=False)
         dual, promoted, hard, elapsed = _audit(pdf, variable, gate=gate)
         valid_dual += int(dual)
         valid_promoted += int(promoted)
         valid_false_alerts += int(hard)
         latencies.append(elapsed)
 
-        corrupt_pdf, corrupt_variable = _positive_pdf(index, rng, corrupt=True)
-        _, corrupt_is_promoted, corrupt_hard, elapsed = _audit(corrupt_pdf, corrupt_variable, gate=gate)
+        corrupt_pdf, corrupt_variable = _positive_pdf(index, corrupt=True)
+        corrupt_is_dual, corrupt_is_promoted, corrupt_hard, elapsed = _audit(
+            corrupt_pdf,
+            corrupt_variable,
+            gate=gate,
+        )
+        corrupt_dual += int(corrupt_is_dual)
         corrupt_promoted += int(corrupt_is_promoted)
         corrupt_detected += int(corrupt_hard)
+        if not (corrupt_is_dual and corrupt_is_promoted and corrupt_hard):
+            corrupt_failures.append(index)
         latencies.append(elapsed)
 
     for index in range(NEGATIVE_CASES):
@@ -233,15 +243,18 @@ def main() -> None:
         "heldout_dual_parser_coverage": valid_dual / POSITIVE_CASES,
         "synthetic_geometry_promotion_coverage": valid_promoted / POSITIVE_CASES,
         "valid_e3_false_alert_rate": valid_false_alerts / POSITIVE_CASES,
+        "corrupt_dual_parser_coverage": corrupt_dual / POSITIVE_CASES,
         "corrupt_promotion_coverage": corrupt_promoted / POSITIVE_CASES,
         "obvious_p_corruption_e3_detection_rate": corrupt_detected / POSITIVE_CASES,
+        "corrupt_failure_indices": corrupt_failures,
         "negative_false_extraction_rate": negative_false_extractions / NEGATIVE_CASES,
         "median_dual_parse_ms": round(statistics.median(latencies), 2),
         "calibration_scope": "synthetic_only_not_production_certification",
+        "corruption_design": "paired_same_layout_only_p_cell_changed",
     }
     print(json.dumps(report, sort_keys=True))
 
-    if valid_dual != POSITIVE_CASES:
+    if valid_dual != POSITIVE_CASES or corrupt_dual != POSITIVE_CASES:
         raise SystemExit("held-out borderless dual-parser coverage is below 100%")
     if valid_promoted != POSITIVE_CASES or corrupt_promoted != POSITIVE_CASES:
         raise SystemExit("synthetic geometry calibration failed to promote a supported held-out table")
