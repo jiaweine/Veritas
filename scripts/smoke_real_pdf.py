@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import urllib.request
+from hashlib import sha256
 from pathlib import Path
 
 from veritas.pdf_native import NativePDFSnapshot, parse_pdf_dual
@@ -13,6 +14,7 @@ SEED_MANIFEST = (
     / "extraction"
     / "seed_cases_v0.11.json"
 )
+SEED_MANIFEST_SHA256 = sha256(SEED_MANIFEST.read_bytes()).hexdigest()
 
 
 def _load_cases() -> tuple[dict[str, object], ...]:
@@ -233,6 +235,7 @@ def main() -> None:
 
     report = {
         "scope": "real_open_access_extraction_smoke_not_production_certification",
+        "seed_manifest_sha256": SEED_MANIFEST_SHA256,
         "cases": len(CASES),
         "passed": len(CASES) - len(failures),
         "failed_case_ids": failures,
