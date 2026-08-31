@@ -118,6 +118,7 @@ class AuditEngine:
                 "extraction_evidence_sha256": envelope.evidence_sha256,
                 "calibration_scope": envelope.calibration_scope.value,
                 "production_certificate_sha256": envelope.production_certificate_sha256,
+                "certified_promotion_spec_sha256": envelope.certified_promotion_spec_sha256,
                 "certified_system_sha256": envelope.certified_system_sha256,
                 "executed_system_sha256": current_system,
                 "production_hard_finding_authorized": production_authorized,
