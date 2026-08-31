@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from .pdf_native import NativePDFSnapshot, PDFTable, PDFWord
+
+_TABLE_CAPTION_RE = re.compile(r"\btable\s*(?:[a-z]?\d+|[ivxlcdm]+)?\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -19,6 +22,14 @@ def _center_y(word: PDFWord) -> float:
 
 def _center_x(word: PDFWord) -> float:
     return (word.bbox[0] + word.bbox[2]) / 2.0
+
+
+def _line_y(line: tuple[PDFWord, ...]) -> float:
+    return sum(_center_y(word) for word in line) / len(line)
+
+
+def _line_text(line: tuple[PDFWord, ...]) -> str:
+    return " ".join(word.text for word in line).strip()
 
 
 def _cluster_lines(words: tuple[PDFWord, ...], *, y_tolerance: float = 3.0) -> tuple[tuple[PDFWord, ...], ...]:
@@ -90,6 +101,23 @@ def _bbox_for_lines(*lines: tuple[PDFWord, ...]) -> tuple[float, float, float, f
     )
 
 
+def _has_nearby_table_caption(
+    lines: tuple[tuple[PDFWord, ...], ...],
+    *,
+    header_index: int,
+    max_caption_lines: int,
+    max_caption_vertical_gap: float,
+) -> bool:
+    header_y = _line_y(lines[header_index])
+    start = max(0, header_index - max_caption_lines)
+    for candidate in lines[start:header_index]:
+        if header_y - _line_y(candidate) > max_caption_vertical_gap:
+            continue
+        if _TABLE_CAPTION_RE.search(_line_text(candidate)):
+            return True
+    return False
+
+
 def reconstruct_borderless_table(
     snapshot: NativePDFSnapshot,
     *,
@@ -97,19 +125,29 @@ def reconstruct_borderless_table(
     role_resolver: Callable[[str | None], str | None],
     required_roles: frozenset[str] = frozenset({"variable", "beta", "se", "t_stat"}),
     max_data_line_gap: int = 40,
+    max_data_vertical_gap: float = 180.0,
+    max_caption_lines: int = 5,
+    max_caption_vertical_gap: float = 120.0,
 ) -> PDFTable | None:
     """Reconstruct one header-aligned table from independent parser word geometry.
 
-    This fallback intentionally requires an explicit recognizable header row and a requested
-    variable label. It does not scan arbitrary aligned prose into a statistical object. The same
-    deterministic reconstruction is applied separately to each parser family's word stream;
-    downstream promotion still requires agreement across parser families.
+    The hard-audit fallback requires a nearby explicit table caption, a recognizable statistical
+    header, a caller-requested variable label, and bounded header-to-row vertical distance. The
+    same deterministic reconstruction is applied separately to each parser family's word stream;
+    downstream promotion still requires cross-family agreement.
     """
     for page in snapshot.pages:
         lines = _cluster_lines(page.words)
         for header_index, header_line in enumerate(lines):
             anchors_by_role = _header_anchors(header_line, role_resolver)
             if not required_roles.issubset(anchors_by_role):
+                continue
+            if not _has_nearby_table_caption(
+                lines,
+                header_index=header_index,
+                max_caption_lines=max_caption_lines,
+                max_caption_vertical_gap=max_caption_vertical_gap,
+            ):
                 continue
             anchors = tuple(sorted(anchors_by_role.values(), key=lambda item: item.x0))
             if not anchors or anchors[0].role != "variable":
@@ -119,8 +157,11 @@ def reconstruct_borderless_table(
                 continue
             header_cells = tuple(anchor.text for anchor in anchors)
             target = _normalized_text(variable_label)
+            header_y = _line_y(header_line)
             stop = min(len(lines), header_index + 1 + max_data_line_gap)
             for data_line in lines[header_index + 1 : stop]:
+                if _line_y(data_line) - header_y > max_data_vertical_gap:
+                    break
                 cells = _cells_for_line(data_line, bounds)
                 first = cells[0]
                 if first is None or _normalized_text(first) != target:
