@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from smoke_real_pdf import CASES, _download
+from smoke_real_pdf import CASES, SEED_MANIFEST_SHA256, _download
 from veritas.pdf_native import parse_pdf_dual
 from veritas.pdf_regression import RegressionLocator, extract_regression_table
 
@@ -90,6 +90,7 @@ def main() -> None:
 
     report = {
         "scope": "real_open_access_fail_closed_controls_not_production_certification",
+        "seed_manifest_sha256": SEED_MANIFEST_SHA256,
         "controls": len(results),
         "passed": len(results) - len(failures),
         "failed_control_ids": failures,
