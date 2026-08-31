@@ -1,3 +1,5 @@
+import pytest
+
 from veritas.benchmark import (
     BenchmarkCase,
     BenchmarkSplit,
@@ -7,6 +9,7 @@ from veritas.benchmark import (
     benchmark_manifest_sha256,
     binomial_upper_bound,
     evaluate_hard_alert_certification,
+    issue_production_calibration_certificate,
 )
 
 
@@ -51,3 +54,109 @@ def test_single_false_alert_can_block_strict_certification():
 
     assert not report.certified
     assert report.reasons
+
+
+def _certification_corpus() -> tuple[list[BenchmarkCase], list[PaperAuditOutcome]]:
+    cases = [
+        BenchmarkCase(
+            case_id=f"clean-case-{i}",
+            paper_id=f"clean-{i}",
+            corruption_family="none",
+            expected_material_issue=False,
+            split=BenchmarkSplit.TEST,
+            metadata={},
+        )
+        for i in range(400)
+    ]
+    cases.extend(
+        BenchmarkCase(
+            case_id=f"positive-case-{i}",
+            paper_id=f"positive-{i}",
+            corruption_family="p_value_override",
+            expected_material_issue=True,
+            split=BenchmarkSplit.TEST,
+            metadata={},
+        )
+        for i in range(100)
+    )
+    outcomes = [PaperAuditOutcome(f"clean-{i}", False, False) for i in range(400)]
+    outcomes.extend(PaperAuditOutcome(f"positive-{i}", True, True) for i in range(100))
+    return cases, outcomes
+
+
+def test_production_certificate_binds_calibration_test_manifest_and_system():
+    cases, outcomes = _certification_corpus()
+    report, certificate = issue_production_calibration_certificate(
+        calibration_sha256="a" * 64,
+        audited_system_sha256="b" * 64,
+        cases=cases,
+        outcomes=outcomes,
+    )
+
+    assert report.certified
+    assert certificate is not None
+    assert certificate.calibration_sha256 == "a" * 64
+    assert certificate.audited_system_sha256 == "b" * 64
+    assert certificate.benchmark_manifest_sha256 == benchmark_manifest_sha256(cases)
+    assert certificate.clean_papers == 400
+    assert certificate.positive_papers == 100
+    assert len(certificate.sha256()) == 64
+
+
+def test_production_certificate_rejects_non_test_cases():
+    cases, outcomes = _certification_corpus()
+    first = cases[0]
+    cases[0] = BenchmarkCase(
+        case_id=first.case_id,
+        paper_id=first.paper_id,
+        corruption_family=first.corruption_family,
+        expected_material_issue=first.expected_material_issue,
+        split=BenchmarkSplit.DEVELOPMENT,
+        metadata=first.metadata,
+    )
+
+    with pytest.raises(ValueError, match="TEST-split"):
+        issue_production_calibration_certificate(
+            calibration_sha256="a" * 64,
+            audited_system_sha256="b" * 64,
+            cases=cases,
+            outcomes=outcomes,
+        )
+
+
+def test_production_certificate_rejects_manifest_outcome_label_mismatch():
+    cases, outcomes = _certification_corpus()
+    outcomes[0] = PaperAuditOutcome("clean-0", True, False)
+
+    with pytest.raises(ValueError, match="expected-material-issue"):
+        issue_production_calibration_certificate(
+            calibration_sha256="a" * 64,
+            audited_system_sha256="b" * 64,
+            cases=cases,
+            outcomes=outcomes,
+        )
+
+
+def test_failed_certification_never_issues_certificate():
+    cases = [
+        BenchmarkCase(
+            case_id=f"case-{i}",
+            paper_id=f"paper-{i}",
+            corruption_family="none",
+            expected_material_issue=False,
+            split=BenchmarkSplit.TEST,
+            metadata={},
+        )
+        for i in range(20)
+    ]
+    outcomes = [PaperAuditOutcome(f"paper-{i}", False, False) for i in range(20)]
+
+    report, certificate = issue_production_calibration_certificate(
+        calibration_sha256="a" * 64,
+        audited_system_sha256="b" * 64,
+        cases=cases,
+        outcomes=outcomes,
+    )
+
+    assert not report.certified
+    assert certificate is None
