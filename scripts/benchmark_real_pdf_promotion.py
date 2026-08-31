@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 
-from smoke_real_pdf import CASES, _download
+from smoke_real_pdf import CASES, SEED_MANIFEST_SHA256, _download
 from veritas.audit import AuditEngine
 from veritas.extraction import ConformalCalibration, ConformalExtractionGate
 from veritas.ingestion import CalibrationScope
@@ -176,6 +176,7 @@ def main() -> None:
 
     report = {
         "scope": "real_open_access_selective_promotion_benchmark_not_production_certification",
+        "seed_manifest_sha256": SEED_MANIFEST_SHA256,
         "cases": total,
         "exact_extraction_coverage": extraction_ok_count / total if total else 0.0,
         "conservative_native_threshold_detector_promotion_coverage": (
