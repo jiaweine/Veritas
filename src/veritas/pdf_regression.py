@@ -15,6 +15,7 @@ from .ingestion import (
     ResolvedEvidence,
 )
 from .models import RegressionResult, ReportedNumber, SourceLocation
+from .pdf_geometry import reconstruct_borderless_table
 from .pdf_native import NativePDFSnapshot, PDFTable, parse_pdf_dual
 from .types import ComparisonOperator, Materiality
 
@@ -38,18 +39,24 @@ _HEADER_ALIASES = {
         "zvalue",
     },
     "p_value": {"p", "pvalue", "probz", "probt"},
+    # Non-audited columns still act as geometry separators in wide journal tables.
+    "separator_wald": {"wald", "waldchi2", "waldx2"},
+    "separator_or": {"or", "oddsratio"},
+    "separator_ci": {"ci", "confidenceinterval"},
 }
 
-_SIGN_TRANSLATION = str.maketrans({
-    "−": "-",  # U+2212 mathematical minus
-    "–": "-",  # en dash sometimes substituted by PDF text extraction
-    "—": "-",  # em dash, tolerated only inside otherwise numeric cells
-    "﹣": "-",
-    "－": "-",
-    "＋": "+",
-    "≤": "<=",
-    "≥": ">=",
-})
+_SIGN_TRANSLATION = str.maketrans(
+    {
+        "−": "-",  # U+2212 mathematical minus
+        "–": "-",  # en dash sometimes substituted by PDF text extraction
+        "—": "-",  # em dash, tolerated only inside otherwise numeric cells
+        "﹣": "-",
+        "－": "-",
+        "＋": "+",
+        "≤": "<=",
+        "≥": ">=",
+    }
+)
 
 
 def _normalized_header(value: str | None) -> str:
@@ -110,6 +117,16 @@ def _canonical_number(raw: str) -> str:
     return f"{operator}{rendered}"
 
 
+def _table_source_id(table: PDFTable) -> str:
+    if table.table_index < 0:
+        return f"word-geometry-v1:{abs(table.table_index)}"
+    return f"native-table:{table.table_index}"
+
+
+def _extraction_mode(table: PDFTable) -> str:
+    return "word_geometry_v1" if table.table_index < 0 else "native_table"
+
+
 @dataclass(frozen=True)
 class RegressionTableMatch:
     snapshot: NativePDFSnapshot
@@ -123,7 +140,7 @@ class RegressionTableMatch:
         return SourceLocation(
             artifact_id=self.snapshot.artifact_id,
             page=self.table.page,
-            table=f"native-{self.table.table_index}",
+            table=_table_source_id(self.table),
             row=self.variable_text,
             bbox=self.table.bbox,
             text_quote=raw,
@@ -152,33 +169,55 @@ def _find_header(table: PDFTable) -> tuple[int, dict[str, int]] | None:
     return None
 
 
-def _find_match(snapshot: NativePDFSnapshot, variable_label: str) -> RegressionTableMatch | None:
-    target = " ".join(variable_label.casefold().split())
-    for table in snapshot.tables:
-        header = _find_header(table)
-        if header is None:
+def _match_table(
+    snapshot: NativePDFSnapshot,
+    table: PDFTable,
+    *,
+    target: str,
+) -> RegressionTableMatch | None:
+    header = _find_header(table)
+    if header is None:
+        return None
+    header_index, columns = header
+    variable_column = columns["variable"]
+    for row_index in range(header_index + 1, len(table.rows)):
+        row = table.rows[row_index]
+        if variable_column >= len(row) or row[variable_column] is None:
             continue
-        header_index, columns = header
-        variable_column = columns["variable"]
-        for row_index in range(header_index + 1, len(table.rows)):
-            row = table.rows[row_index]
-            if variable_column >= len(row) or row[variable_column] is None:
-                continue
-            variable_text = " ".join(str(row[variable_column]).casefold().split())
-            if variable_text == target:
-                return RegressionTableMatch(snapshot, table, header_index, row_index, columns, str(row[variable_column]))
+        variable_text = " ".join(str(row[variable_column]).casefold().split())
+        if variable_text == target:
+            return RegressionTableMatch(snapshot, table, header_index, row_index, columns, str(row[variable_column]))
     return None
 
 
+def _find_match(snapshot: NativePDFSnapshot, variable_label: str) -> RegressionTableMatch | None:
+    target = " ".join(variable_label.casefold().split())
+    for table in snapshot.tables:
+        match = _match_table(snapshot, table, target=target)
+        if match is not None:
+            return match
+
+    virtual = reconstruct_borderless_table(
+        snapshot,
+        variable_label=variable_label,
+        role_resolver=_header_role,
+    )
+    if virtual is None:
+        return None
+    return _match_table(snapshot, virtual, target=target)
+
+
 def _candidate(match: RegressionTableMatch, key: str, raw: str, normalized: str) -> ExtractionCandidate:
+    mode = _extraction_mode(match.table)
+    base_score = 0.02 if mode == "word_geometry_v1" else 0.01
     header_penalty = 0.0 if key in match.columns else 0.02
     table_penalty = 0.0 if len(match.table.rows) >= 2 else 0.02
     return ExtractionCandidate(
-        parser_id=match.snapshot.parser_id,
+        parser_id=f"{match.snapshot.parser_id}:{mode}",
         parser_family=match.snapshot.parser_family,
         raw=raw,
         normalized_value=normalized,
-        nonconformity_score=0.01 + header_penalty + table_penalty,
+        nonconformity_score=base_score + header_penalty + table_penalty,
         source=match.source_for(raw),
     )
 
@@ -207,7 +246,7 @@ def extract_regression_table(
         canonical_source = canonical_source or SourceLocation(
             artifact_id=snapshot.artifact_id,
             page=match.table.page,
-            table=f"native-{match.table.table_index}",
+            table=_table_source_id(match.table),
             row=match.variable_text,
             bbox=match.table.bbox,
             text_quote=match.table.text,
@@ -229,10 +268,12 @@ def extract_regression_table(
             semantics["inference_distribution"].append(_candidate(match, "t_stat", str(stat_header), "normal"))
 
     source = canonical_source or SourceLocation(artifact_id=next(iter(artifact_ids)))
+    parser_versions = [(snapshot.parser_id, snapshot.parser_version) for snapshot in snapshots]
+    parser_versions.append(("veritas_regression_geometry", "1.0.0"))
     return RegressionExtractionBundle(
         artifact_id=next(iter(artifact_ids)),
         artifact_sha256=next(iter(artifact_hashes)),
-        parser_versions=tuple(sorted((snapshot.parser_id, snapshot.parser_version) for snapshot in snapshots)),
+        parser_versions=tuple(sorted(parser_versions)),
         field_candidates={key: tuple(value) for key, value in fields.items()},
         semantic_candidates={key: tuple(value) for key, value in semantics.items()},
         source=source,
@@ -249,7 +290,7 @@ def regression_promotion_spec(*, require_p_value: bool = True) -> PromotionSpec:
         min_independent_parser_families=2,
         require_page_anchor=True,
         require_location_anchor=True,
-        spec_version="regression-native-table-v2",
+        spec_version="regression-native-table-v3",
     )
 
 
@@ -264,10 +305,14 @@ def bundle_to_ledger(
     protocol = IngestionProtocol(
         protocol_id="dual-native-pdf-regression",
         protocol_version="0.9.0",
-        object_schema_version="regression-native-table-v2",
+        object_schema_version="regression-native-table-v3",
         calibration_sha256=calibration_sha256,
         parser_versions=bundle.parser_versions,
-        policy_note="PyMuPDF and pdfplumber must independently support all hard-audit fields and explicit z-inference semantics.",
+        policy_note=(
+            "PyMuPDF and pdfplumber independently provide word/table evidence. Native table extraction is preferred; "
+            "a shared deterministic header-anchored geometry fallback is applied separately to each parser word stream. "
+            "Hard promotion still requires cross-family value agreement and explicit z-inference semantics."
+        ),
     )
     ledger = EvidenceLedger(
         artifact=ArtifactRef(
@@ -288,7 +333,7 @@ def bundle_to_ledger(
             value=resolution.normalized_value,
             resolution=resolution,
             extraction_confidence=extraction_confidence,
-            evidence_note=f"Dual native table extraction for {key}.",
+            evidence_note=f"Dual native/geometry table extraction for {key}.",
         )
     semantics: dict[str, ResolvedEvidence] = {}
     for key, candidates in bundle.semantic_candidates.items():
