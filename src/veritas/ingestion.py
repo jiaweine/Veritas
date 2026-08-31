@@ -26,15 +26,30 @@ class PromotionDecision(str, Enum):
     UNVERIFIABLE = "unverifiable"
 
 
+class CalibrationScope(str, Enum):
+    """Authority carried by the calibration used for an ingestion protocol.
+
+    Scope is deliberately independent of detector arithmetic. Benchmark and research calibrations
+    may promote an object into a detector for evaluation, but only PRODUCTION_CERTIFIED calibration
+    can make the object eligible for a production hard-audit path.
+    """
+
+    UNVERIFIED = "unverified"
+    BENCHMARK = "benchmark"
+    RESEARCH = "research"
+    PRODUCTION_CERTIFIED = "production_certified"
+
+
 @dataclass(frozen=True)
 class IngestionProtocol:
-    """Identity of the extraction/promotion protocol used for one audit run."""
+    """Identity and calibration authority of the extraction/promotion protocol for one audit run."""
 
     protocol_id: str
     protocol_version: str
     object_schema_version: str
     calibration_sha256: str
     parser_versions: tuple[tuple[str, str], ...]
+    calibration_scope: CalibrationScope = CalibrationScope.UNVERIFIED
     policy_note: str = ""
 
     def __post_init__(self) -> None:
@@ -54,6 +69,7 @@ class IngestionProtocol:
             "protocol_version": self.protocol_version,
             "object_schema_version": self.object_schema_version,
             "calibration_sha256": self.calibration_sha256,
+            "calibration_scope": self.calibration_scope.value,
             "parser_versions": sorted(self.parser_versions),
             "policy_note": self.policy_note,
         }
@@ -155,15 +171,22 @@ class PromotionReport:
     protocol_sha256: str
     promotion_spec_sha256: str
     evidence_sha256: str
+    calibration_scope: CalibrationScope
+
+    @property
+    def detector_ready(self) -> bool:
+        """Whether the object may enter deterministic detectors for evaluation/research."""
+        return self.decision is PromotionDecision.PROMOTE
 
     @property
     def hard_audit_ready(self) -> bool:
-        return self.decision is PromotionDecision.PROMOTE
+        """Whether the promoted object carries production-certified calibration authority."""
+        return self.detector_ready and self.calibration_scope is CalibrationScope.PRODUCTION_CERTIFIED
 
 
 @dataclass(frozen=True)
 class DetectorInputEnvelope:
-    """Only constructible for an object that passed the v0.8 promotion gate."""
+    """A promotion-gated detector input with explicit calibration authority."""
 
     statistical_object: object
     object_id: str
@@ -171,6 +194,7 @@ class DetectorInputEnvelope:
     protocol_sha256: str
     promotion_spec_sha256: str
     evidence_sha256: str
+    calibration_scope: CalibrationScope
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -181,6 +205,10 @@ class DetectorInputEnvelope:
         ):
             if not _SHA256_RE.fullmatch(value):
                 raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
+
+    @property
+    def production_authorized(self) -> bool:
+        return self.calibration_scope is CalibrationScope.PRODUCTION_CERTIFIED
 
 
 @dataclass
@@ -277,6 +305,7 @@ class EvidenceLedger:
             protocol_sha256=self.protocol.sha256(),
             promotion_spec_sha256=spec.sha256(),
             evidence_sha256=evidence_hash,
+            calibration_scope=self.protocol.calibration_scope,
         )
 
     def promote(
@@ -286,7 +315,7 @@ class EvidenceLedger:
         builder: Callable[[dict[str, JsonScalar], dict[str, JsonScalar], ObjectDraft], object],
     ) -> tuple[PromotionReport, DetectorInputEnvelope | None]:
         report = self.evaluate(draft_id, spec)
-        if not report.hard_audit_ready:
+        if not report.detector_ready:
             return report, None
         draft = self.drafts[draft_id]
         statistical_object = builder(report.field_values, report.semantic_values, draft)
@@ -299,6 +328,7 @@ class EvidenceLedger:
             protocol_sha256=report.protocol_sha256,
             promotion_spec_sha256=report.promotion_spec_sha256,
             evidence_sha256=report.evidence_sha256,
+            calibration_scope=report.calibration_scope,
         )
         return report, envelope
 
