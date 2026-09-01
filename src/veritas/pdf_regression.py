@@ -306,6 +306,17 @@ def _field_raw(match: RegressionTableMatch, key: str) -> str | None:
     return raw
 
 
+def _uses_explicit_combined_beta_se(match: RegressionTableMatch) -> bool:
+    beta_index = match.columns.get("beta")
+    se_index = match.columns.get("se")
+    if beta_index is None or beta_index != se_index:
+        return False
+    header = match.table.rows[match.header_row_index]
+    if beta_index >= len(header):
+        return False
+    return _header_role(header[beta_index]) == "beta_se"
+
+
 def _match_numeric_signature(match: RegressionTableMatch) -> tuple[str | None, ...]:
     signature: list[str | None] = []
     for key in ("beta", "se", "t_stat", "p_value"):
@@ -342,11 +353,11 @@ def _find_matches(
     locator: RegressionLocator | None,
     allow_token_boundary: bool,
 ) -> tuple[RegressionTableMatch, ...]:
-    matches: list[RegressionTableMatch] = []
+    native_matches: list[RegressionTableMatch] = []
     for table in snapshot.tables:
         if not _locator_accepts(table, locator):
             continue
-        matches.extend(
+        native_matches.extend(
             _match_table(
                 snapshot,
                 table,
@@ -355,6 +366,14 @@ def _find_matches(
             )
         )
 
+    # A native parser that has preserved an explicit compound header such as Coefficient (SE)
+    # carries more publication structure than word geometry can reconstruct. Keep all native
+    # matches so duplicate display items still fail closed, but do not manufacture a second,
+    # lossy representation of the same compound cell from the parser's word stream.
+    if any(_uses_explicit_combined_beta_se(match) for match in native_matches):
+        return tuple(native_matches)
+
+    matches = list(native_matches)
     requested_label = locator.table_label if locator is not None else None
     virtual_tables = reconstruct_borderless_tables(
         snapshot,
@@ -579,10 +598,12 @@ def bundle_to_ledger(
             "a shared deterministic header-anchored geometry fallback is applied separately to each parser word stream. "
             "Native cells with an explicit parenthesized header such as Coefficient (SE) may be deterministically split "
             "into coefficient and standard-error components; parenthesized numeric tokens are unwrapped only when already "
-            "anchored to an explicit SE column. Neither rule infers any test distribution. At least one parser must establish "
-            "the row label with whitespace-preserving exact identity before another parser may join via deterministic "
-            "Unicode/whitespace token-boundary normalization; the relaxed join must also match the exact anchor's "
-            "display-item identity and numerical signature. Ambiguity remains fail-closed."
+            "anchored to an explicit SE column. When a native parser preserves that compound header, its lower-fidelity word "
+            "geometry reconstruction is not treated as a competing representation of the same cell. Neither rule infers "
+            "any test distribution. At least one parser must establish the row label with whitespace-preserving exact "
+            "identity before another parser may join via deterministic Unicode/whitespace token-boundary normalization; "
+            "the relaxed join must also match the exact anchor's display-item identity and numerical signature. Ambiguity "
+            "across publication-visible native display items remains fail-closed."
         ),
     )
     ledger = EvidenceLedger(
@@ -645,7 +666,7 @@ def regression_result_builder(
 ) -> RegressionResult:
     distribution = semantics.get("inference_distribution")
     if distribution != "normal":
-        raise ValueError("v0.9 native regression builder currently supports explicit z/normal inference only")
+        raise ValueError("v0.10 native regression builder currently supports explicit z/normal inference only")
     return RegressionResult(
         object_id=draft.draft_id,
         beta=_reported_from_scalar(fields["beta"]),
