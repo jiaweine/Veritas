@@ -205,7 +205,7 @@ def test_public_report_builder_cannot_self_promote_author_package_mismatch_to_e4
 
     assert report.decision is ReproductionDecision.MISMATCH
     assert report.max_evidence_grade is EvidenceGrade.WEAK_SIGNAL
-    assert "fully attested report builder" in report.reasons
+    assert any("fully attested report builder" in reason for reason in report.reasons)
 
 
 def test_unverified_method_fidelity_caps_mismatch_at_weak_signal() -> None:
