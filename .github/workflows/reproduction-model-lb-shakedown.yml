@@ -7,11 +7,17 @@ on:
     paths:
       - .github/workflows/reproduction-model-lb-shakedown.yml
       - benchmark/reproduction/cases/ssrn_7138278_model_lb_v1.3.1_v0.11.json
+      - benchmark/reproduction/environments/model_lb_v1.3.1_py312.lock.txt
       - tests/test_reproduction_case_packets.py
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  MODEL_LB_COMMIT: 4ea6e5e4c9cf2088aa76f406705f5620e561e199
+  MODEL_LB_BASE_IMAGE: python:3.12-slim@sha256:09f7da3bc104798d0afb40bc08d23ab2da20a76130cec1f2ef170848f5d85217
+  MODEL_LB_EXPECTED_ENVIRONMENT_SHA256: 41e5bfeaa614edbda9dbe28caa9b474c9be09cc801aeb536f7abb26c0a1abde3
 
 jobs:
   author-package-probe:
@@ -26,8 +32,8 @@ jobs:
           set -euo pipefail
           export SRC=/tmp/model-lb-src
           git clone --quiet --no-tags https://github.com/ricardogs-econ/model-LB-replication.git "$SRC"
-          git -C "$SRC" checkout --quiet --detach 4ea6e5e4c9cf2088aa76f406705f5620e561e199
-          test "$(git -C "$SRC" rev-parse HEAD)" = "4ea6e5e4c9cf2088aa76f406705f5620e561e199"
+          git -C "$SRC" checkout --quiet --detach "$MODEL_LB_COMMIT"
+          test "$(git -C "$SRC" rev-parse HEAD)" = "$MODEL_LB_COMMIT"
           rm -rf "$SRC/.git"
           (
             cd "$SRC"
@@ -37,26 +43,25 @@ jobs:
           echo "MODEL_LB_REQUIREMENTS_SHA256=$(sha256sum "$SRC/requirements.txt" | awk '{print $1}')" >> "$GITHUB_ENV"
           echo "MODEL_LB_LICENSE_SHA256=$(sha256sum "$SRC/LICENSE" | awk '{print $1}')" >> "$GITHUB_ENV"
 
-      - name: Build dependency-discovery image without external source code
+      - name: Build pre-frozen image without external source code
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/model-lb.Dockerfile <<'EOF'
-          FROM python:3.12-slim
-          RUN python -m pip install --no-cache-dir --upgrade pip \
-              && python -m pip install --no-cache-dir \
-                 'numpy>=1.26,<3' \
-                 'scipy>=1.11' \
-                 'numba>=0.59' \
-                 'matplotlib>=3.7' \
-                 'joblib>=1.3' \
+          echo "MODEL_LB_ENVIRONMENT_LOCK_SHA256=$(sha256sum benchmark/reproduction/environments/model_lb_v1.3.1_py312.lock.txt | awk '{print $1}')" >> "$GITHUB_ENV"
+          cat > /tmp/model-lb.Dockerfile <<EOF
+          FROM $MODEL_LB_BASE_IMAGE
+          COPY benchmark/reproduction/environments/model_lb_v1.3.1_py312.lock.txt /environment.lock.txt
+          RUN python -m pip install --no-cache-dir pip==26.2.1 \
+              && python -m pip install --no-cache-dir -r /environment.lock.txt \
               && python -m pip freeze | sort > /environment.freeze.txt
           EOF
-          docker build --quiet -f /tmp/model-lb.Dockerfile -t veritas-model-lb:discovery /tmp
-          docker image inspect --format '{{.Id}}' veritas-model-lb:discovery > /tmp/model_lb_image_id.txt
-          docker run --rm --entrypoint cat veritas-model-lb:discovery /environment.freeze.txt \
+          docker build --quiet -f /tmp/model-lb.Dockerfile -t veritas-model-lb:frozen .
+          docker image inspect --format '{{.Id}}' veritas-model-lb:frozen > /tmp/model_lb_image_id.txt
+          docker run --rm --entrypoint cat veritas-model-lb:frozen /environment.freeze.txt \
             > /tmp/model_lb_environment.freeze.txt
-          echo "MODEL_LB_ENVIRONMENT_SHA256=$(sha256sum /tmp/model_lb_environment.freeze.txt | awk '{print $1}')" >> "$GITHUB_ENV"
+          actual_env_sha="$(sha256sum /tmp/model_lb_environment.freeze.txt | awk '{print $1}')"
+          test "$actual_env_sha" = "$MODEL_LB_EXPECTED_ENVIRONMENT_SHA256"
+          echo "MODEL_LB_ENVIRONMENT_SHA256=$actual_env_sha" >> "$GITHUB_ENV"
 
       - name: Recompute empirical PPP table in network-disabled sandbox
         shell: bash
@@ -85,7 +90,7 @@ jobs:
             -e PYTHONDONTWRITEBYTECODE=1 \
             -v "$SRC:/work:ro" \
             -v "$OUT:/out:rw" \
-            veritas-model-lb:discovery \
+            veritas-model-lb:frozen \
             python /work/boot_ppp_cbar.py \
               --empirical \
               --emp-dir /work \
@@ -107,6 +112,7 @@ jobs:
           import csv
           import hashlib
           import json
+          import os
           from pathlib import Path
 
           out = Path('/tmp/model-lb-out/empirical/ppp_empirical.csv')
@@ -115,12 +121,14 @@ jobs:
           attestation = {
               'schema_version': 1,
               'case_id': 'ssrn-7138278-model-lb-v1.3.1',
-              'track': 'author_package_environment_discovery_probe',
-              'external_git_commit_sha': '4ea6e5e4c9cf2088aa76f406705f5620e561e199',
-              'source_manifest_sha256': '${{ env.MODEL_LB_SOURCE_MANIFEST_SHA256 }}',
-              'requirements_sha256': '${{ env.MODEL_LB_REQUIREMENTS_SHA256 }}',
-              'license_sha256': '${{ env.MODEL_LB_LICENSE_SHA256 }}',
-              'environment_freeze_sha256': '${{ env.MODEL_LB_ENVIRONMENT_SHA256 }}',
+              'track': 'author_package_frozen_environment_rerun',
+              'external_git_commit_sha': os.environ['MODEL_LB_COMMIT'],
+              'source_manifest_sha256': os.environ['MODEL_LB_SOURCE_MANIFEST_SHA256'],
+              'requirements_sha256': os.environ['MODEL_LB_REQUIREMENTS_SHA256'],
+              'license_sha256': os.environ['MODEL_LB_LICENSE_SHA256'],
+              'base_image': os.environ['MODEL_LB_BASE_IMAGE'],
+              'environment_lock_sha256': os.environ['MODEL_LB_ENVIRONMENT_LOCK_SHA256'],
+              'environment_freeze_sha256': os.environ['MODEL_LB_ENVIRONMENT_SHA256'],
               'container_image_id': Path('/tmp/model_lb_image_id.txt').read_text().strip(),
               'output_artifact_sha256': hashlib.sha256(out.read_bytes()).hexdigest(),
               'target_id': 'cad-config-faithful-pvalue',
@@ -131,9 +139,10 @@ jobs:
               'source_mount_read_only': True,
               'veritas_repository_mounted': False,
               'credentials_mounted': False,
+              'runtime_precommitted': True,
               'production_authorized': False,
               'e4_authorized': False,
-              'note': 'Discovery probe only. Paper target remains sealed/orchestrator-only; dependency ranges are not yet a frozen production environment.'
+              'note': 'Frozen-environment engineering rerun. Paper target remains sealed/orchestrator-only; independent target adjudication and method-fidelity review are still required for production authority.'
           }
           Path('/tmp/model_lb_execution_attestation.json').write_text(
               json.dumps(attestation, indent=2, sort_keys=True) + '\n', encoding='utf-8'
@@ -143,7 +152,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: model-lb-v1.3.1-author-package-probe
+          name: model-lb-v1.3.1-author-package-frozen-rerun
           if-no-files-found: error
           path: |
             /tmp/model_lb_execution_attestation.json
