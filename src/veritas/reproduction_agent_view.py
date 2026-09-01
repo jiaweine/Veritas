@@ -16,29 +16,13 @@ class AgentTaskViewBlocked(RuntimeError):
 
 
 @dataclass(frozen=True)
-class AgentSourceLocator:
-    """Publication locator safe to expose to a blind implementation agent.
-
-    Free text, character ranges and bounding boxes are deliberately excluded because a nearby
-    result value can leak through an otherwise-methodological source quote.
-    """
-
-    artifact_id: str
-    page: int | None
-    section: str | None
-    table: str | None
-    figure: str | None
-    row: str | None
-    column: str | None
-
-
-@dataclass(frozen=True)
 class AgentMethodFieldView:
+    """Semantic method choice only; publication provenance remains internal to Veritas."""
+
     name: str
     value: str | int | float | bool | None
     confidence: float
     required_for_execution: bool
-    source: AgentSourceLocator
 
 
 @dataclass(frozen=True)
@@ -129,15 +113,6 @@ def build_agent_task_view(task: CodeAgentTask) -> AgentTaskView:
             value=item.value,
             confidence=item.confidence,
             required_for_execution=item.required_for_execution,
-            source=AgentSourceLocator(
-                artifact_id=item.source.artifact_id,
-                page=item.source.page,
-                section=item.source.section,
-                table=item.source.table,
-                figure=item.source.figure,
-                row=item.source.row,
-                column=item.source.column,
-            ),
         )
         for item in task.method_spec.fields
     )

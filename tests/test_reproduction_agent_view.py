@@ -16,7 +16,7 @@ from veritas.reproduction import (
 from veritas.reproduction_agent_view import AgentTaskViewBlocked, build_agent_task_view
 
 
-def test_agent_view_strips_method_source_quotes_that_may_contain_result_values() -> None:
+def test_agent_view_strips_method_provenance_that_may_fingerprint_or_leak_results() -> None:
     task = build_code_agent_task(
         task_id="blind",
         mode=ReproductionMode.INDEPENDENT_REIMPLEMENTATION,
@@ -30,6 +30,9 @@ def test_agent_view_strips_method_source_quotes_that_may_contain_result_values()
                     source=SourceLocation(
                         page=4,
                         section="Methods",
+                        table="Table 9",
+                        row="Distinctive treatment label",
+                        column="Estimate",
                         text_quote="We estimated OLS; the focal coefficient was 9.87654321.",
                         char_start=100,
                         char_end=160,
@@ -56,10 +59,13 @@ def test_agent_view_strips_method_source_quotes_that_may_contain_result_values()
     assert "text_quote" not in rendered
     assert "char_start" not in rendered
     assert "bbox" not in rendered
+    assert "Table 9" not in rendered
+    assert "Distinctive treatment label" not in rendered
+    assert "Methods" not in rendered
     assert "file:///data.csv" not in rendered
     assert "uri" not in rendered
-    assert view.method_fields[0].source.page == 4
-    assert view.method_fields[0].source.section == "Methods"
+    assert view.method_fields[0].name == "estimator"
+    assert view.method_fields[0].value == "ols"
 
 
 def test_agent_view_contains_output_identity_but_not_reported_number() -> None:
