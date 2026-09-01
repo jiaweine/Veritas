@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "status": "sampling_frame_only_no_reported_targets",
+  "as_of": "2026-09-02",
+  "rule": "This manifest selects engineering candidates only. It contains no paper numeric targets and must never be mounted into an independent code-agent workspace. Numeric targets are independently extracted, reviewed, committed, and kept orchestrator-only until the frozen run is complete.",
+  "selection_principles": [
+    "separate author-package rerun from independent reimplementation",
+    "prefer recent packages for blind-agent evaluation to reduce model-memory contamination risk",
+    "pin article version and every input artifact before execution",
+    "verify artifact-level access and model-egress rights before mounting data",
+    "do not use reported outcomes, author code, output files, paper URLs, or repository URLs in the independent agent view",
+    "do not treat a successful engineering shakedown as benchmark evidence"
+  ],
+  "candidates": [
+    {
+      "candidate_id": "qje-2019-tanzania-complementarities",
+      "paper_id": "doi:10.1093/qje/qjz010",
+      "year": 2019,
+      "method_family": "cluster-randomized factorial treatment regression",
+      "replication_package": "doi:10.7910/DVN/AKVGQ7",
+      "package_status": "public replication package; external reproduction-platform record says enough materials are available",
+      "intended_role": "pipeline_shakedown_and_author_package_rerun",
+      "blind_agent_benchmark_status": "blocked_pending_contamination_control",
+      "blockers": [
+        "verify file-level Dataverse licenses and any model-egress restrictions",
+        "pin a concrete paper and replication-package version",
+        "independently extract and double-review the MethodSpecification",
+        "seal a claim-target contract without exposing numeric reported values to the agent",
+        "mitigate the high memorization risk of a widely available 2019 paper and replication package"
+      ]
+    },
+    {
+      "candidate_id": "aejep-2026-polluted-ipos",
+      "paper_id": "doi:10.1257/pol.20240900",
+      "year": 2026,
+      "method_family": "empirical finance regression and instrumental-variable analyses",
+      "replication_package": "doi:10.3886/E237301V1",
+      "package_status": "openICPSR V1 published 2026-03-27; package describes data and Stata code for all empirical analyses, tables, and figures",
+      "intended_role": "preferred_first_contamination_reduced_blind_candidate",
+      "blind_agent_benchmark_status": "candidate_only_pending_artifact_and_method_review",
+      "blockers": [
+        "pin the exact forthcoming-paper version matched by replication package V1",
+        "verify artifact-level download, license, and model-egress permissions",
+        "select one narrow main-claim display item before reading author output files",
+        "independently extract and double-review the design-specific MethodSpecification",
+        "commit paper target cells before agent execution and keep them orchestrator-only",
+        "decide whether author-code rerun requires licensed Stata while independent reimplementation uses a separate supported runtime"
+      ]
+    },
+    {
+      "candidate_id": "openicpsr-223703-v4",
+      "paper_id": "openicpsr:E223703V4",
+      "year": 2025,
+      "method_family": "observational prediction and partial-information analysis",
+      "replication_package": "doi:10.3886/E223703V4",
+      "package_status": "public data-and-code candidate already present in the real-corpus sampling frame",
+      "intended_role": "alternate_recent_blind_candidate",
+      "blind_agent_benchmark_status": "candidate_only_pending_artifact_and_method_review",
+      "blockers": [
+        "verify the currently downloadable artifact set and exact version",
+        "verify licenses and model-egress permissions",
+        "complete blinded MethodSpecification review",
+        "seal a narrow claim-target contract before code-agent dispatch"
+      ]
+    }
+  ]
+}
