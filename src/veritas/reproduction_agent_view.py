@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
+from dataclasses import asdict, dataclass
 from typing import Protocol
 
 from .reproduction import CodeAgentProposal, CodeAgentTask, ReproductionMode
-
 
 INDEPENDENT_AGENT_ALLOWED_ARTIFACT_ROLES = frozenset(
     {"raw_data", "analysis_data", "data_dictionary", "schema"}
