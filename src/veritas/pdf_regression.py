@@ -22,6 +22,11 @@ from .types import ComparisonOperator, Materiality
 _NUMBER_RE = re.compile(
     r"^\s*(?P<op><=|>=|<|>)?\s*(?P<number>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*(?:\*+)?\s*$"
 )
+_COMBINED_BETA_SE_RE = re.compile(
+    r"^\s*(?P<beta>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)"
+    r"\s*(?:\*+)?\s*\(\s*"
+    r"(?P<se>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*\)\s*$"
+)
 _HEADER_CLEAN_RE = re.compile(r"[^a-z0-9]+")
 _INDEXED_BETA_HEADER_RE = re.compile(r"^beta(?:[0-9]+|[ijk])?$")
 
@@ -37,6 +42,7 @@ _HEADER_ALIASES = {
         "regressor",
         "regressors",
     },
+    "beta_se": {"bse", "betase", "coefse", "coefficientse", "estimatese"},
     "beta": {"b", "beta", "coef", "coefficient", "estimate"},
     "se": {"se", "stderr", "stderror", "standarderror", "stddev", "stdse"},
     "t_stat": {
@@ -96,6 +102,14 @@ def _header_role(value: str | None) -> str | None:
 
 def _normalize_numeric_text(raw: str) -> str:
     return raw.translate(_SIGN_TRANSLATION).replace("\u00a0", " ").strip()
+
+
+def _split_combined_beta_se(raw: str) -> tuple[str, str] | None:
+    normalized_raw = _normalize_numeric_text(raw)
+    match = _COMBINED_BETA_SE_RE.fullmatch(normalized_raw)
+    if match is None:
+        return None
+    return match.group("beta"), match.group("se")
 
 
 def _display_decimals(raw_number: str) -> int | None:
@@ -207,7 +221,10 @@ def _find_header(table: PDFTable) -> tuple[int, dict[str, int]] | None:
         columns: dict[str, int] = {}
         for column_index, cell in enumerate(row):
             role = _header_role(cell)
-            if role is not None and role not in columns:
+            if role == "beta_se":
+                columns.setdefault("beta", column_index)
+                columns.setdefault("se", column_index)
+            elif role is not None and role not in columns:
                 columns[role] = column_index
         if {"variable", "beta", "se", "t_stat"}.issubset(columns):
             return row_index, columns
@@ -254,15 +271,27 @@ def _locator_accepts(table: PDFTable, locator: RegressionLocator | None) -> bool
     return requested_label is None or table.publication_label == requested_label
 
 
-def _match_numeric_signature(match: RegressionTableMatch) -> tuple[str | None, ...]:
+def _field_raw(match: RegressionTableMatch, key: str) -> str | None:
     row = match.table.rows[match.data_row_index]
+    index = match.columns.get(key)
+    if index is None or index >= len(row) or row[index] is None:
+        return None
+    raw = str(row[index])
+    if key in {"beta", "se"} and match.columns.get("beta") == match.columns.get("se"):
+        combined = _split_combined_beta_se(raw)
+        if combined is None:
+            return None
+        return combined[0] if key == "beta" else combined[1]
+    return raw
+
+
+def _match_numeric_signature(match: RegressionTableMatch) -> tuple[str | None, ...]:
     signature: list[str | None] = []
     for key in ("beta", "se", "t_stat", "p_value"):
-        index = match.columns.get(key)
-        if index is None or index >= len(row) or row[index] is None:
+        raw = _field_raw(match, key)
+        if raw is None:
             signature.append(None)
             continue
-        raw = str(row[index])
         try:
             signature.append(_canonical_number(raw))
         except ValueError:
@@ -458,7 +487,6 @@ def extract_regression_table(
         match = resolved_by_parser.get(snapshot.parser_id)
         if match is None:
             continue
-        row = match.table.rows[match.data_row_index]
         canonical_source = canonical_source or SourceLocation(
             artifact_id=snapshot.artifact_id,
             page=match.table.page,
@@ -468,10 +496,9 @@ def extract_regression_table(
             text_quote=match.table.text,
         )
         for key in ("beta", "se", "t_stat", "p_value"):
-            column_index = match.columns.get(key)
-            if column_index is None or column_index >= len(row) or row[column_index] is None:
+            raw = _field_raw(match, key)
+            if raw is None:
                 continue
-            raw = str(row[column_index])
             try:
                 normalized = _canonical_number(raw)
             except ValueError:
@@ -485,6 +512,7 @@ def extract_regression_table(
 
     source = canonical_source or SourceLocation(artifact_id=next(iter(artifact_ids)))
     parser_versions = [(snapshot.parser_id, snapshot.parser_version) for snapshot in snapshots]
+    parser_versions.append(("veritas_regression_cell_normalizer", "1.0.0"))
     parser_versions.append(("veritas_regression_geometry", "1.4.0"))
     return RegressionExtractionBundle(
         artifact_id=next(iter(artifact_ids)),
@@ -521,16 +549,18 @@ def bundle_to_ledger(
 ) -> EvidenceLedger:
     protocol = IngestionProtocol(
         protocol_id="dual-native-pdf-regression",
-        protocol_version="0.9.0",
+        protocol_version="0.10.0",
         object_schema_version="regression-native-table-v4",
         calibration_sha256=calibration_sha256,
         parser_versions=bundle.parser_versions,
         policy_note=(
             "PyMuPDF and pdfplumber independently provide word/table evidence. Publication table captions are preserved; "
             "a shared deterministic header-anchored geometry fallback is applied separately to each parser word stream. "
-            "At least one parser must establish the row label with whitespace-preserving exact identity before another "
-            "parser may join via deterministic Unicode/whitespace token-boundary normalization; the relaxed join must "
-            "also match the exact anchor's display-item identity and numerical signature. Ambiguity remains fail-closed."
+            "Native cells explicitly headed Coefficient (SE) or an equivalent compact alias may be deterministically split "
+            "into coefficient and standard-error components; this does not infer any test distribution. At least one parser "
+            "must establish the row label with whitespace-preserving exact identity before another parser may join via "
+            "deterministic Unicode/whitespace token-boundary normalization; the relaxed join must also match the exact "
+            "anchor's display-item identity and numerical signature. Ambiguity remains fail-closed."
         ),
     )
     ledger = EvidenceLedger(
