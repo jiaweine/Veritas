@@ -1,7 +1,9 @@
 {
   "schema_version": 1,
   "case_id": "ssrn-7138278-model-lb-v1.3.1",
-  "status": "not_ready_for_execution",
+  "status": "execution_completed_review_pending",
+  "execution_readiness": "completed",
+  "production_evidence_readiness": "blocked_pending_independent_review",
   "benchmark_role": "author_package_pipeline_shakedown_only",
   "agent_independence_scoring": "prohibited",
   "as_of": "2026-09-02",
@@ -32,7 +34,7 @@
   "execution_tracks": {
     "author_package": {
       "mode": "author_code",
-      "status": "ready_for_frozen_environment_rerun",
+      "status": "frozen_execution_attested_review_pending",
       "entrypoint": "boot_ppp_cbar.py --empirical",
       "runtime_family": "python_numba",
       "runtime_version": "3.12",
@@ -62,8 +64,24 @@
         "production_authorized": false,
         "e4_authorized": false
       },
-      "blockers_to_attested_report": [
-        "the pre-frozen environment rerun has not yet completed",
+      "frozen_rerun": {
+        "workflow_run_id": 33537801212,
+        "workflow_head_sha": "b55eaf07072f5d2a364462d1b8a6b8b0a4cfad22",
+        "artifact_id": 9812365283,
+        "artifact_bundle_sha256": "5fc007f6e70d3dcd7076aedc70ea8f4e614ebec45726027480c78d5fcbf9e4d2",
+        "status": "success",
+        "source_manifest_sha256": "01e3b5cb3609f8547c35d1ef8a556bfc508ce73f491d94ad97955aa9e0e2633d",
+        "environment_freeze_sha256": "41e5bfeaa614edbda9dbe28caa9b474c9be09cc801aeb536f7abb26c0a1abde3",
+        "output_artifact_sha256": "c7fac038f76b239c77c5bb19fa0e3576765690822155410d6a5bc9cb9232328c",
+        "runtime_precommitted": true,
+        "network_disabled": true,
+        "source_mount_read_only": true,
+        "credentials_mounted": false,
+        "production_authorized": false,
+        "e4_authorized": false
+      },
+      "comparison_certificate": "benchmark/reproduction/results/ssrn_7138278_model_lb_v1.3.1_author_package_v0.11.json",
+      "blockers_to_production_authority": [
         "method-fidelity attestation has not been independently completed",
         "paper target has not completed second-review/adjudication"
       ]
@@ -93,7 +111,7 @@
     "production_authorized": false,
     "e4_authorized": false,
     "maximum_current_evidence": "UNVERIFIABLE",
-    "reason": "A successful isolated discovery rerun now exists and the runtime is precommitted for rerun, but the frozen rerun, independent target adjudication, and method-fidelity attestation are not complete."
+    "reason": "The author package has completed a precommitted frozen isolated rerun and a descriptive MATCH certificate exists. Independent target adjudication and method-fidelity attestation remain incomplete, so production evidence promotion is still blocked."
   },
   "readiness_gates": {
     "article_version_pinned": true,
@@ -103,7 +121,7 @@
     "method_spec_double_reviewed": false,
     "target_double_reviewed": false,
     "target_sealed": true,
-    "author_package_execution_attested": false
+    "author_package_execution_attested": true
   },
   "version_drift_control": {
     "later_release_observed": "v2.0.1",
@@ -124,5 +142,5 @@
       "locator": "https://doi.org/10.5281/zenodo.21610828"
     }
   ],
-  "rule": "The reported numeric target is intentionally absent. Only its pre-run commitment is stored here. This packet and all repository URLs are orchestrator provenance and must never be mounted into an independent code-agent workspace."
+  "rule": "The reported numeric target is intentionally absent. Only its pre-run commitment and post-run comparison status are stored. This packet and all repository URLs are orchestrator provenance and must never be mounted into an independent code-agent workspace."
 }
