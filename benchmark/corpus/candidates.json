@@ -2,7 +2,7 @@
   "schema_version": 1,
   "status": "sampling_frame_only_unlabeled",
   "rule": "Presence in this file is never evidence of consistency, inconsistency, reproducibility, or misconduct. Claim-level labels require the locked AuditBench corpus protocol.",
-  "as_of": "2026-08-31",
+  "as_of": "2026-09-01",
   "papers": [
     {
       "paper_id": "doi:10.1257/aer.20160256",
@@ -80,6 +80,54 @@
       ],
       "redistributable_artifacts": false,
       "license_note": "Candidate metadata only until repository/file licenses are programmatically verified."
+    },
+    {
+      "paper_id": "doi:10.3389/fpubh.2025.1520668",
+      "article_family_id": "doi:10.3389/fpubh.2025.1520668",
+      "doi": "10.3389/fpubh.2025.1520668",
+      "title": "Exploring the relationship between health literacy and chronic diseases among middle-aged and older adults: evidence from Zhejiang, China",
+      "discipline": "public_health",
+      "year": 2025,
+      "source_url": "https://www.frontiersin.org/journals/public-health/articles/10.3389/fpubh.2025.1520668/full",
+      "access_tier": "paper_only",
+      "artifact_urls": [
+        "https://www.frontiersin.org/journals/public-health/articles/10.3389/fpubh.2025.1520668/pdf"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "Article PDF states CC BY. Veritas stores only the source URL in the sampling frame; no local mirror is committed.",
+      "extraction_layout_note": "Table 2 uses a combined Coefficient (SE) cell and continues across pages; candidate target is the unique F01 (Group male vs. female) row."
+    },
+    {
+      "paper_id": "doi:10.1186/s12889-025-21990-3",
+      "article_family_id": "doi:10.1186/s12889-025-21990-3",
+      "doi": "10.1186/s12889-025-21990-3",
+      "title": "Assessment of knowledge, attitudes, and prevention practices regarding HIV/AIDS among urban slum dwellers in Bangladesh: an interview-based study",
+      "discipline": "public_health_survey",
+      "year": 2025,
+      "source_url": "https://link.springer.com/article/10.1186/s12889-025-21990-3",
+      "access_tier": "paper_only",
+      "artifact_urls": [
+        "https://bmcpublichealth.biomedcentral.com/counter/pdf/10.1186/s12889-025-21990-3.pdf"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "Article is open access under CC BY-NC-ND 4.0. Keep as linked benchmark input; do not commit adapted article material.",
+      "extraction_layout_note": "Tables 2-4 use multi-row grouped headers with repeated bivariable and multivariable B/SE/t/beta/p blocks and continuation pages. Requires publication-visible model-group disambiguation before seed promotion."
+    },
+    {
+      "paper_id": "doi:10.3390/cancers16040734",
+      "article_family_id": "doi:10.3390/cancers16040734",
+      "doi": "10.3390/cancers16040734",
+      "title": "Is the Validity of Logistic Regression Models Developed with a National Hospital Database Inferior to Models Developed from Clinical Databases to Analyze Surgical Lung Cancers?",
+      "discipline": "health_services_oncology",
+      "year": 2024,
+      "source_url": "https://www.mdpi.com/2072-6694/16/4/734",
+      "access_tier": "paper_only",
+      "artifact_urls": [
+        "https://www.mdpi.com/2072-6694/16/4/734/pdf"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "Cancers is an open-access MDPI journal using CC BY. Verify the exact article PDF endpoint in CI before promoting any extraction target to seed.",
+      "extraction_layout_note": "Candidate regression table uses Coef/S.E./Wald Test/p-Value. Wald is not interchangeable with an explicit t or z statistic; extraction and detector applicability must remain separate."
     }
   ]
 }
