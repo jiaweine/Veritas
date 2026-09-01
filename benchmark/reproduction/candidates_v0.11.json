@@ -67,6 +67,25 @@
         "complete blinded MethodSpecification review",
         "seal a narrow claim-target contract before code-agent dispatch"
       ]
+    },
+    {
+      "candidate_id": "aejmic-2026-rugged-landscape",
+      "paper_id": "doi:10.1257/mic.20230266",
+      "year": 2026,
+      "method_family": "dynamic spatial-competition computational model and Monte Carlo simulation",
+      "replication_package": "doi:10.3886/E238082V1",
+      "package_status": "openICPSR V1 published 2026-04-01; Python_Files contains main.py, montecarlo.py, Cython helper/build files, requirements.txt, and table1-table3 CSV outputs",
+      "public_history_note": "A public working-paper version existed by 2022, so the 2026 package is not evidence of model-memory holdout.",
+      "intended_role": "preferred_first_python_author_package_pipeline_shakedown",
+      "blind_agent_benchmark_status": "blocked_pending_contamination_control",
+      "blockers": [
+        "capture and independently review artifact-level openICPSR download/license terms before ingesting package bytes",
+        "pin the publication-visible article version matched to package V1 rather than assuming an older public draft is identical",
+        "hash the exact Python source, requirements, and reference output files after authorized retrieval",
+        "select one narrow publication-visible computational table or figure target and double-review its identity before sealing numeric targets",
+        "freeze a Python runtime compatible with the package requirements and Cython build before author-package rerun",
+        "do not use author table CSV outputs or author source code in a later independent-agent workspace"
+      ]
     }
   ]
 }
