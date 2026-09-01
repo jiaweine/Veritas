@@ -12,7 +12,7 @@ def test_real_extraction_seed_has_required_identity_and_review_boundaries():
     cases = payload["cases"]
     case_ids = [case["case_id"] for case in cases]
     assert len(case_ids) == len(set(case_ids))
-    assert len(cases) >= 4
+    assert len(cases) >= 5
 
     required_fields = {"beta", "se", "t_stat", "p_value"}
     for case in cases:
@@ -28,3 +28,6 @@ def test_real_extraction_seed_has_required_identity_and_review_boundaries():
         assert locator["table_label"]
         assert locator["row_label"]
         assert set(case["expected_fields"]) == required_fields
+        promotion = case["promotion_expectation"]
+        assert isinstance(promotion["detector_ready_under_geometry_probe"], bool)
+        assert promotion["reason"]
