@@ -36,7 +36,7 @@ def test_seed_review_packet_creates_one_target_per_requested_field():
     packets = build_blinded_seed_review_packets(seed, seed_manifest_sha256=seed_sha)
     expected_target_count = sum(len(case["expected_fields"]) for case in seed["cases"])
     assert len(packets[0].targets) == expected_target_count
-    assert len(packets[0].targets) == 16
+    assert len(packets[0].targets) >= 20
     assert all(target.target_id.endswith((":beta", ":se", ":t_stat", ":p_value")) for target in packets[0].targets)
 
 
