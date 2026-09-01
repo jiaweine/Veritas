@@ -24,6 +24,8 @@ from veritas.reproduction_security import (
 
 @dataclass
 class RecordingBackend:
+    method_spec_sha256: str
+    visibility_policy_sha256: str
     agent_id: str = "recording-agent"
     agent_version: str = "1"
     seen: list[AgentTaskView] = field(default_factory=list)
@@ -34,15 +36,11 @@ class RecordingBackend:
             agent_id=self.agent_id,
             agent_version=self.agent_version,
             task_sha256=task.task_sha256,
-            method_spec_sha256=_METHOD_SHA,
-            visibility_policy_sha256=_POLICY_SHA,
+            method_spec_sha256=self.method_spec_sha256,
+            visibility_policy_sha256=self.visibility_policy_sha256,
             generated_code_sha256="c" * 64,
             attempts=1,
         )
-
-
-_METHOD_SHA = ""
-_POLICY_SHA = ""
 
 
 def _task():
@@ -82,11 +80,11 @@ def _task():
 
 
 def test_blind_dispatch_exposes_only_sanitized_view_and_rebinds_proposal() -> None:
-    global _METHOD_SHA, _POLICY_SHA
     task = _task()
-    _METHOD_SHA = task.method_spec.sha256()
-    _POLICY_SHA = task.visibility_policy.sha256()
-    backend = RecordingBackend()
+    backend = RecordingBackend(
+        method_spec_sha256=task.method_spec.sha256(),
+        visibility_policy_sha256=task.visibility_policy.sha256(),
+    )
 
     proposal = dispatch_blind_code_agent(
         task,
