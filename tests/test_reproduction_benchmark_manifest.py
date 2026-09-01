@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _MANIFEST = _REPO_ROOT / "benchmark" / "reproduction" / "candidates_v0.11.json"
 _FORBIDDEN_KEYS = {
