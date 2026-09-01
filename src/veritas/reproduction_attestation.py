@@ -9,10 +9,11 @@ from .reproduction import (
     ExecutionAttestation,
     MethodFidelityAttestation,
     ReproductionAuthority,
+    ReproductionMode,
     ReproductionReport,
     ReproductionRootCause,
     SandboxPolicy,
-    build_reproduction_report,
+    _build_reproduction_report,
     validate_frozen_execution,
 )
 
@@ -82,6 +83,27 @@ def validate_artifact_identity(
         raise ValueError("one or more locked task artifacts were not independently verified")
 
 
+def validate_reproduction_authority(
+    task: CodeAgentTask,
+    authority: ReproductionAuthority,
+) -> None:
+    """Bind hard reproduction authority to the execution mode that can justify it."""
+
+    if authority is ReproductionAuthority.EXPERIMENTAL_AGENT:
+        return
+    if authority is ReproductionAuthority.AUTHOR_PACKAGE_RERUN:
+        if task.mode is not ReproductionMode.AUTHOR_CODE:
+            raise ValueError("author-package authority requires an author-code reproduction task")
+        return
+    if authority is ReproductionAuthority.INDEPENDENT_ADJUDICATED:
+        if task.mode is not ReproductionMode.INDEPENDENT_REIMPLEMENTATION:
+            raise ValueError(
+                "independent-adjudicated authority requires an independent-reimplementation task"
+            )
+        return
+    raise ValueError(f"unsupported reproduction authority: {authority!r}")
+
+
 def build_attested_reproduction_report(
     comparisons,
     *,
@@ -94,16 +116,18 @@ def build_attested_reproduction_report(
     authority: ReproductionAuthority,
     root_cause: ReproductionRootCause = ReproductionRootCause.UNKNOWN,
 ) -> ReproductionReport:
-    """Only path intended to construct E4-capable reports from a code-agent workflow."""
+    """Only E4-capable construction path for a code-agent reproduction report."""
 
+    validate_reproduction_authority(task, authority)
     validate_frozen_execution(task, proposal, sandbox_policy, execution)
     validate_method_fidelity(task, proposal, method_fidelity)
     validate_artifact_identity(task, artifact_identity)
-    return build_reproduction_report(
+    return _build_reproduction_report(
         comparisons,
         authority=authority,
         method_fidelity_verified=True,
         artifact_identity_verified=True,
         execution_attested=True,
         root_cause=root_cause,
+        allow_e4=True,
     )

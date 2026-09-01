@@ -187,7 +187,7 @@ def test_experimental_agent_mismatch_is_never_promoted_to_e4() -> None:
     assert "experimental code-agent attempts cannot emit E4 evidence" in report.reasons
 
 
-def test_verified_author_package_mismatch_may_emit_e4() -> None:
+def test_public_report_builder_cannot_self_promote_author_package_mismatch_to_e4() -> None:
     comparisons = compare_reproduced_cells(
         _targets(),
         (
@@ -204,7 +204,8 @@ def test_verified_author_package_mismatch_may_emit_e4() -> None:
     )
 
     assert report.decision is ReproductionDecision.MISMATCH
-    assert report.max_evidence_grade is EvidenceGrade.REPRODUCTION_CONTRADICTION
+    assert report.max_evidence_grade is EvidenceGrade.WEAK_SIGNAL
+    assert "fully attested report builder" in report.reasons
 
 
 def test_unverified_method_fidelity_caps_mismatch_at_weak_signal() -> None:

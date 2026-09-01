@@ -230,8 +230,13 @@ class CodeAgentProposal:
             _validate_sha256("original_code_patch_sha256", self.original_code_patch_sha256)
 
 
-class CodeAgentBackend(Protocol):
-    """Adapter boundary for Codex, SWE-agent, or another coding agent."""
+class AuthorCodeAgentBackend(Protocol):
+    """Full-task adapter boundary reserved for author-code reproduction.
+
+    Independent reimplementation backends must consume the leak-safe ``AgentTaskView`` through
+    ``BlindCodeAgentBackend`` and ``dispatch_blind_code_agent`` instead of receiving a
+    ``CodeAgentTask`` directly.
+    """
 
     agent_id: str
     agent_version: str
@@ -529,6 +534,34 @@ def build_reproduction_report(
     execution_attested: bool,
     root_cause: ReproductionRootCause = ReproductionRootCause.UNKNOWN,
 ) -> ReproductionReport:
+    """Build a descriptive reproduction report without E4 promotion authority.
+
+    Callers may record verification state here, but hard reproduction contradiction authority is
+    intentionally unavailable through this public builder. E4-capable construction is reserved for
+    the fully validated attestation path in ``reproduction_attestation``.
+    """
+
+    return _build_reproduction_report(
+        comparisons,
+        authority=authority,
+        method_fidelity_verified=method_fidelity_verified,
+        artifact_identity_verified=artifact_identity_verified,
+        execution_attested=execution_attested,
+        root_cause=root_cause,
+        allow_e4=False,
+    )
+
+
+def _build_reproduction_report(
+    comparisons: tuple[CellComparison, ...],
+    *,
+    authority: ReproductionAuthority,
+    method_fidelity_verified: bool,
+    artifact_identity_verified: bool,
+    execution_attested: bool,
+    root_cause: ReproductionRootCause = ReproductionRootCause.UNKNOWN,
+    allow_e4: bool,
+) -> ReproductionReport:
     agreement = summarize_reproduction_agreement(comparisons)
     if not comparisons or all(item.status is CellComparisonStatus.MISSING for item in comparisons):
         decision = ReproductionDecision.UNVERIFIABLE
@@ -540,11 +573,12 @@ def build_reproduction_report(
         decision = ReproductionDecision.MATCH
 
     verified_chain = method_fidelity_verified and artifact_identity_verified and execution_attested
+    e4_authority = authority in {
+        ReproductionAuthority.AUTHOR_PACKAGE_RERUN,
+        ReproductionAuthority.INDEPENDENT_ADJUDICATED,
+    }
     if decision is ReproductionDecision.MISMATCH:
-        if verified_chain and authority in {
-            ReproductionAuthority.AUTHOR_PACKAGE_RERUN,
-            ReproductionAuthority.INDEPENDENT_ADJUDICATED,
-        }:
+        if allow_e4 and verified_chain and e4_authority:
             max_grade = EvidenceGrade.REPRODUCTION_CONTRADICTION
         else:
             max_grade = EvidenceGrade.WEAK_SIGNAL
@@ -560,6 +594,8 @@ def build_reproduction_report(
         reasons.append("sandbox execution has not been independently attested")
     if authority is ReproductionAuthority.EXPERIMENTAL_AGENT:
         reasons.append("experimental code-agent attempts cannot emit E4 evidence")
+    elif e4_authority and not allow_e4:
+        reasons.append("E4 reproduction authority requires the fully attested report builder")
 
     return ReproductionReport(
         decision=decision,
