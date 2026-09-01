@@ -6,8 +6,10 @@ from veritas.models import ReportedNumber, SourceLocation
 from veritas.reproduction import (
     AgentVisibilityPolicy,
     CellComparisonStatus,
-    CodeAgentRun,
+    CodeAgentProposal,
+    ExecutionAttestation,
     MethodField,
+    MethodFidelityAttestation,
     MethodSpecification,
     ReproducedCell,
     ReproductionArtifact,
@@ -16,10 +18,12 @@ from veritas.reproduction import (
     ReproductionDecision,
     ReproductionMode,
     ReproductionTarget,
+    SandboxPolicy,
     build_code_agent_task,
     build_reproduction_report,
     compare_reproduced_cells,
-    validate_frozen_agent_run,
+    validate_agent_proposal,
+    validate_frozen_execution,
 )
 from veritas.types import ComparisonOperator, EvidenceGrade, Materiality
 
@@ -69,21 +73,38 @@ def _targets() -> tuple[ReproductionTarget, ...]:
     )
 
 
+def _proposal(task) -> CodeAgentProposal:
+    return CodeAgentProposal(
+        agent_id="test-agent",
+        agent_version="1",
+        task_sha256=task.sha256(),
+        method_spec_sha256=task.method_spec.sha256(),
+        visibility_policy_sha256=task.visibility_policy.sha256(),
+        generated_code_sha256="1" * 64,
+        attempts=1,
+        original_code_patch_sha256=EMPTY_SHA256,
+    )
+
+
 def test_independent_task_hides_original_code_and_numeric_targets() -> None:
-    targets = _targets()
     task = build_code_agent_task(
         task_id="blind-reimplementation",
         mode=ReproductionMode.INDEPENDENT_REIMPLEMENTATION,
         method_spec=_method_spec(),
         artifacts=_artifacts(),
-        targets=targets,
+        targets=_targets(),
     )
 
     assert {artifact.role for artifact in task.artifacts} == {"analysis_data"}
     assert task.target_ids == ("table2-age-b", "table2-age-p")
+    assert [(target.claim_id, target.metric) for target in task.targets] == [
+        ("claim-main", "coefficient"),
+        ("claim-main", "p_value"),
+    ]
     rendered = repr(task)
     assert "reported=ReportedNumber" not in rendered
     assert "original_code" not in rendered
+    assert "0.02" not in rendered
     assert task.reference_commitment_sha256
 
 
@@ -163,6 +184,7 @@ def test_experimental_agent_mismatch_is_never_promoted_to_e4() -> None:
 
     assert report.decision is ReproductionDecision.MISMATCH
     assert report.max_evidence_grade is EvidenceGrade.WEAK_SIGNAL
+    assert report.agreement.material_mismatch_target_ids == ("table2-age-b", "table2-age-p")
     assert "experimental code-agent attempts cannot emit E4 evidence" in report.reasons
 
 
@@ -203,7 +225,7 @@ def test_unverified_method_fidelity_caps_mismatch_at_weak_signal() -> None:
     assert "method fidelity has not been independently verified" in report.reasons
 
 
-def test_agent_run_is_bound_to_task_method_and_visibility_hashes() -> None:
+def test_agent_proposal_and_executor_are_independently_bound_to_locked_task() -> None:
     task = build_code_agent_task(
         task_id="author-rerun",
         mode=ReproductionMode.AUTHOR_CODE,
@@ -211,31 +233,63 @@ def test_agent_run_is_bound_to_task_method_and_visibility_hashes() -> None:
         artifacts=_artifacts(),
         targets=_targets(),
     )
-    run = CodeAgentRun(
-        agent_id="test-agent",
-        agent_version="1",
-        task_sha256=task.sha256(),
-        method_spec_sha256=task.method_spec.sha256(),
-        visibility_policy_sha256=task.visibility_policy.sha256(),
-        generated_code_sha256="1" * 64,
-        frozen_workspace_sha256="2" * 64,
-        environment_sha256="3" * 64,
-        attempts=1,
-        original_code_patch_sha256=EMPTY_SHA256,
-    )
-    validate_frozen_agent_run(task, run)
+    proposal = _proposal(task)
+    validate_agent_proposal(task, proposal)
 
-    drifted = CodeAgentRun(
-        agent_id="test-agent",
-        agent_version="1",
-        task_sha256="4" * 64,
-        method_spec_sha256=task.method_spec.sha256(),
-        visibility_policy_sha256=task.visibility_policy.sha256(),
-        generated_code_sha256="1" * 64,
+    policy = SandboxPolicy()
+    attestation = ExecutionAttestation(
+        executor_id="sandbox-worker",
+        executor_version="1",
+        task_sha256=task.sha256(),
+        code_sha256=proposal.generated_code_sha256,
         frozen_workspace_sha256="2" * 64,
         environment_sha256="3" * 64,
-        attempts=1,
-        original_code_patch_sha256=EMPTY_SHA256,
+        sandbox_policy_sha256=policy.sha256(),
+        input_artifact_sha256=tuple(artifact.sha256 for artifact in task.artifacts),
+        output_artifact_sha256=("4" * 64,),
+        exit_code=0,
+        network_disabled=True,
+        read_only_inputs=True,
     )
-    with pytest.raises(ValueError, match="locked reproduction task"):
-        validate_frozen_agent_run(task, drifted)
+    validate_frozen_execution(task, proposal, policy, attestation)
+
+    wrong_code = ExecutionAttestation(
+        executor_id="sandbox-worker",
+        executor_version="1",
+        task_sha256=task.sha256(),
+        code_sha256="9" * 64,
+        frozen_workspace_sha256="2" * 64,
+        environment_sha256="3" * 64,
+        sandbox_policy_sha256=policy.sha256(),
+        input_artifact_sha256=tuple(artifact.sha256 for artifact in task.artifacts),
+        output_artifact_sha256=("4" * 64,),
+        exit_code=0,
+        network_disabled=True,
+        read_only_inputs=True,
+    )
+    with pytest.raises(ValueError, match="frozen code"):
+        validate_frozen_execution(task, proposal, policy, wrong_code)
+
+
+def test_method_fidelity_attestation_requires_independent_clean_verification() -> None:
+    spec = _method_spec()
+    attestation = MethodFidelityAttestation(
+        verifier_id="method-verifier",
+        verifier_version="1",
+        method_spec_sha256=spec.sha256(),
+        implementation_sha256="1" * 64,
+        verified_fields=tuple(field.name for field in spec.fields),
+        independent=True,
+    )
+    assert attestation.passed
+
+    unresolved = MethodFidelityAttestation(
+        verifier_id="method-verifier",
+        verifier_version="1",
+        method_spec_sha256=spec.sha256(),
+        implementation_sha256="1" * 64,
+        verified_fields=("outcome", "treatment"),
+        unresolved_fields=("inference",),
+        independent=True,
+    )
+    assert not unresolved.passed
