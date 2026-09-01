@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "case_id": "aejmic-2026-rugged-landscape",
+  "status": "not_ready_for_execution",
+  "benchmark_role": "author_package_pipeline_shakedown_only",
+  "agent_independence_scoring": "prohibited",
+  "as_of": "2026-09-02",
+  "paper": {
+    "paper_id": "doi:10.1257/mic.20230266",
+    "title": "Innovation and Competition on a Rugged Technological Landscape",
+    "journal": "American Economic Journal: Microeconomics",
+    "publication_status": "forthcoming",
+    "article_version_status": "publication_version_not_yet_artifact_pinned",
+    "public_history": "Public working-paper versions existed by 2022; package recency must not be treated as model-memory holdout evidence."
+  },
+  "replication_package": {
+    "package_id": "doi:10.3886/E238082V1",
+    "repository": "openICPSR",
+    "version": "V1",
+    "published_date": "2026-04-01",
+    "artifact_ingestion_status": "blocked_pending_artifact_level_terms_review",
+    "redistribution_authorized": false,
+    "remote_model_egress_authorized": false,
+    "observed_python_file_inventory": [
+      "Python_Files/main.py",
+      "Python_Files/montecarlo.py",
+      "Python_Files/cython_helper_functions.pyx",
+      "Python_Files/setup.py",
+      "Python_Files/requirements.txt",
+      "Python_Files/table1.csv",
+      "Python_Files/table2.csv",
+      "Python_Files/table3.csv",
+      "Python_Files/tictoc.py"
+    ],
+    "inventory_evidence_status": "repository_listing_only_not_artifact_hashes"
+  },
+  "execution_tracks": {
+    "author_package": {
+      "mode": "author_code",
+      "status": "blocked",
+      "intended_entrypoint": "Python_Files/main.py",
+      "runtime_family": "python_with_cython_extension",
+      "runtime_version": null,
+      "requirements_sha256": null,
+      "source_artifact_sha256": [],
+      "reference_output_sha256": [],
+      "blockers": [
+        "artifact-level download/license terms not independently captured",
+        "package bytes have not been authorized and retrieved",
+        "requirements.txt contents and exact dependency versions have not been pinned",
+        "Cython build/runtime compatibility has not been verified"
+      ]
+    },
+    "independent_reimplementation": {
+      "mode": "independent_reimplementation",
+      "status": "blocked",
+      "agent_visible_artifact_roles": [],
+      "author_code_visible": false,
+      "author_output_visible": false,
+      "network_allowed": false,
+      "blockers": [
+        "design-specific MethodSpecification has not been independently double-reviewed",
+        "publication target identity has not been double-reviewed and sealed",
+        "no candidate in this packet is eligible for agent-independence scoring",
+        "a leak-safe non-author artifact set has not been defined"
+      ]
+    }
+  },
+  "target_contract": {
+    "status": "unselected_no_numeric_targets",
+    "selection_rule": "Choose one narrow publication-visible computational table or figure result whose generating method is fully specified and whose author-package output identity can be independently verified.",
+    "candidate_display_families": [
+      "Table 1",
+      "Table 2",
+      "Table 3"
+    ],
+    "target_commitment_sha256": null,
+    "reviewer_a_complete": false,
+    "reviewer_b_complete": false,
+    "adjudication_complete": false
+  },
+  "authority": {
+    "production_authorized": false,
+    "e4_authorized": false,
+    "maximum_current_evidence": "UNVERIFIABLE",
+    "reason": "No authorized package execution, sealed target, or attested output exists yet."
+  },
+  "readiness_gates": {
+    "article_version_pinned": false,
+    "artifact_terms_verified": false,
+    "artifact_hashes_pinned": false,
+    "runtime_pinned": false,
+    "method_spec_double_reviewed": false,
+    "target_double_reviewed": false,
+    "target_sealed": false,
+    "author_package_execution_attested": false
+  },
+  "source_evidence": [
+    {
+      "kind": "journal_landing_page",
+      "locator": "https://www.aeaweb.org/articles?id=10.1257/mic.20230266"
+    },
+    {
+      "kind": "replication_package_landing_page",
+      "locator": "https://www.openicpsr.org/openicpsr/project/238082/version/V1/view"
+    },
+    {
+      "kind": "replication_package_doi",
+      "locator": "https://doi.org/10.3886/E238082V1"
+    }
+  ],
+  "rule": "This packet contains no reported numeric paper targets and must not be mounted into an independent code-agent workspace. Repository URLs are orchestrator provenance only."
+}
