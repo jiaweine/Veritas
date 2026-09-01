@@ -103,6 +103,13 @@
     "source_descriptor": "SSRN public abstract, Canadian-dollar boundary statement",
     "target_commitment_sha256": "1f8caed19753fd1a1cfc3135ae150e025d873dd44553d7a11d420a9016b95856",
     "reported_numeric_value_stored_in_repository": false,
+    "reproduced_value_binding": {
+      "format": "csv",
+      "row_match": {
+        "currency": "CAD"
+      },
+      "value_column": "pvalue_cf"
+    },
     "reviewer_a_complete": true,
     "reviewer_b_complete": false,
     "adjudication_complete": false
