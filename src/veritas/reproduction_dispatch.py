@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from .reproduction import CodeAgentProposal, CodeAgentTask, validate_agent_proposal
+from .reproduction import (
+    AuthorCodeAgentBackend,
+    CodeAgentProposal,
+    CodeAgentTask,
+    ReproductionMode,
+    validate_agent_proposal,
+)
 from .reproduction_agent_view import BlindCodeAgentBackend, build_agent_task_view
 from .reproduction_methods import validate_method_specification_contract
 from .reproduction_security import (
@@ -8,6 +14,22 @@ from .reproduction_security import (
     ArtifactAccessClassification,
     validate_agent_dispatch,
 )
+
+
+def dispatch_author_code_agent(
+    task: CodeAgentTask,
+    *,
+    backend: AuthorCodeAgentBackend,
+) -> CodeAgentProposal:
+    """Only supported full-task dispatch boundary for author-package reproduction."""
+
+    if task.mode is not ReproductionMode.AUTHOR_CODE:
+        raise ValueError("full-task agent dispatch is reserved for author-code reproduction")
+    if not task.visibility_policy.allow_original_code:
+        raise ValueError("author-code dispatch requires explicit original-code visibility")
+    proposal = backend.solve(task)
+    validate_agent_proposal(task, proposal)
+    return proposal
 
 
 def dispatch_blind_code_agent(
