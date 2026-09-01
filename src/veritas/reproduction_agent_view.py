@@ -7,6 +7,15 @@ from typing import Protocol
 from .reproduction import CodeAgentProposal, CodeAgentTask, ReproductionMode
 
 
+INDEPENDENT_AGENT_ALLOWED_ARTIFACT_ROLES = frozenset(
+    {"raw_data", "analysis_data", "data_dictionary", "schema"}
+)
+
+
+class AgentTaskViewBlocked(RuntimeError):
+    """Raised when a locked task cannot be projected into a leak-safe agent view."""
+
+
 @dataclass(frozen=True)
 class AgentSourceLocator:
     """Publication locator safe to expose to a blind implementation agent.
@@ -35,10 +44,16 @@ class AgentMethodFieldView:
 
 @dataclass(frozen=True)
 class AgentArtifactView:
+    """Opaque artifact identity exposed to an agent after the orchestrator mounts inputs.
+
+    Upstream URIs are intentionally excluded. A URI can lead to a repository or deposit that also
+    contains the paper, author code, outputs, or other target-leaking material. Backends should map
+    ``artifact_id`` to a sandbox mount outside the model-visible task payload.
+    """
+
     artifact_id: str
     role: str
     sha256: str
-    uri: str | None
 
 
 @dataclass(frozen=True)
@@ -76,7 +91,37 @@ class BlindCodeAgentBackend(Protocol):
     def solve(self, task: AgentTaskView) -> CodeAgentProposal: ...
 
 
+def _validate_independent_view_boundary(task: CodeAgentTask) -> None:
+    if task.mode is not ReproductionMode.INDEPENDENT_REIMPLEMENTATION:
+        return
+
+    policy = task.visibility_policy
+    if policy.allow_reported_outcomes:
+        raise AgentTaskViewBlocked("independent agent view cannot expose reported outcomes")
+    if policy.allow_original_code:
+        raise AgentTaskViewBlocked("independent agent view cannot expose original author code")
+    if policy.reveal_numeric_comparison_during_iteration:
+        raise AgentTaskViewBlocked("independent agent view cannot expose numeric target feedback")
+
+    disallowed = tuple(
+        sorted(
+            {
+                artifact.role
+                for artifact in task.artifacts
+                if artifact.role not in INDEPENDENT_AGENT_ALLOWED_ARTIFACT_ROLES
+            }
+        )
+    )
+    if disallowed:
+        raise AgentTaskViewBlocked(
+            "independent agent artifacts must be leak-reviewed data/schema inputs; "
+            f"disallowed roles={disallowed!r}"
+        )
+
+
 def build_agent_task_view(task: CodeAgentTask) -> AgentTaskView:
+    _validate_independent_view_boundary(task)
+
     fields = tuple(
         AgentMethodFieldView(
             name=item.name,
@@ -100,7 +145,6 @@ def build_agent_task_view(task: CodeAgentTask) -> AgentTaskView:
             artifact_id=item.artifact_id,
             role=item.role,
             sha256=item.sha256,
-            uri=item.uri,
         )
         for item in task.artifacts
     )
