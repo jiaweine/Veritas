@@ -101,19 +101,24 @@
       "paper_id": "doi:10.1186/s12889-025-21990-3",
       "article_family_id": "doi:10.1186/s12889-025-21990-3",
       "doi": "10.1186/s12889-025-21990-3",
+      "pmcid": "PMC11863760",
       "title": "Assessment of knowledge, attitudes, and prevention practices regarding HIV/AIDS among urban slum dwellers in Bangladesh: an interview-based study",
       "discipline": "public_health_survey",
       "year": 2025,
       "source_url": "https://link.springer.com/article/10.1186/s12889-025-21990-3",
       "access_tier": "paper_only",
       "artifact_urls": [
-        "https://link.springer.com/content/pdf/10.1186/s12889-025-21990-3.pdf"
+        "https://link.springer.com/content/pdf/10.1186/s12889-025-21990-3.pdf",
+        "https://pmc-oa-opendata.s3.amazonaws.com/PMC11863760.1/PMC11863760.1.pdf"
       ],
       "redistributable_artifacts": false,
       "license_note": "Article is open access under CC BY-NC-ND 4.0. Keep as linked benchmark input; do not commit adapted article material.",
-      "extraction_layout_note": "Tables 2-4 use multi-row grouped headers with repeated bivariable and multivariable B/SE/t/beta/p blocks and continuation pages. Grouped extraction now requires publication-visible model-group identity rather than positional column guessing.",
-      "ci_network_probe_status": "publisher_pdf_unavailable_from_github_runner_as_of_2026-09-01",
-      "seed_promotion_status": "blocked_pending_reproducible_pdf_retrieval_dual_parser_exact_match_and_adjudication"
+      "extraction_layout_note": "Tables 2-4 use multi-row grouped headers with repeated bivariable and multivariable B/SE/t/beta/p blocks and continuation pages. Grouped extraction requires publication-visible model-group identity rather than positional column guessing.",
+      "ci_network_probe_status": "official_pmc_cloud_pdf_retrieval_verified_2026-09-01",
+      "official_pmc_cloud_pdf": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11863760.1/PMC11863760.1.pdf",
+      "candidate_extraction_probe_status": "dual_parser_exact_match_for_table2_multivariable_age_b_se_t_p_2026-09-01",
+      "detector_applicability_status": "unverifiable_without_explicit_inference_distribution_or_degrees_of_freedom",
+      "seed_promotion_status": "blocked_pending_independent_human_adjudication"
     },
     {
       "paper_id": "doi:10.3390/cancers16040734",
