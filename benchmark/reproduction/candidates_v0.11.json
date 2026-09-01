@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "status": "sampling_frame_only_no_reported_targets",
+  "agent_independence_status": "no_current_candidate_eligible",
   "as_of": "2026-09-02",
   "rule": "This manifest selects engineering candidates only. It contains no paper numeric targets and must never be mounted into an independent code-agent workspace. Numeric targets are independently extracted, reviewed, committed, and kept orchestrator-only until the frozen run is complete.",
   "selection_principles": [
