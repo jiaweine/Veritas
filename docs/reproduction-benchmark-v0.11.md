@@ -61,18 +61,23 @@ A successful match is positive evidence for the tested claim under the tested ar
 
 No browsing is necessary but not sufficient for independence. Published papers and replication repositories may have appeared in model training data. For benchmark scoring, record a contamination-risk assessment separately from ordinary sandbox isolation.
 
-Use older, well-known replication packages primarily to shake down the pipeline. Prefer newer or otherwise contamination-reduced papers for CodeAgent capability estimates. Remove explicit paper identity from the model-visible task wherever implementation does not require it, and never expose paper/repository URLs. Variable aliases or other stronger identity blinding may be added after the first real benchmark demonstrates that they do not change the estimand.
+A replication package's publication date is **not** a valid proxy for paper novelty. A package can be newly deposited while the paper, working paper, conference draft, tables, or code have been public for years. Agent-independence eligibility therefore needs the first-public-release history of the paper and relevant data/code, not merely the current repository version date.
+
+Use older or widely available replication packages primarily to shake down the pipeline. For CodeAgent capability estimates, prefer papers and data whose first public release is demonstrably after the evaluated model's documented training cutoff, or use an externally held-out/non-public evaluation corpus with appropriate data governance. When neither condition can be established, report contamination risk as unknown and keep the run out of the independence score.
+
+Remove explicit paper identity from the model-visible task wherever implementation does not require it, and never expose paper/repository URLs. Variable aliases or stronger schema identity blinding may be added only after verifying that the transformation preserves the estimand and method contract.
 
 Because model-memory contamination cannot be proven absent from runtime controls alone, do not describe a blind CodeAgent match as an "independent replication" solely because the network was disabled.
 
 ## First-candidate strategy
 
-`benchmark/reproduction/candidates_v0.11.json` deliberately separates two uses:
+`benchmark/reproduction/candidates_v0.11.json` currently contains **engineering candidates, not a clean CodeAgent-independence benchmark**:
 
-- the 2019 Tanzania education package is useful for pipeline and author-package shakedown, but its age and public visibility make it a weak first benchmark of model independence;
-- the 2026 `Polluted IPOs` package is a preferred recent candidate once the exact paper/package versions, artifact permissions, one narrow claim, and a double-reviewed MethodSpecification are locked.
+- the 2019 Tanzania education package is useful for pipeline and author-package shakedown, but its age and public visibility make it a weak benchmark of model independence;
+- `Polluted IPOs` has a convenient openICPSR V1 package published in 2026, but public working-paper/conference versions existed by 2022. Package recency therefore does not make the paper contamination-reduced. It remains useful for version-pinning, artifact, author-package, and blind-workflow engineering once the exact paper-to-package mapping is locked;
+- other recent-package candidates remain blocked until their first-public-release history is established relative to the evaluated model's documented training cutoff.
 
-Neither candidate is benchmark gold yet. No candidate may become TEST evidence because it appears in this file.
+A genuinely contamination-reduced first benchmark should be selected only after this temporal/holdout gate is satisfied. No candidate becomes benchmark gold or TEST evidence merely because it appears in the sampling manifest.
 
 ## Research basis
 
