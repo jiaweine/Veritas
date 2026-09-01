@@ -4,6 +4,7 @@ import csv
 import hashlib
 import json
 import math
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -91,9 +92,17 @@ def _validate_execution_evidence(
     return output_sha256
 
 
+def _finite_float(value_text: str) -> float:
+    try:
+        value = float(value_text.replace(",", "").strip())
+    except ValueError as exc:
+        raise ValueError("bound reproduced value is missing or non-numeric") from exc
+    if not math.isfinite(value):
+        raise ValueError("bound reproduced value must be finite")
+    return value
+
+
 def _extract_bound_csv_value(output_path: Path, binding: Mapping[str, Any]) -> float:
-    if binding.get("format") != "csv":
-        raise ValueError("only csv reproduced-value bindings are currently supported")
     row_match = binding.get("row_match")
     value_column = binding.get("value_column")
     if not isinstance(row_match, dict) or not row_match:
@@ -111,12 +120,39 @@ def _extract_bound_csv_value(output_path: Path, binding: Mapping[str, Any]) -> f
     if len(matches) != 1:
         raise ValueError(f"reproduced-value binding matched {len(matches)} rows; expected exactly one")
     try:
-        value = float(matches[0][value_column])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("bound reproduced value is missing or non-numeric") from exc
-    if not math.isfinite(value):
-        raise ValueError("bound reproduced value must be finite")
-    return value
+        value_text = matches[0][value_column]
+    except KeyError as exc:
+        raise ValueError("bound reproduced value column is missing") from exc
+    return _finite_float(value_text)
+
+
+def _extract_bound_text_regex_value(output_path: Path, binding: Mapping[str, Any]) -> float:
+    pattern = binding.get("pattern")
+    if not isinstance(pattern, str) or not pattern:
+        raise ValueError("text_regex reproduced-value binding requires pattern")
+    if len(pattern) > 1000:
+        raise ValueError("text_regex reproduced-value binding pattern is too long")
+    try:
+        compiled = re.compile(pattern, flags=re.MULTILINE)
+    except re.error as exc:
+        raise ValueError("text_regex reproduced-value binding pattern is invalid") from exc
+    if "value" not in compiled.groupindex:
+        raise ValueError("text_regex reproduced-value binding requires named group 'value'")
+
+    text = output_path.read_text(encoding="utf-8")
+    matches = list(compiled.finditer(text))
+    if len(matches) != 1:
+        raise ValueError(f"reproduced-value binding matched {len(matches)} spans; expected exactly one")
+    return _finite_float(matches[0].group("value"))
+
+
+def _extract_bound_value(output_path: Path, binding: Mapping[str, Any]) -> float:
+    format_name = binding.get("format")
+    if format_name == "csv":
+        return _extract_bound_csv_value(output_path, binding)
+    if format_name == "text_regex":
+        return _extract_bound_text_regex_value(output_path, binding)
+    raise ValueError(f"unsupported reproduced-value binding format: {format_name!r}")
 
 
 def build_answer_free_reproduction_certificate(
@@ -144,7 +180,7 @@ def build_answer_free_reproduction_certificate(
     _require_equal("execution target id", execution.get("target_id"), private_target.target_id)
 
     binding = target_contract["reproduced_value_binding"]
-    reproduced_value = _extract_bound_csv_value(output, binding)
+    reproduced_value = _extract_bound_value(output, binding)
     if "reproduced_value" in execution:
         attested_value = float(execution["reproduced_value"])
         if not math.isclose(attested_value, reproduced_value, rel_tol=0.0, abs_tol=0.0):
