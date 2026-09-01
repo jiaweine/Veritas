@@ -111,7 +111,9 @@
       ],
       "redistributable_artifacts": false,
       "license_note": "Article is open access under CC BY-NC-ND 4.0. Keep as linked benchmark input; do not commit adapted article material.",
-      "extraction_layout_note": "Tables 2-4 use multi-row grouped headers with repeated bivariable and multivariable B/SE/t/beta/p blocks and continuation pages. Requires publication-visible model-group disambiguation before seed promotion."
+      "extraction_layout_note": "Tables 2-4 use multi-row grouped headers with repeated bivariable and multivariable B/SE/t/beta/p blocks and continuation pages. Grouped extraction now requires publication-visible model-group identity rather than positional column guessing.",
+      "ci_network_probe_status": "publisher_pdf_unavailable_from_github_runner_as_of_2026-09-01",
+      "seed_promotion_status": "blocked_pending_reproducible_pdf_retrieval_dual_parser_exact_match_and_adjudication"
     },
     {
       "paper_id": "doi:10.3390/cancers16040734",
