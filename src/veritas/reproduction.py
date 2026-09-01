@@ -26,8 +26,6 @@ class ReproductionMode(str, Enum):
 
 
 class ReproductionAuthority(str, Enum):
-    """How much evidentiary authority a reproduction attempt may carry."""
-
     EXPERIMENTAL_AGENT = "experimental_agent"
     AUTHOR_PACKAGE_RERUN = "author_package_rerun"
     INDEPENDENT_ADJUDICATED = "independent_adjudicated"
@@ -80,12 +78,7 @@ class MethodField:
 
 @dataclass(frozen=True)
 class MethodSpecification:
-    """Publication-grounded method contract supplied to an independent code agent.
-
-    The contract should contain methodological choices, not target result values.  Typical fields are
-    outcome, treatment/exposure, sample_rule, estimator, controls, fixed_effects, weights,
-    clustering/inference, time_window, transformations, and randomization/seed rules.
-    """
+    """Publication-grounded method contract supplied to an independent code agent."""
 
     spec_id: str
     object_type: str
@@ -137,7 +130,6 @@ class ReproductionTarget:
     materiality: Materiality = Materiality.SECONDARY_RESULT
 
     def reference_commitment_sha256(self) -> str:
-        """Bind the hidden reference value without revealing it to the code agent."""
         return _stable_sha256(
             {
                 "target_id": self.target_id,
@@ -152,6 +144,22 @@ class ReproductionTarget:
                 "materiality": int(self.materiality),
             }
         )
+
+    def blind_descriptor(self) -> AgentTargetDescriptor:
+        return AgentTargetDescriptor(
+            target_id=self.target_id,
+            claim_id=self.claim_id,
+            metric=self.metric,
+        )
+
+
+@dataclass(frozen=True)
+class AgentTargetDescriptor:
+    """What the agent must produce, without exposing the paper's numeric answer."""
+
+    target_id: str
+    claim_id: str
+    metric: str
 
 
 @dataclass(frozen=True)
@@ -172,15 +180,19 @@ class CodeAgentTask:
     mode: ReproductionMode
     method_spec: MethodSpecification
     artifacts: tuple[ReproductionArtifact, ...]
-    target_ids: tuple[str, ...]
+    targets: tuple[AgentTargetDescriptor, ...]
     reference_commitment_sha256: str
     visibility_policy: AgentVisibilityPolicy
 
     def __post_init__(self) -> None:
-        if not self.task_id.strip() or not self.target_ids:
-            raise ValueError("task_id and at least one target_id are required")
+        if not self.task_id.strip() or not self.targets:
+            raise ValueError("task_id and at least one target descriptor are required")
         if not _SHA256_RE.fullmatch(self.reference_commitment_sha256):
             raise ValueError("reference commitment must be a lowercase SHA-256 hex digest")
+
+    @property
+    def target_ids(self) -> tuple[str, ...]:
+        return tuple(item.target_id for item in self.targets)
 
     def sha256(self) -> str:
         return _stable_sha256(asdict(self))
@@ -221,7 +233,7 @@ class CodeAgentRun:
 
 
 class CodeAgentBackend(Protocol):
-    """Backend boundary for Codex/SWE-agent/custom agents; Veritas never trusts the backend directly."""
+    """Adapter boundary for Codex, SWE-agent, or another coding agent."""
 
     agent_id: str
     agent_version: str
@@ -259,15 +271,28 @@ class ReproducedCell:
 @dataclass(frozen=True)
 class CellComparison:
     target_id: str
+    metric: str
+    materiality: Materiality
     status: CellComparisonStatus
     reproduced_value: float | None
     reported_interval: tuple[float, float] | None
 
 
 @dataclass(frozen=True)
+class ReproductionAgreementSummary:
+    total_targets: int
+    matched_targets: int
+    mismatched_targets: int
+    missing_targets: int
+    material_mismatch_target_ids: tuple[str, ...]
+    max_mismatch_materiality: Materiality | None
+
+
+@dataclass(frozen=True)
 class ReproductionReport:
     decision: ReproductionDecision
     comparisons: tuple[CellComparison, ...]
+    agreement: ReproductionAgreementSummary
     authority: ReproductionAuthority
     max_evidence_grade: EvidenceGrade
     method_fidelity_verified: bool
@@ -297,8 +322,7 @@ def build_code_agent_task(
         allow_original_code=mode is ReproductionMode.AUTHOR_CODE
     )
     roles = {item.role for item in artifacts}
-    has_data = bool(roles & {"raw_data", "analysis_data"})
-    if not has_data:
+    if not roles & {"raw_data", "analysis_data"}:
         raise ReproductionBlocked("no data artifact is available for computational reproduction")
 
     if mode is ReproductionMode.AUTHOR_CODE:
@@ -321,7 +345,7 @@ def build_code_agent_task(
         mode=mode,
         method_spec=method_spec,
         artifacts=artifacts,
-        target_ids=tuple(target.target_id for target in targets),
+        targets=tuple(target.blind_descriptor() for target in targets),
         reference_commitment_sha256=_stable_sha256(commitments),
         visibility_policy=policy,
     )
@@ -335,7 +359,6 @@ def validate_frozen_agent_run(task: CodeAgentTask, run: CodeAgentRun) -> None:
     if run.visibility_policy_sha256 != task.visibility_policy.sha256():
         raise ValueError("agent run visibility policy drifted")
     if task.mode is ReproductionMode.AUTHOR_CODE and run.original_code_patch_sha256 is None:
-        # A zero-patch rerun is represented by the SHA-256 of empty bytes, so this is always explicit.
         raise ValueError("author-code reproduction must explicitly attest the original-code patch identity")
 
 
@@ -357,7 +380,14 @@ def compare_reproduced_cells(
         cell = by_target.get(target.target_id)
         if cell is None:
             comparisons.append(
-                CellComparison(target.target_id, CellComparisonStatus.MISSING, None, None)
+                CellComparison(
+                    target.target_id,
+                    target.metric,
+                    target.materiality,
+                    CellComparisonStatus.MISSING,
+                    None,
+                    None,
+                )
             )
             continue
         status, interval = _compare_number(
@@ -366,8 +396,37 @@ def compare_reproduced_cells(
             absolute_tolerance=absolute_tolerance,
             relative_tolerance=relative_tolerance,
         )
-        comparisons.append(CellComparison(target.target_id, status, cell.value, interval))
+        comparisons.append(
+            CellComparison(
+                target.target_id,
+                target.metric,
+                target.materiality,
+                status,
+                cell.value,
+                interval,
+            )
+        )
     return tuple(comparisons)
+
+
+def summarize_reproduction_agreement(
+    comparisons: tuple[CellComparison, ...],
+) -> ReproductionAgreementSummary:
+    mismatches = tuple(item for item in comparisons if item.status is CellComparisonStatus.MISMATCH)
+    material = tuple(
+        item.target_id
+        for item in mismatches
+        if item.materiality >= Materiality.MAIN_EMPIRICAL_CLAIM
+    )
+    max_materiality = max((item.materiality for item in mismatches), default=None)
+    return ReproductionAgreementSummary(
+        total_targets=len(comparisons),
+        matched_targets=sum(item.status is CellComparisonStatus.MATCH for item in comparisons),
+        mismatched_targets=len(mismatches),
+        missing_targets=sum(item.status is CellComparisonStatus.MISSING for item in comparisons),
+        material_mismatch_target_ids=material,
+        max_mismatch_materiality=max_materiality,
+    )
 
 
 def build_reproduction_report(
@@ -379,6 +438,7 @@ def build_reproduction_report(
     execution_attested: bool,
     root_cause: ReproductionRootCause = ReproductionRootCause.UNKNOWN,
 ) -> ReproductionReport:
+    agreement = summarize_reproduction_agreement(comparisons)
     if not comparisons or all(item.status is CellComparisonStatus.MISSING for item in comparisons):
         decision = ReproductionDecision.UNVERIFIABLE
     elif any(item.status is CellComparisonStatus.MISMATCH for item in comparisons):
@@ -396,7 +456,6 @@ def build_reproduction_report(
         }:
             max_grade = EvidenceGrade.REPRODUCTION_CONTRADICTION
         else:
-            # Agent failures, underspecified methods, or unattested environments cannot indict the paper.
             max_grade = EvidenceGrade.WEAK_SIGNAL
     else:
         max_grade = EvidenceGrade.UNVERIFIABLE
@@ -414,6 +473,7 @@ def build_reproduction_report(
     return ReproductionReport(
         decision=decision,
         comparisons=comparisons,
+        agreement=agreement,
         authority=authority,
         max_evidence_grade=max_grade,
         method_fidelity_verified=method_fidelity_verified,
@@ -435,10 +495,7 @@ def _compare_number(
     if reported.operator is ComparisonOperator.EQ:
         low, high = reported.rounding_interval()
         matched = low - tolerance <= reproduced <= high + tolerance
-        return (
-            CellComparisonStatus.MATCH if matched else CellComparisonStatus.MISMATCH,
-            (low, high),
-        )
+        return CellComparisonStatus.MATCH if matched else CellComparisonStatus.MISMATCH, (low, high)
     if reported.operator is ComparisonOperator.LT:
         matched = reproduced < reported.value + tolerance
     elif reported.operator is ComparisonOperator.LE:
@@ -447,6 +504,6 @@ def _compare_number(
         matched = reproduced > reported.value - tolerance
     elif reported.operator is ComparisonOperator.GE:
         matched = reproduced >= reported.value - tolerance
-    else:  # defensive future-proofing for new comparison operators
+    else:
         matched = False
     return CellComparisonStatus.MATCH if matched else CellComparisonStatus.MISMATCH, None
