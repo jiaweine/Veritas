@@ -11,7 +11,14 @@ def _word(text: str, x: float, y: float, width: float = 24.0) -> PDFWord:
     return PDFWord(page=1, text=text, bbox=(x, y - 1.0, x + width, y + 1.0))
 
 
-def _snapshot(parser_id: str, parser_family: str, *, incomplete_second_block: bool = False) -> NativePDFSnapshot:
+def _snapshot(
+    parser_id: str,
+    parser_family: str,
+    *,
+    incomplete_second_block: bool = False,
+    subheader_y: float = 110.0,
+) -> NativePDFSnapshot:
+    data_y = subheader_y + 20.0
     words = [
         _word("Table", 40, 80, 26),
         _word("2", 70, 80, 8),
@@ -27,33 +34,33 @@ def _snapshot(parser_id: str, parser_family: str, *, incomplete_second_block: bo
         _word("Multivariable", 390, 100, 58),
         _word("regression", 452, 100, 46),
         _word("analysis", 502, 100, 36),
-        _word("Mean", 116, 110, 24),
-        _word("(SD)", 144, 110, 24),
-        _word("B", 200, 110, 10),
-        _word("SE", 240, 110, 14),
-        _word("t", 280, 110, 8),
-        _word("β", 320, 110, 10),
-        _word("p-value", 360, 110, 34),
-        _word("B", 410, 110, 10),
-        _word("SE", 450, 110, 14),
-        _word("t", 490, 110, 8),
+        _word("Mean", 116, subheader_y, 24),
+        _word("(SD)", 144, subheader_y, 24),
+        _word("B", 200, subheader_y, 10),
+        _word("SE", 240, subheader_y, 14),
+        _word("t", 280, subheader_y, 8),
+        _word("β", 320, subheader_y, 10),
+        _word("p-value", 360, subheader_y, 34),
+        _word("B", 410, subheader_y, 10),
+        _word("SE", 450, subheader_y, 14),
+        _word("t", 490, subheader_y, 8),
     ]
     if not incomplete_second_block:
-        words.append(_word("β", 530, 110, 10))
+        words.append(_word("β", 530, subheader_y, 10))
     words.extend(
         [
-            _word("p-value", 570, 110, 34),
-            _word("Age", 40, 130, 18),
-            _word("<−0.01", 200, 130, 34),
-            _word("0.01", 240, 130, 22),
-            _word("−0.64", 280, 130, 28),
-            _word("−0.03", 320, 130, 28),
-            _word("0.523", 360, 130, 28),
-            _word("0.02", 410, 130, 22),
-            _word("0.01", 450, 130, 22),
-            _word("1.55", 490, 130, 22),
-            _word("0.07", 530, 130, 22),
-            _word("0.123", 570, 130, 28),
+            _word("p-value", 570, subheader_y, 34),
+            _word("Age", 40, data_y, 18),
+            _word("<−0.01", 200, data_y, 34),
+            _word("0.01", 240, data_y, 22),
+            _word("−0.64", 280, data_y, 28),
+            _word("−0.03", 320, data_y, 28),
+            _word("0.523", 360, data_y, 28),
+            _word("0.02", 410, data_y, 22),
+            _word("0.01", 450, data_y, 22),
+            _word("1.55", 490, data_y, 22),
+            _word("0.07", 530, data_y, 22),
+            _word("0.123", 570, data_y, 28),
         ]
     )
     page = PDFPageSnapshot(
@@ -74,16 +81,30 @@ def _snapshot(parser_id: str, parser_family: str, *, incomplete_second_block: bo
     )
 
 
-def _dual(*, incomplete_second_block: bool = False) -> tuple[NativePDFSnapshot, ...]:
+def _dual(
+    *,
+    incomplete_second_block: bool = False,
+    subheader_y: float = 110.0,
+) -> tuple[NativePDFSnapshot, ...]:
     return (
-        _snapshot("pymupdf_native", "mupdf_native", incomplete_second_block=incomplete_second_block),
-        _snapshot("pdfplumber_native", "pdfminer_native", incomplete_second_block=incomplete_second_block),
+        _snapshot(
+            "pymupdf_native",
+            "mupdf_native",
+            incomplete_second_block=incomplete_second_block,
+            subheader_y=subheader_y,
+        ),
+        _snapshot(
+            "pdfplumber_native",
+            "pdfminer_native",
+            incomplete_second_block=incomplete_second_block,
+            subheader_y=subheader_y,
+        ),
     )
 
 
-def _multivariable_bundle():
+def _multivariable_bundle(*, subheader_y: float = 110.0):
     return extract_grouped_regression_table(
-        _dual(),
+        _dual(subheader_y=subheader_y),
         variable_label="Age",
         locator=GroupedRegressionLocator(
             table_label="Table 2",
@@ -103,6 +124,20 @@ def test_grouped_regression_uses_publication_visible_model_group() -> None:
     assert [candidate.normalized_value for candidate in bundle.field_candidates["p_value"]] == ["0.123", "0.123"]
     assert all(candidate.parser_family in {"mupdf_native", "pdfminer_native"} for candidate in bundle.field_candidates["beta"])
     assert bundle.semantic_candidates["inference_distribution"] == ()
+
+
+def test_grouped_regression_accepts_observed_sixteen_point_header_gap() -> None:
+    bundle = _multivariable_bundle(subheader_y=116.2)
+
+    assert not bundle.ambiguities
+    assert [candidate.normalized_value for candidate in bundle.field_candidates["beta"]] == ["0.02", "0.02"]
+
+
+def test_grouped_regression_rejects_distant_subheader_even_when_roles_repeat() -> None:
+    bundle = _multivariable_bundle(subheader_y=124.0)
+
+    assert not bundle.ambiguities
+    assert all(not candidates for candidates in bundle.field_candidates.values())
 
 
 def test_grouped_regression_distinguishes_unstandardized_b_from_standardized_beta() -> None:
