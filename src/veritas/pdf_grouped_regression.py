@@ -225,7 +225,7 @@ def _match_snapshot(
     *,
     variable_label: str,
     locator: GroupedRegressionLocator,
-    max_header_gap: float = 14.0,
+    max_header_gap: float = 18.0,
     max_data_lines: int = 45,
     max_data_vertical_gap: float = 190.0,
 ) -> tuple[_GroupedMatch | None, str | None]:
@@ -398,7 +398,7 @@ def extract_grouped_regression_table(
             )
 
     parser_versions = [(snapshot.parser_id, snapshot.parser_version) for snapshot in snapshots]
-    parser_versions.append(("veritas_grouped_regression_geometry", "0.1.0"))
+    parser_versions.append(("veritas_grouped_regression_geometry", "0.2.0"))
     return RegressionExtractionBundle(
         artifact_id=next(iter(artifact_ids)),
         artifact_sha256=next(iter(artifact_hashes)),
