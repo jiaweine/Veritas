@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from veritas.reproduction import MethodField
-from veritas.reproduction_methods import build_method_specification, get_reproduction_method_contract
+from veritas.reproduction import MethodField, MethodSpecification
+from veritas.reproduction_methods import (
+    build_method_specification,
+    get_reproduction_method_contract,
+    validate_method_specification_contract,
+)
 
 
 def test_did_contract_materializes_missing_required_choices_as_unverifiable() -> None:
@@ -47,3 +51,40 @@ def test_contract_rejects_undeclared_method_fields() -> None:
                 MethodField("secret_choice", "not in contract"),
             ),
         )
+
+
+def test_contract_validation_rejects_hand_built_spec_that_omits_required_field() -> None:
+    spec = MethodSpecification(
+        spec_id="manual",
+        object_type="RegressionResult",
+        version="regression_v1:1",
+        fields=(
+            MethodField("outcome", "y"),
+            MethodField("focal_predictor", "x"),
+            MethodField("sample_rule", "all rows"),
+            MethodField("estimator", "ols"),
+            MethodField("model_formula", "y ~ x"),
+        ),
+    )
+
+    assert spec.missing_required_fields() == ()
+    with pytest.raises(ValueError, match="omitted required contract fields"):
+        validate_method_specification_contract(spec)
+
+
+def test_contract_validation_requires_explicit_contract_version_binding() -> None:
+    spec = MethodSpecification(
+        spec_id="manual",
+        object_type="RegressionResult",
+        fields=(
+            MethodField("outcome", "y"),
+            MethodField("focal_predictor", "x"),
+            MethodField("sample_rule", "all rows"),
+            MethodField("estimator", "ols"),
+            MethodField("model_formula", "y ~ x"),
+            MethodField("inference", "HC2"),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="contract_id:version"):
+        validate_method_specification_contract(spec)

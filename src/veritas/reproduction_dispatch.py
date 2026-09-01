@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .reproduction import CodeAgentProposal, CodeAgentTask, validate_agent_proposal
 from .reproduction_agent_view import BlindCodeAgentBackend, build_agent_task_view
+from .reproduction_methods import validate_method_specification_contract
 from .reproduction_security import (
     AgentDispatchPolicy,
     ArtifactAccessClassification,
@@ -24,6 +25,7 @@ def dispatch_blind_code_agent(
     task before it can enter execution or comparison.
     """
 
+    validate_method_specification_contract(task.method_spec)
     validate_agent_dispatch(task, classifications, dispatch_policy)
     agent_view = build_agent_task_view(task)
     proposal = backend.solve(agent_view)

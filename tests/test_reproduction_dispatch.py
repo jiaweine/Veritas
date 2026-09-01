@@ -6,7 +6,6 @@ from veritas.models import ReportedNumber, SourceLocation
 from veritas.reproduction import (
     CodeAgentProposal,
     MethodField,
-    MethodSpecification,
     ReproductionArtifact,
     ReproductionMode,
     ReproductionTarget,
@@ -14,6 +13,7 @@ from veritas.reproduction import (
 )
 from veritas.reproduction_agent_view import AgentTaskView
 from veritas.reproduction_dispatch import dispatch_blind_code_agent
+from veritas.reproduction_methods import build_method_specification
 from veritas.reproduction_security import (
     AgentDispatchPolicy,
     AgentExecutionLocation,
@@ -47,9 +47,9 @@ def _task():
     return build_code_agent_task(
         task_id="blind-dispatch",
         mode=ReproductionMode.INDEPENDENT_REIMPLEMENTATION,
-        method_spec=MethodSpecification(
+        method_spec=build_method_specification(
             spec_id="method",
-            object_type="RegressionResult",
+            contract_id="regression_v1",
             fields=(
                 MethodField("outcome", "y"),
                 MethodField("focal_predictor", "x"),

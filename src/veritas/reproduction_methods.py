@@ -187,6 +187,55 @@ def get_reproduction_method_contract(contract_id: str) -> ReproductionMethodCont
     raise KeyError(contract_id)
 
 
+def validate_method_specification_contract(spec: MethodSpecification) -> ReproductionMethodContract:
+    """Require an independently dispatched method spec to be bound to a declared contract.
+
+    ``MethodSpecification.missing_required_fields`` can only inspect fields that are already present.
+    A hand-built specification could otherwise omit a required field entirely and still appear
+    complete. Contract binding closes that gap before a blind coding agent is allowed to run.
+    """
+
+    contract_id, separator, version = spec.version.partition(":")
+    if not separator or not contract_id or not version:
+        raise ValueError("method specification version must bind a reproduction contract as contract_id:version")
+    try:
+        contract = get_reproduction_method_contract(contract_id)
+    except KeyError as exc:
+        raise ValueError(f"unknown reproduction method contract: {contract_id!r}") from exc
+
+    if version != contract.version:
+        raise ValueError(
+            f"method specification contract version mismatch: expected {contract.contract_id}:{contract.version}"
+        )
+    if spec.object_type != contract.object_type:
+        raise ValueError(
+            f"method specification object type does not match {contract.contract_id}: "
+            f"expected {contract.object_type!r}, got {spec.object_type!r}"
+        )
+
+    field_map = spec.field_map()
+    known = set(contract.required_fields) | set(contract.optional_fields)
+    unknown = tuple(sorted(set(field_map) - known))
+    if unknown:
+        raise ValueError(f"method fields are not declared by {contract.contract_id}: {unknown!r}")
+
+    absent = tuple(name for name in contract.required_fields if name not in field_map)
+    if absent:
+        raise ValueError(
+            f"method specification omitted required contract fields for {contract.contract_id}: {absent!r}"
+        )
+
+    incorrectly_optional = tuple(
+        name for name in contract.required_fields if not field_map[name].required_for_execution
+    )
+    if incorrectly_optional:
+        raise ValueError(
+            "required contract fields were marked non-required: "
+            f"{incorrectly_optional!r}"
+        )
+    return contract
+
+
 def build_method_specification(
     *,
     spec_id: str,
