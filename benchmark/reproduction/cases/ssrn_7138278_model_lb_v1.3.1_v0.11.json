@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "case_id": "ssrn-7138278-model-lb-v1.3.1",
+  "status": "not_ready_for_execution",
+  "benchmark_role": "author_package_pipeline_shakedown_only",
+  "agent_independence_scoring": "prohibited",
+  "as_of": "2026-09-02",
+  "paper": {
+    "paper_id": "doi:10.2139/ssrn.7138278",
+    "title": "Level Breaks and Finite-Sample GLS Detrending: The Point-Optimal Unit Root Test and the Purchasing Power Parity Puzzle",
+    "publication_status": "public_preprint_not_peer_reviewed",
+    "public_version": "SSRN posting dated 2026-08-03; manuscript dated 2026-07-18",
+    "article_version_status": "public_preprint_identity_pinned_by_ssrn_id_and_posting_date",
+    "package_mapping_note": "The public SSRN abstract matches the v1.3.1 empirical PPP classification. Later v2.x package releases use a changed calibration/output and must not be substituted for this public preprint when evaluating the selected claim."
+  },
+  "replication_package": {
+    "repository": "https://github.com/ricardogs-econ/model-LB-replication",
+    "release": "v1.3.1",
+    "release_date": "2026-07-26",
+    "git_commit_sha": "4ea6e5e4c9cf2088aa76f406705f5620e561e199",
+    "zenodo_version_doi": "10.5281/zenodo.21610828",
+    "code_license": "MIT",
+    "local_sandbox_execution_authorized": true,
+    "remote_model_egress_authorized": false,
+    "artifact_identity_status": "git_commit_pinned_pending_sha256_workspace_manifest",
+    "requirements_git_blob_sha": "c2bb1bf19ffe81ac36932fdbbb323f6a5d7ec821",
+    "frozen_reference_output_git_blob_sha": "1ccf1840cac6ca81da59a7799066aa5dfdbe83ce"
+  },
+  "execution_tracks": {
+    "author_package": {
+      "mode": "author_code",
+      "status": "ready_for_isolated_environment_discovery_probe",
+      "entrypoint": "boot_ppp_cbar.py --empirical",
+      "runtime_family": "python_numba",
+      "runtime_version": "3.12",
+      "network_allowed_during_execution": false,
+      "source_mount_read_only": true,
+      "veritas_repository_mounted": false,
+      "credentials_mounted": false,
+      "resource_policy": {
+        "max_wall_seconds": 900,
+        "max_memory_mb": 8192,
+        "max_cpus": 4
+      },
+      "environment_status": "dependency_ranges_only_pending_first_successful_freeze",
+      "expected_output": "empirical/ppp_empirical.csv",
+      "blockers_to_attested_report": [
+        "successful sandbox execution has not yet been observed",
+        "source workspace SHA-256 manifest has not yet been recorded",
+        "resolved dependency versions have not yet been frozen",
+        "execution output SHA-256 has not yet been recorded",
+        "method-fidelity attestation has not been independently completed"
+      ]
+    },
+    "independent_reimplementation": {
+      "mode": "independent_reimplementation",
+      "status": "prohibited_for_scoring",
+      "author_code_visible": false,
+      "author_output_visible": false,
+      "network_allowed": false,
+      "reason": "This case is an author-package engineering shakedown, not a contamination-controlled agent-independence benchmark."
+    }
+  },
+  "target_contract": {
+    "status": "selected_and_committed_orchestrator_only",
+    "target_id": "cad-config-faithful-pvalue",
+    "claim_id": "ssrn-7138278-abstract-cad-boundary",
+    "metric": "p_value",
+    "source_descriptor": "SSRN public abstract, Canadian-dollar boundary statement",
+    "target_commitment_sha256": "1f8caed19753fd1a1cfc3135ae150e025d873dd44553d7a11d420a9016b95856",
+    "reported_numeric_value_stored_in_repository": false,
+    "reviewer_a_complete": true,
+    "reviewer_b_complete": false,
+    "adjudication_complete": false
+  },
+  "authority": {
+    "production_authorized": false,
+    "e4_authorized": false,
+    "maximum_current_evidence": "UNVERIFIABLE",
+    "reason": "The paper/package version mapping and target commitment are pinned, but no frozen sandbox execution, independent target adjudication, or method-fidelity attestation exists yet."
+  },
+  "readiness_gates": {
+    "article_version_pinned": true,
+    "artifact_terms_verified": true,
+    "artifact_hashes_pinned": false,
+    "runtime_pinned": false,
+    "method_spec_double_reviewed": false,
+    "target_double_reviewed": false,
+    "target_sealed": true,
+    "author_package_execution_attested": false
+  },
+  "version_drift_control": {
+    "later_release_observed": "v2.0.1",
+    "later_release_must_not_replace_v1_3_1_for_this_target": true,
+    "reason": "The selected public-preprint claim is version-sensitive; later package output differs and belongs to a later manuscript state."
+  },
+  "source_evidence": [
+    {
+      "kind": "public_preprint",
+      "locator": "https://ssrn.com/abstract=7138278"
+    },
+    {
+      "kind": "replication_release",
+      "locator": "https://github.com/ricardogs-econ/model-LB-replication/tree/v1.3.1"
+    },
+    {
+      "kind": "replication_archive",
+      "locator": "https://doi.org/10.5281/zenodo.21610828"
+    }
+  ],
+  "rule": "The reported numeric target is intentionally absent. Only its pre-run commitment is stored here. This packet and all repository URLs are orchestrator provenance and must never be mounted into an independent code-agent workspace."
+}
