@@ -2,17 +2,79 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
 
 from smoke_real_pdf import _cluster_page_lines, _download
 from veritas.pdf_grouped_regression import GroupedRegressionLocator, extract_grouped_regression_table
 from veritas.pdf_native import parse_pdf_dual
 
 DOI = "10.1186/s12889-025-21990-3"
-PDF_URL = "https://link.springer.com/content/pdf/10.1186/s12889-025-21990-3.pdf"
+PMCID = "PMC11863760"
+PMC_BUCKET = "https://pmc-oa-opendata.s3.amazonaws.com"
+PUBLISHER_PDF_URL = "https://link.springer.com/content/pdf/10.1186/s12889-025-21990-3.pdf"
 PAGES = (8, 9)
 TARGET_PAGE = 8
 TARGET_VARIABLE = "Age"
 TARGET_GROUP = "Multivariable regression analysis"
+
+
+def _discover_pmc_pdf_url() -> str | None:
+    query = urllib.parse.urlencode({"list-type": "2", "prefix": f"{PMCID}."})
+    listing_url = f"{PMC_BUCKET}/?{query}"
+    request = urllib.request.Request(
+        listing_url,
+        headers={"User-Agent": "Veritas PMC Cloud availability probe/0.11 (+research integrity audit)"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        payload = response.read()
+    root = ET.fromstring(payload)
+    pdf_keys = sorted(
+        element.text
+        for element in root.findall(".//{*}Key")
+        if element.text is not None
+        and element.text.startswith(f"{PMCID}.")
+        and element.text.casefold().endswith(".pdf")
+    )
+    if not pdf_keys:
+        return None
+    if len(pdf_keys) > 1:
+        # Prefer the numerically latest article version rather than silently taking list order.
+        def version_number(key: str) -> int:
+            version_token = key.split("/", 1)[0].removeprefix(f"{PMCID}.")
+            return int(version_token) if version_token.isdigit() else -1
+
+        pdf_keys.sort(key=version_number, reverse=True)
+    return f"{PMC_BUCKET}/{urllib.parse.quote(pdf_keys[0], safe='/')}"
+
+
+def _retrieve_pdf() -> tuple[bytes, str, tuple[dict[str, str], ...]]:
+    attempts: list[dict[str, str]] = []
+    try:
+        pmc_pdf_url = _discover_pmc_pdf_url()
+    except (urllib.error.URLError, TimeoutError, ET.ParseError, ValueError) as exc:
+        attempts.append({"source": "pmc_cloud_discovery", "status": "failed", "reason": str(exc)})
+        pmc_pdf_url = None
+    if pmc_pdf_url is not None:
+        try:
+            return _download(pmc_pdf_url), pmc_pdf_url, tuple(attempts)
+        except (urllib.error.URLError, TimeoutError, RuntimeError) as exc:
+            attempts.append({"source": "pmc_cloud_pdf", "status": "failed", "reason": str(exc)})
+    else:
+        attempts.append(
+            {
+                "source": "pmc_cloud_pdf",
+                "status": "not_listed",
+                "reason": f"no PDF object listed for prefix {PMCID}.",
+            }
+        )
+
+    try:
+        return _download(PUBLISHER_PDF_URL), PUBLISHER_PDF_URL, tuple(attempts)
+    except (urllib.error.URLError, TimeoutError, RuntimeError) as exc:
+        attempts.append({"source": "publisher_pdf", "status": "failed", "reason": str(exc)})
+        raise RuntimeError(json.dumps(attempts, sort_keys=True)) from exc
 
 
 def _network_unverified(exc: BaseException) -> None:
@@ -22,7 +84,7 @@ def _network_unverified(exc: BaseException) -> None:
                 "doi": DOI,
                 "network_retrieval_verified": False,
                 "parser_executed": False,
-                "pdf_url": PDF_URL,
+                "pmcid": PMCID,
                 "production_authorized": False,
                 "reason": str(exc),
                 "seed_promotion_authorized": False,
@@ -36,11 +98,10 @@ def _network_unverified(exc: BaseException) -> None:
 
 def main() -> None:
     try:
-        pdf = _download(PDF_URL)
-    except (urllib.error.URLError, TimeoutError, RuntimeError) as exc:
-        # Publisher/CDN behavior from hosted CI is an availability fact, not an extraction failure.
-        # Emit a machine-readable state and exit successfully so a green step means only that the
-        # observability probe ran. Parser/extractor exceptions after verified PDF retrieval still fail.
+        pdf, resolved_pdf_url, retrieval_attempts = _retrieve_pdf()
+    except RuntimeError as exc:
+        # Network/CDN availability is separate from extraction correctness. Emit a machine-readable
+        # candidate state; parser/extractor exceptions after verified PDF retrieval still surface.
         _network_unverified(exc)
         return
 
@@ -123,8 +184,11 @@ def main() -> None:
                 "network_retrieval_verified": True,
                 "pages": PAGES,
                 "parser_executed": True,
+                "pmcid": PMCID,
                 "probes": probes,
                 "production_authorized": False,
+                "resolved_pdf_url": resolved_pdf_url,
+                "retrieval_attempts": retrieval_attempts,
                 "seed_promotion_authorized": False,
                 "status": "parsed_observability_only",
                 "target": {
