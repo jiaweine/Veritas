@@ -20,9 +20,9 @@ jobs:
       - run: python scripts/benchmark_pdf_geometry_holdout.py
       - name: Adversarial extraction fail-closed benchmark
         run: python scripts/benchmark_extraction_adversarial.py
-      - name: Frontiers combined coefficient-SE probe (non-gating)
+      - name: BMC grouped regression-header probe (non-gating)
         continue-on-error: true
-        run: python scripts/probe_frontiers_combined_se.py
+        run: python scripts/probe_bmc_grouped_headers.py
       - name: Real PDF extraction smoke (non-gating)
         continue-on-error: true
         run: python scripts/smoke_real_pdf.py
