@@ -1,0 +1,125 @@
+# Code-agent reproduction audit
+
+Veritas treats computational reproduction as a separate evidence chain from paper-only consistency auditing.
+A coding agent is an implementation tool, not an integrity judge.
+
+## Questions the reproduction layer answers
+
+1. **Author-package reproduction** — when author code and data are available, can the supplied package regenerate the reported computational results under a pinned environment?
+2. **Independent method reimplementation** — when data are available, can an independent implementation derived only from the publication-grounded method specification recover the same results?
+3. **Discrepancy attribution** — when results differ, is the most plausible source data preprocessing, sample selection, variable construction, estimator choice, inference, randomness, environment, method underspecification, or agent implementation?
+
+These questions must not be collapsed into a single "reproducible" score.
+
+## Evidence-availability rule
+
+No data means computational reproduction is `UNVERIFIABLE`, not suspicious. The CodeAgent path should activate only when the necessary data artifacts exist. Missing author code still allows an independent reimplementation if the method specification and data are sufficient.
+
+## Two execution modes
+
+### 1. Author-code reproduction
+
+The original analysis code is the object being tested. The default action is to execute it unchanged. A CodeAgent may repair environment, dependency, path, or compatibility issues, but every patch is hashed and preserved. Silent changes to estimators, samples, transformations, model formulas, or inference are forbidden.
+
+A zero-patch run must still carry an explicit empty-patch hash so that "no code modification" is an auditable fact.
+
+### 2. Independent reimplementation
+
+The CodeAgent receives:
+
+- a structured `MethodSpecification` grounded in publication-visible text;
+- data artifacts and schemas;
+- blind target descriptors such as `claim_id + metric`;
+- execution constraints.
+
+It does **not** receive:
+
+- the paper's numeric target values;
+- the original author code;
+- numeric distance-to-target feedback while iterating.
+
+The paper's target values are bound before execution by a SHA-256 commitment. The generated code and workspace are frozen before the target values are unsealed for deterministic comparison. This blocks result-fitting as an agent strategy.
+
+## MethodSpecification
+
+The schema is statistical-object based rather than discipline based. Required fields vary by design, but common fields include:
+
+- outcome and treatment/exposure definitions;
+- sample inclusion/exclusion rules;
+- data transformations and constructed variables;
+- estimator/model family;
+- controls and interactions;
+- fixed effects;
+- weights;
+- clustering/inference method and degrees of freedom where applicable;
+- time/event window and comparison group for panel/DID designs;
+- instrument/first stage for IV;
+- cutoff, polynomial/order, kernel and bandwidth for RDD;
+- scale construction, missing-data handling and weighting for surveys;
+- random seeds or stochastic procedures when material.
+
+A required field that is missing or below the calibrated extraction-confidence threshold blocks independent computational reproduction. The correct state is method-underspecified / unverifiable; the agent must not invent the missing choice and then treat the resulting mismatch as evidence against the paper.
+
+## Execution boundary
+
+Generated or supplied research code is untrusted input. Production execution should use a sandbox with:
+
+- network disabled by default;
+- read-only input mounts;
+- no host filesystem access;
+- no credentials;
+- CPU, memory and wall-clock limits;
+- pinned language/package environments;
+- hashed container/environment identity;
+- stdout/stderr and output artifact provenance;
+- a frozen final workspace hash before result comparison.
+
+The core Veritas package exposes a backend protocol rather than running arbitrary subprocesses itself. A Codex, SWE-agent, or custom CodeAgent backend can implement the protocol without changing the evidence rules.
+
+## Comparing effects with the paper
+
+Comparison is deterministic and claim/display-item level. Printed values are not compared naively: equality uses the paper's feasible rounding interval, and censored reports such as `p < 0.001` are treated as inequalities.
+
+The first comparison layer records:
+
+- matched cells;
+- mismatched cells;
+- missing outputs;
+- material mismatches affecting main empirical claims.
+
+Method-specific comparators should then compare structured statistical objects rather than only flat cells. Examples:
+
+- OLS/logit: coefficient, SE, test statistic, p/CI, N, fixed effects and inference identity;
+- DID/event study: target estimand, event-time ATT vector, comparison group, sample and inference;
+- IV: second-stage estimate, first-stage/strength diagnostics and inference;
+- RDD: cutoff estimate, bandwidth, polynomial/kernel choices and inference;
+- survey/SEM: scale construction, model coefficients, fit indices and missing-data handling;
+- meta-analysis: study set, effect-size construction, heterogeneity statistics and pooled effect.
+
+A single aggregate RMSE is insufficient: a run can be numerically close while implementing the wrong estimand, or numerically different only because the paper printed a rounded value.
+
+## Evidence promotion
+
+A CodeAgent mismatch is not automatically E4.
+
+`E4 REPRODUCTION_CONTRADICTION` is permitted only when all of the following are verified:
+
+1. input artifact identity;
+2. method fidelity of the executed implementation;
+3. sandbox execution/provenance;
+4. target identity and comparison rules;
+5. either an author-package rerun or an independently adjudicated reimplementation.
+
+An experimental agent mismatch is capped at `E1 WEAK_SIGNAL`, even when the numerical difference is large. This prevents agent bugs from being misattributed to authors.
+
+A successful match is also not proof that a paper is globally reliable. It is positive evidence only for the tested claims under the tested artifacts and environment.
+
+## Research basis
+
+The architecture borrows three useful ideas from recent agent-replication work while adapting them to social-science integrity auditing:
+
+- OpenAI PaperBench (2025): decompose end-to-end replication into fine-grained, independently gradable outcomes rather than one opaque success score — https://openai.com/index/paperbench/
+- Kohler et al., *Read the Paper, Write the Code: Agentic Reproduction of Social-Science Results* (2026): strict information isolation, independent reimplementation from paper methods plus data, deterministic cell-level comparisons, and discrepancy attribution — https://arxiv.org/abs/2604.21965
+- Nguyen et al., *ReplicatorBench* (2026): evaluate resource retrieval, experiment design/execution, and interpretation as separate stages, including both replicable and non-replicable claims — https://arxiv.org/abs/2602.11354
+
+The Veritas-specific addition is evidence promotion: the agent is never the final judge, and reproduction failures are capped by verified provenance and method-fidelity gates before they can contribute to an integrity finding.
