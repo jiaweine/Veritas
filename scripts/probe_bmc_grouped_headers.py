@@ -5,7 +5,7 @@ import json
 from smoke_real_pdf import _cluster_page_lines, _download
 from veritas.pdf_native import parse_pdf_dual
 
-PDF_URL = "https://bmcpublichealth.biomedcentral.com/counter/pdf/10.1186/s12889-025-21990-3.pdf"
+PDF_URL = "https://link.springer.com/content/pdf/10.1186/s12889-025-21990-3.pdf"
 PAGES = (8, 9)
 
 
