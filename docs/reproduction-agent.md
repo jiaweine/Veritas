@@ -110,6 +110,24 @@ Method-specific comparators should then compare structured statistical objects r
 
 A single aggregate RMSE is insufficient: a run can be numerically close while implementing the wrong estimand, or numerically different only because the paper printed a rounded value.
 
+## Real-package readiness and sealed post-run comparison
+
+Execution readiness and evidence-promotion readiness are separate states. A package can be legally and technically runnable in an isolated sandbox while still being ineligible for production evidence because target adjudication or independent method-fidelity review is incomplete. Conversely, a public repository listing is not enough to mark a package executable: artifact-level terms, version identity, hashes, and runtime requirements still have to be pinned.
+
+Paper and replication-package versions must be pinned as a pair. A later package release must not silently replace the package that corresponds to the selected publication version when the reported result or calibration changed between releases.
+
+For sealed comparison, the numeric paper target remains outside the repository and agent workspace. Before execution, Veritas stores only a target commitment plus an answer-free binding that says how to locate the reproduced value in the frozen output, for example an exact CSV row selector and value column. After the sandbox run is frozen, `reproduction_ingest`:
+
+1. opens the private target and recomputes its commitment;
+2. verifies the pinned package commit, source manifest, immutable runtime, execution security properties, and actual output bytes;
+3. extracts exactly one reproduced value from the bound output location;
+4. calls the normal Veritas rounding-aware comparator;
+5. emits an answer-free certificate containing only the decision and provenance hashes, not the reported or reproduced numeric values.
+
+A target commitment mismatch, changed output bytes, ambiguous output row, or disagreement between an attested value and the bound output fails closed. The descriptive certificate cannot enable production or E4 authority on its own.
+
+The first v0.11 engineering shakedown follows this flow on the public Model-LB author package. The public preprint is deliberately paired with package `v1.3.1`, not the later `v2.x` package state; the exact author package is rerun in a network-disabled, read-only sandbox using an immutable Python base image and an exact dependency lock. The discovery run and precommitted frozen rerun produced identical source-manifest, environment, and output hashes, and the sealed target comparison returned `MATCH`. The case remains non-production and is prohibited from agent-independence scoring because independent target adjudication and method-fidelity review are still incomplete. This is a pipeline shakedown, not a global reliability judgment about the paper.
+
 ## Evidence promotion
 
 A CodeAgent mismatch is not automatically E4.
