@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from veritas.extraction import ConformalCalibration, ConformalExtractionGate
+from veritas.ingestion import PromotionDecision
 from veritas.pdf_grouped_regression import GroupedRegressionLocator, extract_grouped_regression_table
 from veritas.pdf_native import NativePDFSnapshot, PDFPageSnapshot, PDFWord
+from veritas.pdf_regression import bundle_to_ledger, regression_promotion_spec, regression_result_builder
 
 
 def _word(text: str, x: float, y: float, width: float = 24.0) -> PDFWord:
@@ -78,8 +81,8 @@ def _dual(*, incomplete_second_block: bool = False) -> tuple[NativePDFSnapshot, 
     )
 
 
-def test_grouped_regression_uses_publication_visible_model_group() -> None:
-    bundle = extract_grouped_regression_table(
+def _multivariable_bundle():
+    return extract_grouped_regression_table(
         _dual(),
         variable_label="Age",
         locator=GroupedRegressionLocator(
@@ -88,6 +91,10 @@ def test_grouped_regression_uses_publication_visible_model_group() -> None:
             expected_page=1,
         ),
     )
+
+
+def test_grouped_regression_uses_publication_visible_model_group() -> None:
+    bundle = _multivariable_bundle()
 
     assert not bundle.ambiguities
     assert [candidate.normalized_value for candidate in bundle.field_candidates["beta"]] == ["0.02", "0.02"]
@@ -141,3 +148,25 @@ def test_grouped_regression_fails_closed_when_group_and_role_blocks_do_not_map_o
 
     assert bundle.ambiguities
     assert all(not candidates for candidates in bundle.field_candidates.values())
+
+
+def test_grouped_exact_fields_do_not_bypass_missing_inference_semantics() -> None:
+    bundle = _multivariable_bundle()
+    gate = ConformalExtractionGate(
+        ConformalCalibration(nonconformity_scores=(0.02,) * 40, alpha=0.05)
+    )
+    ledger = bundle_to_ledger(
+        bundle,
+        gate,
+        calibration_sha256="c" * 64,
+        object_id="grouped-regression",
+    )
+    report, envelope = ledger.promote(
+        "grouped-regression",
+        regression_promotion_spec(),
+        regression_result_builder,
+    )
+
+    assert report.decision is PromotionDecision.UNVERIFIABLE
+    assert envelope is None
+    assert "missing critical semantic gate: inference_distribution" in report.reasons
