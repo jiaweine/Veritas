@@ -10,6 +10,7 @@ from .reproduction import (
     ExecutionAttestation,
     MethodFidelityAttestation,
     ReproductionAuthority,
+    ReproductionEvidenceBinding,
     ReproductionMode,
     ReproductionReport,
     ReproductionRootCause,
@@ -152,6 +153,17 @@ def build_attested_reproduction_report(
     validate_method_fidelity(task, proposal, method_fidelity)
     validate_artifact_identity(task, artifact_identity)
     validate_comparison_evidence(task, targets, comparisons, execution)
+    evidence_binding = ReproductionEvidenceBinding(
+        task_sha256=task.sha256(),
+        method_spec_sha256=task.method_spec.sha256(),
+        target_commitment_sha256=task.reference_commitment_sha256,
+        code_sha256=execution.code_sha256,
+        frozen_workspace_sha256=execution.frozen_workspace_sha256,
+        environment_sha256=execution.environment_sha256,
+        sandbox_policy_sha256=execution.sandbox_policy_sha256,
+        input_artifact_sha256=execution.input_artifact_sha256,
+        output_artifact_sha256=execution.output_artifact_sha256,
+    )
     return _build_reproduction_report(
         comparisons,
         authority=authority,
@@ -160,4 +172,5 @@ def build_attested_reproduction_report(
         execution_attested=True,
         root_cause=root_cause,
         allow_e4=True,
+        evidence_binding=evidence_binding,
     )

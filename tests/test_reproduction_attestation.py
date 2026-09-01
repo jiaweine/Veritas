@@ -12,6 +12,7 @@ from veritas.reproduction import (
     ReproducedCell,
     ReproductionArtifact,
     ReproductionAuthority,
+    ReproductionEvidenceBinding,
     ReproductionMode,
     ReproductionTarget,
     SandboxPolicy,
@@ -162,6 +163,7 @@ def test_attested_builder_is_the_e4_capable_code_agent_path() -> None:
     task, targets = _task()
     proposal = _proposal(task)
     policy = SandboxPolicy()
+    execution = _execution(task, proposal, policy)
 
     report = build_attested_reproduction_report(
         _mismatch_comparisons(targets),
@@ -169,12 +171,37 @@ def test_attested_builder_is_the_e4_capable_code_agent_path() -> None:
         targets=targets,
         proposal=proposal,
         sandbox_policy=policy,
-        execution=_execution(task, proposal, policy),
+        execution=execution,
         method_fidelity=_method_fidelity(task, proposal),
         artifact_identity=_artifact_identity(task),
         authority=ReproductionAuthority.INDEPENDENT_ADJUDICATED,
     )
     assert report.max_evidence_grade is EvidenceGrade.REPRODUCTION_CONTRADICTION
+    assert report.evidence_binding is not None
+    assert report.evidence_binding.task_sha256 == task.sha256()
+    assert report.evidence_binding.method_spec_sha256 == task.method_spec.sha256()
+    assert report.evidence_binding.target_commitment_sha256 == task.reference_commitment_sha256
+    assert report.evidence_binding.code_sha256 == proposal.generated_code_sha256
+    assert report.evidence_binding.frozen_workspace_sha256 == execution.frozen_workspace_sha256
+    assert report.evidence_binding.environment_sha256 == execution.environment_sha256
+    assert report.evidence_binding.sandbox_policy_sha256 == policy.sha256()
+    assert report.evidence_binding.input_artifact_sha256 == execution.input_artifact_sha256
+    assert report.evidence_binding.output_artifact_sha256 == execution.output_artifact_sha256
+
+
+def test_evidence_binding_rejects_invalid_provenance_hash() -> None:
+    with pytest.raises(ValueError, match="task_sha256"):
+        ReproductionEvidenceBinding(
+            task_sha256="not-a-sha",
+            method_spec_sha256="a" * 64,
+            target_commitment_sha256="b" * 64,
+            code_sha256="c" * 64,
+            frozen_workspace_sha256="d" * 64,
+            environment_sha256="e" * 64,
+            sandbox_policy_sha256="f" * 64,
+            input_artifact_sha256=("1" * 64,),
+            output_artifact_sha256=("2" * 64,),
+        )
 
 
 def test_attested_builder_revalidates_unsealed_target_commitment() -> None:

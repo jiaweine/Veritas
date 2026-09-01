@@ -362,6 +362,37 @@ class ReproductionAgreementSummary:
 
 
 @dataclass(frozen=True)
+class ReproductionEvidenceBinding:
+    """Immutable provenance carried by a fully attested reproduction report."""
+
+    task_sha256: str
+    method_spec_sha256: str
+    target_commitment_sha256: str
+    code_sha256: str
+    frozen_workspace_sha256: str
+    environment_sha256: str
+    sandbox_policy_sha256: str
+    input_artifact_sha256: tuple[str, ...]
+    output_artifact_sha256: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("task_sha256", self.task_sha256),
+            ("method_spec_sha256", self.method_spec_sha256),
+            ("target_commitment_sha256", self.target_commitment_sha256),
+            ("code_sha256", self.code_sha256),
+            ("frozen_workspace_sha256", self.frozen_workspace_sha256),
+            ("environment_sha256", self.environment_sha256),
+            ("sandbox_policy_sha256", self.sandbox_policy_sha256),
+        ):
+            _validate_sha256(name, value)
+        for value in self.input_artifact_sha256:
+            _validate_sha256("input_artifact_sha256", value)
+        for value in self.output_artifact_sha256:
+            _validate_sha256("output_artifact_sha256", value)
+
+
+@dataclass(frozen=True)
 class ReproductionReport:
     decision: ReproductionDecision
     comparisons: tuple[CellComparison, ...]
@@ -373,6 +404,7 @@ class ReproductionReport:
     execution_attested: bool
     root_cause: ReproductionRootCause = ReproductionRootCause.UNKNOWN
     reasons: tuple[str, ...] = ()
+    evidence_binding: ReproductionEvidenceBinding | None = None
 
 
 def target_commitment_sha256(targets: tuple[ReproductionTarget, ...]) -> str:
@@ -572,6 +604,7 @@ def build_reproduction_report(
         execution_attested=execution_attested,
         root_cause=root_cause,
         allow_e4=False,
+        evidence_binding=None,
     )
 
 
@@ -584,7 +617,11 @@ def _build_reproduction_report(
     execution_attested: bool,
     root_cause: ReproductionRootCause = ReproductionRootCause.UNKNOWN,
     allow_e4: bool,
+    evidence_binding: ReproductionEvidenceBinding | None,
 ) -> ReproductionReport:
+    if allow_e4 and evidence_binding is None:
+        raise ValueError("E4-capable reproduction report requires immutable evidence binding")
+
     agreement = summarize_reproduction_agreement(comparisons)
     if not comparisons or all(item.status is CellComparisonStatus.MISSING for item in comparisons):
         decision = ReproductionDecision.UNVERIFIABLE
@@ -631,6 +668,7 @@ def _build_reproduction_report(
         execution_attested=execution_attested,
         root_cause=root_cause,
         reasons=tuple(reasons),
+        evidence_binding=evidence_binding,
     )
 
 
