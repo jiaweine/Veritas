@@ -3,7 +3,7 @@
   "status": "seed_corpus_not_locked_gold",
   "scope": "real_open_access_extraction_seed_not_production_certification",
   "rule": "Seed cases may exercise parsers but cannot enter a locked extraction TEST set until each gold target has two independent reviewers and adjudication.",
-  "as_of": "2026-08-31",
+  "as_of": "2026-09-01",
   "production_hard_finding_authorized": false,
   "cases": [
     {
@@ -16,6 +16,7 @@
       "object_type": "RegressionResult",
       "locator": {"expected_page": 5, "table_label": "Table 2", "row_label": "Age (years)"},
       "expected_fields": {"beta": "-0.016", "se": "0.004", "t_stat": "-3.650", "p_value": "<0.001"},
+      "promotion_expectation": {"detector_ready_under_geometry_probe": true, "reason": "Explicit z-statistic semantics are available to the current regression builder."},
       "review_status": "legacy_manual_check_pending_two_independent_reviewers",
       "split": null
     },
@@ -29,6 +30,7 @@
       "object_type": "RegressionResult",
       "locator": {"expected_page": 11, "table_label": "Table 2", "row_label": "Image: neutral"},
       "expected_fields": {"beta": "0.104", "se": "0.038", "t_stat": "2.735", "p_value": "0.006"},
+      "promotion_expectation": {"detector_ready_under_geometry_probe": true, "reason": "Explicit z-statistic semantics are available to the current regression builder."},
       "review_status": "legacy_manual_check_pending_two_independent_reviewers",
       "split": null
     },
@@ -42,6 +44,7 @@
       "object_type": "RegressionResult",
       "locator": {"expected_page": 10, "table_label": "Table 2", "row_label": "EDTR"},
       "expected_fields": {"beta": "0.3596", "se": "0.1386", "t_stat": "2.5938", "p_value": "0.0095"},
+      "promotion_expectation": {"detector_ready_under_geometry_probe": true, "reason": "Explicit z-statistic semantics are available to the current regression builder."},
       "review_status": "legacy_manual_check_pending_two_independent_reviewers",
       "split": null
     },
@@ -55,6 +58,21 @@
       "object_type": "RegressionResult",
       "locator": {"expected_page": 10, "table_label": "Table 2", "row_label": "β"},
       "expected_fields": {"beta": "0.1848905", "se": "0.03399295", "t_stat": "5.439085", "p_value": "5.355501e-08"},
+      "promotion_expectation": {"detector_ready_under_geometry_probe": true, "reason": "Explicit z-statistic semantics are available to the current regression builder."},
+      "review_status": "legacy_manual_check_pending_two_independent_reviewers",
+      "split": null
+    },
+    {
+      "case_id": "frontiers-1520668-table2-f01",
+      "paper_id": "doi:10.3389/fpubh.2025.1520668",
+      "article_family_id": "doi:10.3389/fpubh.2025.1520668",
+      "doi": "10.3389/fpubh.2025.1520668",
+      "pdf_url": "https://www.frontiersin.org/journals/public-health/articles/10.3389/fpubh.2025.1520668/pdf",
+      "license_note": "CC BY",
+      "object_type": "RegressionResult",
+      "locator": {"expected_page": 7, "table_label": "Table 2", "row_label": "F01 (Group male vs. female)"},
+      "expected_fields": {"beta": "-0.028", "se": "0.010", "t_stat": "-2.80", "p_value": "0.005"},
+      "promotion_expectation": {"detector_ready_under_geometry_probe": false, "reason": "The table reports a t-value but no degrees of freedom at the display-item level; extraction may be exact while detector semantics remain unverifiable."},
       "review_status": "legacy_manual_check_pending_two_independent_reviewers",
       "split": null
     }
