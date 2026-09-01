@@ -40,3 +40,13 @@ def test_reproduction_candidate_manifest_is_explicitly_non_gold_and_answer_free(
         item["blind_agent_benchmark_status"] == "benchmark_gold"
         for item in payload["candidates"]
     )
+
+
+def test_current_sampling_frame_cannot_silently_enter_agent_independence_score() -> None:
+    payload = json.loads(_MANIFEST.read_text(encoding="utf-8"))
+
+    assert payload["agent_independence_status"] == "no_current_candidate_eligible"
+    assert all(
+        item["blind_agent_benchmark_status"] == "blocked_pending_contamination_control"
+        for item in payload["candidates"]
+    )
