@@ -158,3 +158,37 @@ def test_independent_agent_view_rechecks_visibility_policy_for_manual_tasks() ->
 
     with pytest.raises(AgentTaskViewBlocked, match="reported outcomes"):
         build_agent_task_view(unsafe_task)
+
+
+def test_independent_agent_view_rejects_network_even_without_explicit_target_values() -> None:
+    safe_task = build_code_agent_task(
+        task_id="blind-network",
+        mode=ReproductionMode.INDEPENDENT_REIMPLEMENTATION,
+        method_spec=MethodSpecification(
+            spec_id="method",
+            object_type="RegressionResult",
+            fields=(MethodField("estimator", "ols"),),
+        ),
+        artifacts=(ReproductionArtifact("data", "analysis_data", "a" * 64),),
+        targets=(
+            ReproductionTarget(
+                "beta",
+                "claim",
+                "coefficient",
+                ReportedNumber(0.4, decimals=1),
+                SourceLocation(page=2, table="Table 1"),
+            ),
+        ),
+    )
+    networked_task = CodeAgentTask(
+        task_id=safe_task.task_id,
+        mode=safe_task.mode,
+        method_spec=safe_task.method_spec,
+        artifacts=safe_task.artifacts,
+        targets=safe_task.targets,
+        reference_commitment_sha256=safe_task.reference_commitment_sha256,
+        visibility_policy=AgentVisibilityPolicy(allow_network=True),
+    )
+
+    with pytest.raises(AgentTaskViewBlocked, match="disable agent network access"):
+        build_agent_task_view(networked_task)

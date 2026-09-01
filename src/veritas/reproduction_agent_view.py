@@ -101,6 +101,8 @@ def _validate_independent_view_boundary(task: CodeAgentTask) -> None:
         raise AgentTaskViewBlocked("independent agent view cannot expose original author code")
     if policy.reveal_numeric_comparison_during_iteration:
         raise AgentTaskViewBlocked("independent agent view cannot expose numeric target feedback")
+    if policy.allow_network:
+        raise AgentTaskViewBlocked("independent blind reproduction must disable agent network access")
 
     disallowed = tuple(
         sorted(
