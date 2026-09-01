@@ -348,6 +348,7 @@ class CellComparison:
     status: CellComparisonStatus
     reproduced_value: float | None
     reported_interval: tuple[float, float] | None
+    output_artifact_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -372,6 +373,27 @@ class ReproductionReport:
     execution_attested: bool
     root_cause: ReproductionRootCause = ReproductionRootCause.UNKNOWN
     reasons: tuple[str, ...] = ()
+
+
+def target_commitment_sha256(targets: tuple[ReproductionTarget, ...]) -> str:
+    if not targets:
+        raise ValueError("target commitment requires at least one target")
+    target_ids = tuple(target.target_id for target in targets)
+    if len(target_ids) != len(set(target_ids)):
+        raise ValueError("target ids must be unique before commitment")
+    commitments = tuple(target.reference_commitment_sha256() for target in targets)
+    return _stable_sha256(commitments)
+
+
+def validate_target_commitment(
+    task: CodeAgentTask,
+    targets: tuple[ReproductionTarget, ...],
+) -> None:
+    target_ids = tuple(target.target_id for target in targets)
+    if target_ids != task.target_ids:
+        raise ValueError("unsealed target identities do not match the locked reproduction task")
+    if target_commitment_sha256(targets) != task.reference_commitment_sha256:
+        raise ValueError("unsealed target set does not match the locked target commitment")
 
 
 def build_code_agent_task(
@@ -411,14 +433,13 @@ def build_code_agent_task(
             )
         artifacts = tuple(item for item in artifacts if item.role != "original_code")
 
-    commitments = tuple(target.reference_commitment_sha256() for target in targets)
     return CodeAgentTask(
         task_id=task_id,
         mode=mode,
         method_spec=method_spec,
         artifacts=artifacts,
         targets=tuple(target.blind_descriptor() for target in targets),
-        reference_commitment_sha256=_stable_sha256(commitments),
+        reference_commitment_sha256=target_commitment_sha256(targets),
         visibility_policy=policy,
     )
 
@@ -483,6 +504,7 @@ def compare_reproduced_cells(
                     CellComparisonStatus.MISSING,
                     None,
                     None,
+                    None,
                 )
             )
             continue
@@ -500,6 +522,7 @@ def compare_reproduced_cells(
                 status,
                 cell.value,
                 interval,
+                cell.output_artifact_sha256,
             )
         )
     return tuple(comparisons)

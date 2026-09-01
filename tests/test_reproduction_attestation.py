@@ -135,10 +135,10 @@ def _artifact_identity(task) -> ArtifactIdentityAttestation:
     )
 
 
-def _mismatch_comparisons(targets):
+def _mismatch_comparisons(targets, *, output_sha256: str = "e" * 64):
     return compare_reproduced_cells(
         targets,
-        (ReproducedCell("claim-beta", 0.40, "e" * 64),),
+        (ReproducedCell("claim-beta", 0.40, output_sha256),),
     )
 
 
@@ -166,6 +166,7 @@ def test_attested_builder_is_the_e4_capable_code_agent_path() -> None:
     report = build_attested_reproduction_report(
         _mismatch_comparisons(targets),
         task=task,
+        targets=targets,
         proposal=proposal,
         sandbox_policy=policy,
         execution=_execution(task, proposal, policy),
@@ -174,6 +175,54 @@ def test_attested_builder_is_the_e4_capable_code_agent_path() -> None:
         authority=ReproductionAuthority.INDEPENDENT_ADJUDICATED,
     )
     assert report.max_evidence_grade is EvidenceGrade.REPRODUCTION_CONTRADICTION
+
+
+def test_attested_builder_revalidates_unsealed_target_commitment() -> None:
+    task, _ = _task()
+    proposal = _proposal(task)
+    policy = SandboxPolicy()
+    tampered_targets = (
+        ReproductionTarget(
+            "claim-beta",
+            "claim-main",
+            "coefficient",
+            ReportedNumber(0.20, decimals=2),
+            SourceLocation(page=4, table="Table 2", row="Treatment", column="B"),
+            Materiality.MAIN_EMPIRICAL_CLAIM,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="locked target commitment"):
+        build_attested_reproduction_report(
+            _mismatch_comparisons(tampered_targets),
+            task=task,
+            targets=tampered_targets,
+            proposal=proposal,
+            sandbox_policy=policy,
+            execution=_execution(task, proposal, policy),
+            method_fidelity=_method_fidelity(task, proposal),
+            artifact_identity=_artifact_identity(task),
+            authority=ReproductionAuthority.INDEPENDENT_ADJUDICATED,
+        )
+
+
+def test_attested_builder_binds_comparison_to_execution_output() -> None:
+    task, targets = _task()
+    proposal = _proposal(task)
+    policy = SandboxPolicy()
+
+    with pytest.raises(ValueError, match="attested execution"):
+        build_attested_reproduction_report(
+            _mismatch_comparisons(targets, output_sha256="9" * 64),
+            task=task,
+            targets=targets,
+            proposal=proposal,
+            sandbox_policy=policy,
+            execution=_execution(task, proposal, policy),
+            method_fidelity=_method_fidelity(task, proposal),
+            artifact_identity=_artifact_identity(task),
+            authority=ReproductionAuthority.INDEPENDENT_ADJUDICATED,
+        )
 
 
 def test_attested_author_package_authority_requires_author_code_task() -> None:
@@ -185,6 +234,7 @@ def test_attested_author_package_authority_requires_author_code_task() -> None:
         build_attested_reproduction_report(
             _mismatch_comparisons(targets),
             task=task,
+            targets=targets,
             proposal=proposal,
             sandbox_policy=policy,
             execution=_execution(task, proposal, policy),
@@ -203,6 +253,7 @@ def test_attested_independent_authority_requires_independent_task() -> None:
         build_attested_reproduction_report(
             _mismatch_comparisons(targets),
             task=task,
+            targets=targets,
             proposal=proposal,
             sandbox_policy=policy,
             execution=_execution(task, proposal, policy),
@@ -229,6 +280,7 @@ def test_attested_builder_rejects_self_attested_method_fidelity() -> None:
         build_attested_reproduction_report(
             _mismatch_comparisons(targets),
             task=task,
+            targets=targets,
             proposal=proposal,
             sandbox_policy=policy,
             execution=_execution(task, proposal, policy),

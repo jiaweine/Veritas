@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from .reproduction import (
+    CellComparisonStatus,
     CodeAgentProposal,
     CodeAgentTask,
     ExecutionAttestation,
@@ -12,9 +13,11 @@ from .reproduction import (
     ReproductionMode,
     ReproductionReport,
     ReproductionRootCause,
+    ReproductionTarget,
     SandboxPolicy,
     _build_reproduction_report,
     validate_frozen_execution,
+    validate_target_commitment,
 )
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -104,10 +107,36 @@ def validate_reproduction_authority(
     raise ValueError(f"unsupported reproduction authority: {authority!r}")
 
 
+def validate_comparison_evidence(
+    task: CodeAgentTask,
+    targets: tuple[ReproductionTarget, ...],
+    comparisons,
+    execution: ExecutionAttestation,
+) -> None:
+    """Bind unsealed paper targets and compared cells to the locked task and execution output."""
+
+    validate_target_commitment(task, targets)
+    comparison_ids = tuple(item.target_id for item in comparisons)
+    if comparison_ids != task.target_ids:
+        raise ValueError("comparison target identities do not match the locked reproduction task")
+
+    allowed_outputs = set(execution.output_artifact_sha256)
+    for comparison in comparisons:
+        if comparison.status is CellComparisonStatus.MISSING:
+            if comparison.output_artifact_sha256 is not None:
+                raise ValueError("missing comparison unexpectedly references an output artifact")
+            continue
+        if comparison.output_artifact_sha256 is None:
+            raise ValueError("reproduced comparison is missing its output artifact identity")
+        if comparison.output_artifact_sha256 not in allowed_outputs:
+            raise ValueError("reproduced comparison was not produced by the attested execution")
+
+
 def build_attested_reproduction_report(
     comparisons,
     *,
     task: CodeAgentTask,
+    targets: tuple[ReproductionTarget, ...],
     proposal: CodeAgentProposal,
     sandbox_policy: SandboxPolicy,
     execution: ExecutionAttestation,
@@ -122,6 +151,7 @@ def build_attested_reproduction_report(
     validate_frozen_execution(task, proposal, sandbox_policy, execution)
     validate_method_fidelity(task, proposal, method_fidelity)
     validate_artifact_identity(task, artifact_identity)
+    validate_comparison_evidence(task, targets, comparisons, execution)
     return _build_reproduction_report(
         comparisons,
         authority=authority,
