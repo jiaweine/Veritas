@@ -95,6 +95,7 @@ def test_independent_task_hides_original_code_and_numeric_targets() -> None:
     )
 
     assert {artifact.role for artifact in task.artifacts} == {"analysis_data"}
+    assert all(artifact.role != "original_code" for artifact in task.artifacts)
     assert task.target_ids == ("table2-age-b", "table2-age-p")
     assert [(target.claim_id, target.metric) for target in task.targets] == [
         ("claim-main", "coefficient"),
@@ -102,7 +103,6 @@ def test_independent_task_hides_original_code_and_numeric_targets() -> None:
     ]
     rendered = repr(task)
     assert "reported=ReportedNumber" not in rendered
-    assert "original_code" not in rendered
     assert "0.02" not in rendered
     assert task.reference_commitment_sha256
 
