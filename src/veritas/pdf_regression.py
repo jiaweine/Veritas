@@ -27,6 +27,14 @@ _COMBINED_BETA_SE_RE = re.compile(
     r"\s*(?:\*+)?\s*\(\s*"
     r"(?P<se>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*\)\s*$"
 )
+_PARENTHESIZED_NUMBER_RE = re.compile(
+    r"^\s*\(\s*(?P<number>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*\)\s*$"
+)
+_COMBINED_BETA_SE_HEADER_RE = re.compile(
+    r"^\s*(?:coefficient|coef|estimate|b|beta|β)\s*\(\s*"
+    r"(?:se|s\.?\s*e\.?|standard\s*error|std\.?\s*error)\s*\)\s*$",
+    re.IGNORECASE,
+)
 _HEADER_CLEAN_RE = re.compile(r"[^a-z0-9]+")
 _INDEXED_BETA_HEADER_RE = re.compile(r"^beta(?:[0-9]+|[ijk])?$")
 
@@ -42,7 +50,6 @@ _HEADER_ALIASES = {
         "regressor",
         "regressors",
     },
-    "beta_se": {"bse", "betase", "coefse", "coefficientse", "estimatese"},
     "beta": {"b", "beta", "coef", "coefficient", "estimate"},
     "se": {"se", "stderr", "stderror", "standarderror", "stddev", "stdse"},
     "t_stat": {
@@ -91,6 +98,10 @@ def _normalized_header(value: str | None) -> str:
 
 
 def _header_role(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if _COMBINED_BETA_SE_HEADER_RE.fullmatch(value):
+        return "beta_se"
     normalized = _normalized_header(value)
     if _INDEXED_BETA_HEADER_RE.fullmatch(normalized):
         return "beta"
@@ -110,6 +121,12 @@ def _split_combined_beta_se(raw: str) -> tuple[str, str] | None:
     if match is None:
         return None
     return match.group("beta"), match.group("se")
+
+
+def _unwrap_parenthesized_number(raw: str) -> str | None:
+    normalized_raw = _normalize_numeric_text(raw)
+    match = _PARENTHESIZED_NUMBER_RE.fullmatch(normalized_raw)
+    return match.group("number") if match is not None else None
 
 
 def _display_decimals(raw_number: str) -> int | None:
@@ -282,6 +299,10 @@ def _field_raw(match: RegressionTableMatch, key: str) -> str | None:
         if combined is None:
             return None
         return combined[0] if key == "beta" else combined[1]
+    if key == "se":
+        unwrapped = _unwrap_parenthesized_number(raw)
+        if unwrapped is not None:
+            return unwrapped
     return raw
 
 
@@ -556,11 +577,12 @@ def bundle_to_ledger(
         policy_note=(
             "PyMuPDF and pdfplumber independently provide word/table evidence. Publication table captions are preserved; "
             "a shared deterministic header-anchored geometry fallback is applied separately to each parser word stream. "
-            "Native cells explicitly headed Coefficient (SE) or an equivalent compact alias may be deterministically split "
-            "into coefficient and standard-error components; this does not infer any test distribution. At least one parser "
-            "must establish the row label with whitespace-preserving exact identity before another parser may join via "
-            "deterministic Unicode/whitespace token-boundary normalization; the relaxed join must also match the exact "
-            "anchor's display-item identity and numerical signature. Ambiguity remains fail-closed."
+            "Native cells with an explicit parenthesized header such as Coefficient (SE) may be deterministically split "
+            "into coefficient and standard-error components; parenthesized numeric tokens are unwrapped only when already "
+            "anchored to an explicit SE column. Neither rule infers any test distribution. At least one parser must establish "
+            "the row label with whitespace-preserving exact identity before another parser may join via deterministic "
+            "Unicode/whitespace token-boundary normalization; the relaxed join must also match the exact anchor's "
+            "display-item identity and numerical signature. Ambiguity remains fail-closed."
         ),
     )
     ledger = EvidenceLedger(
