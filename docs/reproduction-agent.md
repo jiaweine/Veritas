@@ -126,6 +126,8 @@ A CodeAgent mismatch is not automatically E4.
 
 The ordinary `build_reproduction_report()` path is descriptive only and cannot self-promote to E4 by accepting caller-supplied verification booleans. Hard reproduction authority is available only through the attested builder after the mode, target commitment, method fidelity, artifact identity, execution, and comparison-output bindings have all been validated.
 
+A fully attested report also carries an immutable `ReproductionEvidenceBinding` rather than discarding provenance after construction. It records the locked task and method-spec hashes, pre-run target commitment, executed code hash, frozen workspace hash, environment and sandbox-policy hashes, and the exact input/output artifact hash sets. The descriptive report path leaves this binding absent. This makes a saved E4-capable report independently traceable back to the artifacts and execution that justified it.
+
 An experimental agent mismatch is capped at `E1 WEAK_SIGNAL`, even when the numerical difference is large. This prevents agent bugs from being misattributed to authors.
 
 A successful match is also not proof that a paper is globally reliable. It is positive evidence only for the tested claims under the tested artifacts and environment.
