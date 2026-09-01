@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "status": "external_reference_only_not_locked_gold",
-  "as_of": "2026-09-01",
-  "rule": "These sources inform benchmark design and candidate sampling only. No external paper, dataset, replication package, code, or label becomes Veritas benchmark gold without artifact-level license review, target-identity review, and independent Veritas adjudication.",
+  "as_of": "2026-09-02",
+  "rule": "These sources inform benchmark design and candidate sampling only. No external paper, dataset, replication package, code, result, or label becomes Veritas benchmark gold without artifact-level license review, target-identity review, and independent Veritas adjudication.",
   "sources": [
     {
       "source_id": "kohler-social-science-replicability-2026",
       "name": "Read the Paper, Write the Code: Agentic Reproduction of Social-Science Results",
+      "paper": "https://arxiv.org/abs/2604.21965",
       "repository": "https://github.com/benjamin-kohler/social_science_replicability",
       "benchmark_scope": "social_science_independent_reimplementation",
       "reported_corpus": {
@@ -14,14 +15,32 @@
         "production_runs": 335
       },
       "useful_design_features": [
-        "replicator sees published paper and raw input data but not the original replication package",
-        "supports Codex, Claude Code, OpenCode, and SWE-agent style coding agents",
-        "cell-level numerical verification reports",
-        "post-hoc discrepancy attribution against original author code"
+        "paper-grounded structured method descriptions are prepared outside the coding agent",
+        "the coding agent receives structured methods plus original data under information isolation and does not receive the original paper, author code, or original results",
+        "deterministic cell-level numerical comparison",
+        "post-hoc discrepancy attribution to separate agent errors from paper underspecification or other causes"
       ],
       "repository_license_status": "no_license_detected_via_github_api_as_of_2026-09-01",
       "third_party_artifact_policy": "published papers, replication packages, original code, and input datasets are linked rather than redistributed by the upstream release",
       "veritas_use": "methodology_reference_and_linked_candidate_sampling_only",
+      "import_authorized": false,
+      "locked_gold_authorized": false
+    },
+    {
+      "source_id": "openai-paperbench-2025",
+      "name": "PaperBench: Evaluating AI's Ability to Replicate AI Research",
+      "paper": "https://openai.com/index/paperbench/",
+      "benchmark_scope": "executable_research_replication",
+      "reported_corpus": {
+        "papers": 20,
+        "individually_gradable_tasks": 8316
+      },
+      "useful_design_features": [
+        "from-scratch executable replication rather than prose-only assessment",
+        "hierarchical decomposition into independently gradable subtasks",
+        "rubric construction with paper authors for target fidelity"
+      ],
+      "veritas_use": "methodology_reference_only",
       "import_authorized": false,
       "locked_gold_authorized": false
     },
@@ -39,6 +58,20 @@
       "repository_license_status": "Apache-2.0",
       "third_party_artifact_policy": "repository license does not by itself establish redistribution rights for every embedded paper or third-party input; audit per artifact before copying",
       "veritas_use": "stage-level evaluator reference_and_linked_candidate_sampling",
+      "import_authorized": false,
+      "locked_gold_authorized": false
+    },
+    {
+      "source_id": "polluted-ipos-public-history",
+      "name": "Polluted IPOs public-history evidence",
+      "paper_history": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4059255",
+      "replication_package": "https://www.openicpsr.org/openicpsr/project/237301/version/V1/view",
+      "observed_public_history": {
+        "working_paper_posted": "2022-03-31",
+        "replication_package_v1_published": "2026-03-27"
+      },
+      "veritas_use": "candidate_contamination_screening_only",
+      "interpretation": "A recent replication-package version does not establish that the underlying paper is a post-training or contamination-reduced holdout.",
       "import_authorized": false,
       "locked_gold_authorized": false
     }
