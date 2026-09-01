@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 
-from smoke_real_pdf import CASES, SEED_MANIFEST_SHA256, _download
+from smoke_real_pdf import CASES, SEED_MANIFEST, SEED_MANIFEST_SHA256, _download
 from veritas.audit import AuditEngine
 from veritas.extraction import ConformalCalibration, ConformalExtractionGate
 from veritas.ingestion import CalibrationScope
@@ -30,6 +30,20 @@ def _gate(score: float) -> tuple[ConformalExtractionGate, str]:
     ).encode("utf-8")
     calibration = ConformalCalibration(nonconformity_scores=(score,) * 40, alpha=0.05)
     return ConformalExtractionGate(calibration), calibration_manifest_sha256(payload)
+
+
+def _promotion_expectations() -> dict[str, dict[str, object]]:
+    payload = json.loads(SEED_MANIFEST.read_text(encoding="utf-8"))
+    expectations: dict[str, dict[str, object]] = {}
+    for case in payload["cases"]:
+        expectation = case.get("promotion_expectation")
+        if not isinstance(expectation, dict) or "detector_ready_under_geometry_probe" not in expectation:
+            raise RuntimeError(f"seed case lacks explicit promotion expectation: {case['case_id']}")
+        expectations[str(case["case_id"])] = expectation
+    return expectations
+
+
+PROMOTION_EXPECTATIONS = _promotion_expectations()
 
 
 def _exact_gold(bundle: object, expected: dict[str, object]) -> bool:
@@ -110,12 +124,20 @@ def main() -> None:
     extraction_ok_count = 0
     conservative_detector_promoted = 0
     geometry_detector_promoted = 0
+    promotion_eligible_cases = 0
+    promotion_eligible_promoted = 0
     production_authorized = 0
     geometry_e3_cases: list[str] = []
+    expected_abstention_case_ids: list[str] = []
     failures: list[str] = []
 
     for case in CASES:
         case_id = str(case["case_id"])
+        expectation = PROMOTION_EXPECTATIONS[case_id]
+        expected_geometry_ready = bool(expectation["detector_ready_under_geometry_probe"])
+        if not expected_geometry_ready:
+            expected_abstention_case_ids.append(case_id)
+
         pdf = _download(str(case["pdf_url"]))
         snapshots = parse_pdf_dual(pdf, artifact_id=f"promotion-{case_id}")
         bundle = extract_regression_table(
@@ -144,6 +166,11 @@ def main() -> None:
         )
         conservative_detector_promoted += int(bool(conservative["detector_ready"]))
         geometry_detector_promoted += int(bool(geometry["detector_ready"]))
+        if expected_geometry_ready:
+            promotion_eligible_cases += 1
+            promotion_eligible_promoted += int(bool(geometry["detector_ready"]))
+        if bool(geometry["detector_ready"]) != expected_geometry_ready:
+            failures.append(f"{case_id}:geometry-promotion-expectation")
         production_authorized += int(bool(geometry["hard_audit_ready"]))
         if int(geometry["e3_findings"]) > 0:
             geometry_e3_cases.append(case_id)
@@ -161,16 +188,18 @@ def main() -> None:
                 "artifact_sha256": bundle.artifact_sha256,
                 "source_page": bundle.source.page,
                 "source_table": bundle.source.table,
+                "promotion_expectation": expectation,
                 "conservative_native_threshold": conservative,
                 "experimental_geometry_threshold": geometry,
             }
         )
 
     total = len(CASES)
-    # The geometry threshold is deliberately benchmark-only. It may exercise the full detector
-    # pipeline, but it must never acquire production hard-finding authority.
-    if geometry_detector_promoted != extraction_ok_count:
-        failures.append("experimental-geometry-detector-promotion-coverage")
+    # The geometry threshold is deliberately benchmark-only. It may exercise the detector pipeline
+    # only when the publication itself supplies the semantic prerequisites. Exact extraction is a
+    # separate success criterion and must not be converted into guessed method semantics.
+    if promotion_eligible_promoted != promotion_eligible_cases:
+        failures.append("promotion-eligible-geometry-coverage")
     if production_authorized != 0:
         failures.append("benchmark-production-authority-must-be-zero")
 
@@ -185,6 +214,11 @@ def main() -> None:
         "experimental_geometry_threshold_detector_promotion_coverage": (
             geometry_detector_promoted / total if total else 0.0
         ),
+        "promotion_eligible_cases": promotion_eligible_cases,
+        "promotion_eligible_detector_coverage": (
+            promotion_eligible_promoted / promotion_eligible_cases if promotion_eligible_cases else 0.0
+        ),
+        "expected_abstention_case_ids": expected_abstention_case_ids,
         "benchmark_production_hard_authority_coverage": production_authorized / total if total else 0.0,
         "experimental_promoted_e3_case_ids": geometry_e3_cases,
         "failed_checks": failures,
