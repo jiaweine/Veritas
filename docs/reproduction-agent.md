@@ -76,6 +76,16 @@ Generated or supplied research code is untrusted input. Production execution sho
 
 The core Veritas package exposes a backend protocol rather than running arbitrary subprocesses itself. A Codex, SWE-agent, or custom CodeAgent backend can implement the protocol without changing the evidence rules.
 
+### Blind agent dispatch boundary
+
+Independent reimplementation has an additional information-security boundary. An agent adapter must not consume the full internal `CodeAgentTask` directly. The supported dispatch path first validates artifact egress policy, then projects the task into a leak-safe `AgentTaskView`, calls the backend, and finally validates that the returned proposal is bound to the original locked task.
+
+For independent reimplementation, the model-visible artifact roles are deliberately narrow: `raw_data`, `analysis_data`, `data_dictionary`, and `schema`. Paper PDFs, reported-result files, author output, replication packages, and other undeclared roles are rejected at the agent-view boundary rather than silently exposed.
+
+Upstream artifact URIs are also excluded from `AgentTaskView`. A repository or deposit URL that appears to identify only a data file can colocate original code, tables, or numeric targets. The orchestrator therefore mounts approved artifacts by opaque `artifact_id`/hash outside the model-visible task payload. This preserves artifact provenance for Veritas while preventing the coding agent from following a source URL to the answer.
+
+These restrictions are separate from data-sensitivity policy. Remote dispatch still requires explicit model-egress authorization for every public artifact; restricted data stays local unless an approved confidential-compute policy applies.
+
 ## Comparing effects with the paper
 
 Comparison is deterministic and claim/display-item level. Printed values are not compared naively: equality uses the paper's feasible rounding interval, and censored reports such as `p < 0.001` are treated as inequalities.
