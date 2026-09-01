@@ -38,7 +38,7 @@ It does **not** receive:
 - the original author code;
 - numeric distance-to-target feedback while iterating.
 
-The paper's target values are bound before execution by a SHA-256 commitment. The generated code and workspace are frozen before the target values are unsealed for deterministic comparison. This blocks result-fitting as an agent strategy.
+The paper's target values are bound before execution by a SHA-256 commitment. The generated code and workspace are frozen before the target values are unsealed for deterministic comparison. After unsealing, Veritas recomputes the full target-set commitment and requires it to match the commitment embedded in the locked task before an attested report can be promoted. This blocks both result-fitting and post-run target substitution.
 
 ## MethodSpecification
 
@@ -74,7 +74,7 @@ Generated or supplied research code is untrusted input. Production execution sho
 - stdout/stderr and output artifact provenance;
 - a frozen final workspace hash before result comparison.
 
-The core Veritas package exposes a backend protocol rather than running arbitrary subprocesses itself. A Codex, SWE-agent, or custom CodeAgent backend can implement the protocol without changing the evidence rules.
+The core Veritas package keeps author-code and independent-agent adapter boundaries distinct. A full internal `CodeAgentTask` may be consumed only through the author-code backend boundary. Independent reimplementation backends consume the leak-safe `AgentTaskView` through `BlindCodeAgentBackend` and the canonical blind dispatch path. Codex, SWE-agent, or another coding backend can implement those adapters without changing the evidence rules.
 
 ### Blind agent dispatch boundary
 
@@ -97,6 +97,8 @@ The first comparison layer records:
 - missing outputs;
 - material mismatches affecting main empirical claims.
 
+Every reproduced non-missing comparison also retains the SHA-256 identity of the output artifact from which its value came. An E4-capable attested report accepts that cell only when the referenced hash is one of the output artifacts recorded by the frozen execution attestation. A numerically plausible cell from another run or hand-created file therefore cannot be attached to an otherwise valid execution chain.
+
 Method-specific comparators should then compare structured statistical objects rather than only flat cells. Examples:
 
 - OLS/logit: coefficient, SE, test statistic, p/CI, N, fixed effects and inference identity;
@@ -117,8 +119,12 @@ A CodeAgent mismatch is not automatically E4.
 1. input artifact identity;
 2. method fidelity of the executed implementation;
 3. sandbox execution/provenance;
-4. target identity and comparison rules;
-5. either an author-package rerun or an independently adjudicated reimplementation.
+4. the unsealed target set exactly matches the task's pre-run target commitment;
+5. every reproduced comparison is bound to an output artifact from that attested execution;
+6. authority matches the execution mode: author-package authority requires an author-code task, while independent-adjudicated authority requires an independent-reimplementation task;
+7. either an author-package rerun or an independently adjudicated reimplementation.
+
+The ordinary `build_reproduction_report()` path is descriptive only and cannot self-promote to E4 by accepting caller-supplied verification booleans. Hard reproduction authority is available only through the attested builder after the mode, target commitment, method fidelity, artifact identity, execution, and comparison-output bindings have all been validated.
 
 An experimental agent mismatch is capped at `E1 WEAK_SIGNAL`, even when the numerical difference is large. This prevents agent bugs from being misattributed to authors.
 
