@@ -6,8 +6,8 @@ from veritas.models import ReportedNumber, SourceLocation
 from veritas.reproduction import (
     CodeAgentProposal,
     ExecutionAttestation,
-    MethodField,
     MethodFidelityAttestation,
+    MethodField,
     MethodSpecification,
     ReproducedCell,
     ReproductionArtifact,
