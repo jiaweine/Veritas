@@ -61,3 +61,30 @@ def test_rugged_landscape_packet_does_not_misclassify_repository_listing_as_arti
     assert independent["author_output_visible"] is False
     assert independent["network_allowed"] is False
     assert packet["target_contract"]["target_commitment_sha256"] is None
+
+
+def test_model_lb_packet_pins_the_public_preprint_to_v1_3_1_not_latest() -> None:
+    packet = json.loads(
+        (_CASES / "ssrn_7138278_model_lb_v1.3.1_v0.11.json").read_text(encoding="utf-8")
+    )
+
+    package = packet["replication_package"]
+    author_track = packet["execution_tracks"]["author_package"]
+    independent = packet["execution_tracks"]["independent_reimplementation"]
+    target = packet["target_contract"]
+    drift = packet["version_drift_control"]
+
+    assert package["release"] == "v1.3.1"
+    assert package["git_commit_sha"] == "4ea6e5e4c9cf2088aa76f406705f5620e561e199"
+    assert package["code_license"] == "MIT"
+    assert package["local_sandbox_execution_authorized"] is True
+    assert package["remote_model_egress_authorized"] is False
+    assert author_track["network_allowed_during_execution"] is False
+    assert author_track["source_mount_read_only"] is True
+    assert author_track["credentials_mounted"] is False
+    assert independent["author_code_visible"] is False
+    assert independent["author_output_visible"] is False
+    assert target["target_commitment_sha256"] is not None
+    assert target["reported_numeric_value_stored_in_repository"] is False
+    assert drift["later_release_observed"] == "v2.0.1"
+    assert drift["later_release_must_not_replace_v1_3_1_for_this_target"] is True
