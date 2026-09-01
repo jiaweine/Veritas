@@ -22,17 +22,24 @@
     "code_license": "MIT",
     "local_sandbox_execution_authorized": true,
     "remote_model_egress_authorized": false,
-    "artifact_identity_status": "git_commit_pinned_pending_sha256_workspace_manifest",
+    "artifact_identity_status": "git_commit_and_sha256_workspace_manifest_pinned",
+    "source_manifest_sha256": "01e3b5cb3609f8547c35d1ef8a556bfc508ce73f491d94ad97955aa9e0e2633d",
+    "requirements_sha256": "f71d126e1312cfd05d73bc1817f0ceb195e63e404acdb8500148643c1238ea6a",
+    "license_sha256": "e7565a4f18abdc5f87a4695e103f61407ff69b94f11b81b9de6bc902d85e7951",
     "requirements_git_blob_sha": "c2bb1bf19ffe81ac36932fdbbb323f6a5d7ec821",
     "frozen_reference_output_git_blob_sha": "1ccf1840cac6ca81da59a7799066aa5dfdbe83ce"
   },
   "execution_tracks": {
     "author_package": {
       "mode": "author_code",
-      "status": "ready_for_isolated_environment_discovery_probe",
+      "status": "ready_for_frozen_environment_rerun",
       "entrypoint": "boot_ppp_cbar.py --empirical",
       "runtime_family": "python_numba",
       "runtime_version": "3.12",
+      "base_image": "python:3.12-slim@sha256:09f7da3bc104798d0afb40bc08d23ab2da20a76130cec1f2ef170848f5d85217",
+      "pip_version": "26.2.1",
+      "environment_lock": "benchmark/reproduction/environments/model_lb_v1.3.1_py312.lock.txt",
+      "environment_lock_sha256": "41e5bfeaa614edbda9dbe28caa9b474c9be09cc801aeb536f7abb26c0a1abde3",
       "network_allowed_during_execution": false,
       "source_mount_read_only": true,
       "veritas_repository_mounted": false,
@@ -42,14 +49,23 @@
         "max_memory_mb": 8192,
         "max_cpus": 4
       },
-      "environment_status": "dependency_ranges_only_pending_first_successful_freeze",
+      "environment_status": "precommitted_exact_package_lock_and_immutable_base_image",
       "expected_output": "empirical/ppp_empirical.csv",
+      "discovery_probe": {
+        "workflow_run_id": 33537386124,
+        "status": "success",
+        "environment_freeze_sha256": "41e5bfeaa614edbda9dbe28caa9b474c9be09cc801aeb536f7abb26c0a1abde3",
+        "output_artifact_sha256": "c7fac038f76b239c77c5bb19fa0e3576765690822155410d6a5bc9cb9232328c",
+        "network_disabled": true,
+        "source_mount_read_only": true,
+        "credentials_mounted": false,
+        "production_authorized": false,
+        "e4_authorized": false
+      },
       "blockers_to_attested_report": [
-        "successful sandbox execution has not yet been observed",
-        "source workspace SHA-256 manifest has not yet been recorded",
-        "resolved dependency versions have not yet been frozen",
-        "execution output SHA-256 has not yet been recorded",
-        "method-fidelity attestation has not been independently completed"
+        "the pre-frozen environment rerun has not yet completed",
+        "method-fidelity attestation has not been independently completed",
+        "paper target has not completed second-review/adjudication"
       ]
     },
     "independent_reimplementation": {
@@ -77,13 +93,13 @@
     "production_authorized": false,
     "e4_authorized": false,
     "maximum_current_evidence": "UNVERIFIABLE",
-    "reason": "The paper/package version mapping and target commitment are pinned, but no frozen sandbox execution, independent target adjudication, or method-fidelity attestation exists yet."
+    "reason": "A successful isolated discovery rerun now exists and the runtime is precommitted for rerun, but the frozen rerun, independent target adjudication, and method-fidelity attestation are not complete."
   },
   "readiness_gates": {
     "article_version_pinned": true,
     "artifact_terms_verified": true,
-    "artifact_hashes_pinned": false,
-    "runtime_pinned": false,
+    "artifact_hashes_pinned": true,
+    "runtime_pinned": true,
     "method_spec_double_reviewed": false,
     "target_double_reviewed": false,
     "target_sealed": true,
