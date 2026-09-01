@@ -18,6 +18,13 @@ PAGES = (8, 9)
 TARGET_PAGE = 8
 TARGET_VARIABLE = "Age"
 TARGET_GROUP = "Multivariable regression analysis"
+EXPECTED_FIELDS = {
+    "beta": "0.02",
+    "se": "0.01",
+    "t_stat": "1.55",
+    "p_value": "0.123",
+}
+EXPECTED_PARSER_FAMILIES = {"mupdf_native", "pdfminer_native"}
 
 
 def _discover_pmc_pdf_url() -> str | None:
@@ -81,6 +88,7 @@ def _network_unverified(exc: BaseException) -> None:
     print(
         json.dumps(
             {
+                "adjudication_status": "pending",
                 "doi": DOI,
                 "network_retrieval_verified": False,
                 "parser_executed": False,
@@ -113,6 +121,18 @@ def _interesting_lines(lines: list[dict[str, object]]) -> list[dict[str, object]
         for line in lines
         if any(needle in str(line["text"]).casefold() for needle in needles)
     ]
+
+
+def _assert_candidate_extraction(bundle) -> None:
+    assert not bundle.ambiguities, bundle.ambiguities
+    for field, expected in EXPECTED_FIELDS.items():
+        candidates = bundle.field_candidates[field]
+        assert len(candidates) == 2, (field, candidates)
+        assert {candidate.parser_family for candidate in candidates} == EXPECTED_PARSER_FAMILIES, field
+        assert {candidate.normalized_value for candidate in candidates} == {expected}, field
+        assert {candidate.source.page for candidate in candidates} == {TARGET_PAGE}, field
+        assert all(TARGET_GROUP in (candidate.source.table or "") for candidate in candidates), field
+    assert not bundle.semantic_candidates["inference_distribution"]
 
 
 def main() -> None:
@@ -164,6 +184,8 @@ def main() -> None:
             expected_page=TARGET_PAGE,
         ),
     )
+    _assert_candidate_extraction(bundle)
+
     field_candidates = {
         key: [
             {
@@ -181,9 +203,12 @@ def main() -> None:
     print(
         json.dumps(
             {
+                "adjudication_status": "pending_independent_human_review",
                 "ambiguities": bundle.ambiguities,
                 "artifact_bytes": len(pdf),
+                "candidate_exact_extraction_verified": True,
                 "doi": DOI,
+                "expected_fields_source": "manual_candidate_check_not_locked_gold",
                 "field_candidates": field_candidates,
                 "network_retrieval_verified": True,
                 "pages": PAGES,
@@ -194,7 +219,7 @@ def main() -> None:
                 "resolved_pdf_url": resolved_pdf_url,
                 "retrieval_attempts": retrieval_attempts,
                 "seed_promotion_authorized": False,
-                "status": "parsed_observability_only",
+                "status": "candidate_exact_extraction_unadjudicated",
                 "target": {
                     "expected_page": TARGET_PAGE,
                     "model_group_label": TARGET_GROUP,
