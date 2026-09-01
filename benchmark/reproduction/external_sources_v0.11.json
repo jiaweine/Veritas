@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "status": "external_reference_only_not_locked_gold",
+  "as_of": "2026-09-01",
+  "rule": "These sources inform benchmark design and candidate sampling only. No external paper, dataset, replication package, code, or label becomes Veritas benchmark gold without artifact-level license review, target-identity review, and independent Veritas adjudication.",
+  "sources": [
+    {
+      "source_id": "kohler-social-science-replicability-2026",
+      "name": "Read the Paper, Write the Code: Agentic Reproduction of Social-Science Results",
+      "repository": "https://github.com/benjamin-kohler/social_science_replicability",
+      "benchmark_scope": "social_science_independent_reimplementation",
+      "reported_corpus": {
+        "papers": 48,
+        "production_runs": 335
+      },
+      "useful_design_features": [
+        "replicator sees published paper and raw input data but not the original replication package",
+        "supports Codex, Claude Code, OpenCode, and SWE-agent style coding agents",
+        "cell-level numerical verification reports",
+        "post-hoc discrepancy attribution against original author code"
+      ],
+      "repository_license_status": "no_license_detected_via_github_api_as_of_2026-09-01",
+      "third_party_artifact_policy": "published papers, replication packages, original code, and input datasets are linked rather than redistributed by the upstream release",
+      "veritas_use": "methodology_reference_and_linked_candidate_sampling_only",
+      "import_authorized": false,
+      "locked_gold_authorized": false
+    },
+    {
+      "source_id": "cos-replicatorbench-2026",
+      "name": "ReplicatorBench",
+      "repository": "https://github.com/CenterForOpenScience/llm-benchmarking",
+      "benchmark_scope": "scientific_replication_pipeline",
+      "useful_design_features": [
+        "separate information extraction, research design, execution, interpretation, and validation stages",
+        "Docker execution and sandboxing",
+        "expert-annotated ground-truth resources",
+        "repository includes benchmark data and result directories"
+      ],
+      "repository_license_status": "Apache-2.0",
+      "third_party_artifact_policy": "repository license does not by itself establish redistribution rights for every embedded paper or third-party input; audit per artifact before copying",
+      "veritas_use": "stage-level evaluator reference_and_linked_candidate_sampling",
+      "import_authorized": false,
+      "locked_gold_authorized": false
+    }
+  ]
+}
