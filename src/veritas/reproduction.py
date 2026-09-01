@@ -20,6 +20,11 @@ def _stable_sha256(value: object) -> str:
     return sha256(raw).hexdigest()
 
 
+def _validate_sha256(name: str, value: str) -> None:
+    if not _SHA256_RE.fullmatch(value):
+        raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
+
+
 class ReproductionMode(str, Enum):
     AUTHOR_CODE = "author_code"
     INDEPENDENT_REIMPLEMENTATION = "independent_reimplementation"
@@ -116,8 +121,7 @@ class ReproductionArtifact:
     def __post_init__(self) -> None:
         if not self.artifact_id.strip() or not self.role.strip():
             raise ValueError("artifact_id and role are required")
-        if not _SHA256_RE.fullmatch(self.sha256):
-            raise ValueError("artifact sha256 must be a lowercase SHA-256 hex digest")
+        _validate_sha256("artifact sha256", self.sha256)
 
 
 @dataclass(frozen=True)
@@ -187,8 +191,7 @@ class CodeAgentTask:
     def __post_init__(self) -> None:
         if not self.task_id.strip() or not self.targets:
             raise ValueError("task_id and at least one target descriptor are required")
-        if not _SHA256_RE.fullmatch(self.reference_commitment_sha256):
-            raise ValueError("reference commitment must be a lowercase SHA-256 hex digest")
+        _validate_sha256("reference commitment", self.reference_commitment_sha256)
 
     @property
     def target_ids(self) -> tuple[str, ...]:
@@ -199,15 +202,15 @@ class CodeAgentTask:
 
 
 @dataclass(frozen=True)
-class CodeAgentRun:
+class CodeAgentProposal:
+    """Code produced by an agent. It is not an execution or method-fidelity attestation."""
+
     agent_id: str
     agent_version: str
     task_sha256: str
     method_spec_sha256: str
     visibility_policy_sha256: str
     generated_code_sha256: str
-    frozen_workspace_sha256: str
-    environment_sha256: str
     attempts: int
     original_code_patch_sha256: str | None = None
 
@@ -221,15 +224,10 @@ class CodeAgentRun:
             ("method_spec_sha256", self.method_spec_sha256),
             ("visibility_policy_sha256", self.visibility_policy_sha256),
             ("generated_code_sha256", self.generated_code_sha256),
-            ("frozen_workspace_sha256", self.frozen_workspace_sha256),
-            ("environment_sha256", self.environment_sha256),
         ):
-            if not _SHA256_RE.fullmatch(value):
-                raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
-        if self.original_code_patch_sha256 is not None and not _SHA256_RE.fullmatch(
-            self.original_code_patch_sha256
-        ):
-            raise ValueError("original_code_patch_sha256 must be a lowercase SHA-256 hex digest")
+            _validate_sha256(name, value)
+        if self.original_code_patch_sha256 is not None:
+            _validate_sha256("original_code_patch_sha256", self.original_code_patch_sha256)
 
 
 class CodeAgentBackend(Protocol):
@@ -238,7 +236,7 @@ class CodeAgentBackend(Protocol):
     agent_id: str
     agent_version: str
 
-    def solve(self, task: CodeAgentTask) -> CodeAgentRun: ...
+    def solve(self, task: CodeAgentTask) -> CodeAgentProposal: ...
 
 
 @dataclass(frozen=True)
@@ -258,14 +256,83 @@ class SandboxPolicy:
 
 
 @dataclass(frozen=True)
+class ExecutionAttestation:
+    """Independent executor evidence for a frozen code/workspace run."""
+
+    executor_id: str
+    executor_version: str
+    task_sha256: str
+    code_sha256: str
+    frozen_workspace_sha256: str
+    environment_sha256: str
+    sandbox_policy_sha256: str
+    input_artifact_sha256: tuple[str, ...]
+    output_artifact_sha256: tuple[str, ...]
+    exit_code: int
+    network_disabled: bool
+    read_only_inputs: bool
+
+    def __post_init__(self) -> None:
+        if not self.executor_id.strip() or not self.executor_version.strip():
+            raise ValueError("executor identity is required")
+        for name, value in (
+            ("task_sha256", self.task_sha256),
+            ("code_sha256", self.code_sha256),
+            ("frozen_workspace_sha256", self.frozen_workspace_sha256),
+            ("environment_sha256", self.environment_sha256),
+            ("sandbox_policy_sha256", self.sandbox_policy_sha256),
+        ):
+            _validate_sha256(name, value)
+        for value in self.input_artifact_sha256:
+            _validate_sha256("input_artifact_sha256", value)
+        for value in self.output_artifact_sha256:
+            _validate_sha256("output_artifact_sha256", value)
+
+
+class SandboxExecutor(Protocol):
+    executor_id: str
+    executor_version: str
+
+    def execute(
+        self,
+        task: CodeAgentTask,
+        proposal: CodeAgentProposal,
+        policy: SandboxPolicy,
+    ) -> ExecutionAttestation: ...
+
+
+@dataclass(frozen=True)
+class MethodFidelityAttestation:
+    """Independent verification that the implementation matches the locked MethodSpecification."""
+
+    verifier_id: str
+    verifier_version: str
+    method_spec_sha256: str
+    implementation_sha256: str
+    verified_fields: tuple[str, ...]
+    mismatched_fields: tuple[str, ...] = ()
+    unresolved_fields: tuple[str, ...] = ()
+    independent: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.verifier_id.strip() or not self.verifier_version.strip():
+            raise ValueError("method-fidelity verifier identity is required")
+        _validate_sha256("method_spec_sha256", self.method_spec_sha256)
+        _validate_sha256("implementation_sha256", self.implementation_sha256)
+
+    @property
+    def passed(self) -> bool:
+        return self.independent and not self.mismatched_fields and not self.unresolved_fields
+
+
+@dataclass(frozen=True)
 class ReproducedCell:
     target_id: str
     value: float
     output_artifact_sha256: str
 
     def __post_init__(self) -> None:
-        if not _SHA256_RE.fullmatch(self.output_artifact_sha256):
-            raise ValueError("output_artifact_sha256 must be a lowercase SHA-256 hex digest")
+        _validate_sha256("output_artifact_sha256", self.output_artifact_sha256)
 
 
 @dataclass(frozen=True)
@@ -351,15 +418,39 @@ def build_code_agent_task(
     )
 
 
-def validate_frozen_agent_run(task: CodeAgentTask, run: CodeAgentRun) -> None:
-    if run.task_sha256 != task.sha256():
-        raise ValueError("agent run was not produced from the locked reproduction task")
-    if run.method_spec_sha256 != task.method_spec.sha256():
-        raise ValueError("agent run method specification drifted")
-    if run.visibility_policy_sha256 != task.visibility_policy.sha256():
-        raise ValueError("agent run visibility policy drifted")
-    if task.mode is ReproductionMode.AUTHOR_CODE and run.original_code_patch_sha256 is None:
+def validate_agent_proposal(task: CodeAgentTask, proposal: CodeAgentProposal) -> None:
+    if proposal.task_sha256 != task.sha256():
+        raise ValueError("agent proposal was not produced from the locked reproduction task")
+    if proposal.method_spec_sha256 != task.method_spec.sha256():
+        raise ValueError("agent proposal method specification drifted")
+    if proposal.visibility_policy_sha256 != task.visibility_policy.sha256():
+        raise ValueError("agent proposal visibility policy drifted")
+    if task.mode is ReproductionMode.AUTHOR_CODE and proposal.original_code_patch_sha256 is None:
         raise ValueError("author-code reproduction must explicitly attest the original-code patch identity")
+
+
+def validate_frozen_execution(
+    task: CodeAgentTask,
+    proposal: CodeAgentProposal,
+    policy: SandboxPolicy,
+    attestation: ExecutionAttestation,
+) -> None:
+    validate_agent_proposal(task, proposal)
+    if attestation.task_sha256 != task.sha256():
+        raise ValueError("execution attestation is bound to a different task")
+    if attestation.code_sha256 != proposal.generated_code_sha256:
+        raise ValueError("executor did not run the frozen code proposed by the agent")
+    if attestation.sandbox_policy_sha256 != policy.sha256():
+        raise ValueError("execution sandbox policy drifted")
+    expected_inputs = tuple(sorted(item.sha256 for item in task.artifacts))
+    if tuple(sorted(attestation.input_artifact_sha256)) != expected_inputs:
+        raise ValueError("execution input artifact identities do not match the locked task")
+    if policy.network_disabled and not attestation.network_disabled:
+        raise ValueError("execution violated the locked network-disabled policy")
+    if policy.read_only_inputs and not attestation.read_only_inputs:
+        raise ValueError("execution violated the locked read-only-input policy")
+    if attestation.exit_code != 0:
+        raise ValueError("execution did not complete successfully")
 
 
 def compare_reproduced_cells(
