@@ -96,6 +96,25 @@ def _network_unverified(exc: BaseException) -> None:
     )
 
 
+def _interesting_lines(lines: list[dict[str, object]]) -> list[dict[str, object]]:
+    needles = (
+        "bivariable",
+        "multivariable",
+        "variables",
+        "regression analysis",
+        "table 2",
+        "table 2 continued",
+        "mean (sd)",
+        "p-value",
+        "age",
+    )
+    return [
+        line
+        for line in lines
+        if any(needle in str(line["text"]).casefold() for needle in needles)
+    ]
+
+
 def main() -> None:
     try:
         pdf, resolved_pdf_url, retrieval_attempts = _retrieve_pdf()
@@ -112,21 +131,6 @@ def main() -> None:
         for page_number in PAGES:
             page = next(item for item in snapshot.pages if item.page == page_number)
             lines = _cluster_page_lines(snapshot, page_number)
-            interesting = [
-                line
-                for line in lines
-                if any(
-                    needle in str(line["text"]).casefold()
-                    for needle in (
-                        "bivariable",
-                        "multivariable",
-                        "variables",
-                        "regression analysis",
-                        "table 2",
-                        "table 2 continued",
-                    )
-                )
-            ]
             page_probes.append(
                 {
                     "page": page_number,
@@ -140,7 +144,7 @@ def main() -> None:
                         }
                         for table in page.tables
                     ],
-                    "interesting_lines": interesting,
+                    "interesting_lines": _interesting_lines(lines),
                 }
             )
         probes.append(
