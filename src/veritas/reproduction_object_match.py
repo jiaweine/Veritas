@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .models import ReportedNumber, SourceLocation
+from .types import ComparisonOperator
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -181,8 +182,18 @@ def _reported_number_matches(
     observed: float,
     tolerance: float,
 ) -> bool:
-    low, high = expected.rounding_interval()
-    return low - tolerance <= observed <= high + tolerance
+    if expected.operator is ComparisonOperator.EQ:
+        low, high = expected.rounding_interval()
+        return low - tolerance <= observed <= high + tolerance
+    if expected.operator is ComparisonOperator.LT:
+        return observed < expected.value + tolerance
+    if expected.operator is ComparisonOperator.LE:
+        return observed <= expected.value + tolerance
+    if expected.operator is ComparisonOperator.GT:
+        return observed > expected.value - tolerance
+    if expected.operator is ComparisonOperator.GE:
+        return observed >= expected.value - tolerance
+    return False
 
 
 def _structural_mismatch(
