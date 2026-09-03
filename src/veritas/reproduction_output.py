@@ -43,7 +43,7 @@ def parse_reproduction_output(payload: bytes, task: CodeAgentTask) -> tuple[Repr
 
     if not isinstance(decoded, dict) or set(decoded) != {"schema_version", "targets"}:
         raise ReproductionOutputError("output must contain exactly schema_version and targets")
-    if decoded["schema_version"] != 1:
+    if isinstance(decoded["schema_version"], bool) or decoded["schema_version"] != 1:
         raise ReproductionOutputError("unsupported reproduction output schema_version")
     if not isinstance(decoded["targets"], list):
         raise ReproductionOutputError("targets must be a JSON array")
