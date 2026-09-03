@@ -91,12 +91,16 @@ The current four PLOS cases remain **seed cases**, not locked gold. Their legacy
 
 Primary goal: connect publication language to the statistical object being audited.
 
-- [ ] extract candidate `Claim -> Estimate -> Sample -> Data -> Code -> Assumption` links from paper artifacts
-- [ ] align abstract/main-text claims with exact table/figure estimands
-- [ ] normalize scale transformations and outcome/treatment identities
-- [ ] require high-confidence identity before cross-location E3 findings
-- [ ] propagate source spans and extraction uncertainty through graph edges
-- [ ] evaluate claim identity independently from detector correctness
+### Claim-identity substrate — implemented
+
+- [x] extract candidate `Claim -> Estimate -> Sample -> Data -> Code -> Assumption` links from artifact-derived graph nodes
+- [x] align abstract/main-text claims with exact table/figure estimands
+- [x] normalize scale transformations and outcome/treatment identities
+- [x] require high-confidence identity before cross-location E3 findings
+- [x] propagate source spans and extraction uncertainty through graph edges
+- [x] evaluate claim identity independently from detector correctness
+
+The v0.12 implementation is a deterministic graph/identity and fail-closed audit substrate. It does not claim that arbitrary papers can already be converted into perfect claim graphs without held-out real-paper evaluation. See `docs/CLAIM_GRAPH_IDENTITY.md`.
 
 ## v0.13 — reproducibility artifacts
 
