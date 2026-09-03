@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 
@@ -9,6 +10,7 @@ from .reproduction import (
     CodeAgentTask,
     ExecutionAttestation,
     MethodFidelityAttestation,
+    ReproducedCell,
     ReproductionAuthority,
     ReproductionEvidenceBinding,
     ReproductionMode,
@@ -17,6 +19,7 @@ from .reproduction import (
     ReproductionTarget,
     SandboxPolicy,
     _build_reproduction_report,
+    compare_reproduced_cells,
     validate_frozen_execution,
     validate_target_commitment,
 )
@@ -36,15 +39,73 @@ class ArtifactIdentityAttestation:
     independent: bool = False
 
     def __post_init__(self) -> None:
-        if not self.verifier_id.strip() or not self.verifier_version.strip():
+        if not isinstance(self.verifier_id, str) or not self.verifier_id.strip():
             raise ValueError("artifact verifier identity is required")
+        if not isinstance(self.verifier_version, str) or not self.verifier_version.strip():
+            raise ValueError("artifact verifier identity is required")
+        if type(self.independent) is not bool:
+            raise TypeError("artifact verifier independent must be a boolean")
         for name, value in (
             ("task_sha256", self.task_sha256),
             *(("expected_artifact_sha256", value) for value in self.expected_artifact_sha256),
             *(("verified_artifact_sha256", value) for value in self.verified_artifact_sha256),
         ):
-            if not _SHA256_RE.fullmatch(value):
+            if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
                 raise ValueError(f"{name} must contain lowercase SHA-256 hex digests")
+
+
+def _require_runtime_bool(value: object, *, label: str) -> None:
+    if type(value) is not bool:
+        raise TypeError(f"{label} must be a boolean")
+
+
+def _require_runtime_positive_int(value: object, *, label: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{label} must be an integer")
+    if value <= 0:
+        raise ValueError(f"{label} must be positive")
+
+
+def _require_runtime_int(value: object, *, label: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{label} must be an integer")
+
+
+def _validate_e4_runtime_types(
+    proposal: CodeAgentProposal,
+    sandbox_policy: SandboxPolicy,
+    execution: ExecutionAttestation,
+    method_fidelity: MethodFidelityAttestation,
+    artifact_identity: ArtifactIdentityAttestation,
+) -> None:
+    """Reject Python truthiness/int-subclass ambiguities at the E4 authority boundary."""
+
+    _require_runtime_positive_int(proposal.attempts, label="agent proposal attempts")
+    _require_runtime_bool(sandbox_policy.network_disabled, label="sandbox network_disabled")
+    _require_runtime_bool(sandbox_policy.read_only_inputs, label="sandbox read_only_inputs")
+    for field in ("max_wall_seconds", "max_memory_mb", "max_cpus"):
+        _require_runtime_positive_int(getattr(sandbox_policy, field), label=f"sandbox {field}")
+
+    _require_runtime_int(execution.exit_code, label="execution exit_code")
+    _require_runtime_bool(execution.network_disabled, label="execution network_disabled")
+    _require_runtime_bool(execution.read_only_inputs, label="execution read_only_inputs")
+    _require_runtime_bool(method_fidelity.independent, label="method verifier independent")
+    _require_runtime_bool(artifact_identity.independent, label="artifact verifier independent")
+
+
+def _validate_actor_separation(
+    proposal: CodeAgentProposal,
+    execution: ExecutionAttestation,
+    method_fidelity: MethodFidelityAttestation,
+    artifact_identity: ArtifactIdentityAttestation,
+) -> None:
+    for label, actor_id in (
+        ("executor", execution.executor_id),
+        ("method verifier", method_fidelity.verifier_id),
+        ("artifact verifier", artifact_identity.verifier_id),
+    ):
+        if actor_id == proposal.agent_id:
+            raise ValueError(f"{label} must be independent of the code agent identity")
 
 
 def validate_method_fidelity(
@@ -52,8 +113,10 @@ def validate_method_fidelity(
     proposal: CodeAgentProposal,
     attestation: MethodFidelityAttestation,
 ) -> None:
-    if not attestation.independent:
+    if attestation.independent is not True:
         raise ValueError("method fidelity must be verified independently of the code agent")
+    if attestation.verifier_id == proposal.agent_id:
+        raise ValueError("method verifier must be independent of the code agent identity")
     if attestation.method_spec_sha256 != task.method_spec.sha256():
         raise ValueError("method-fidelity attestation is bound to a different MethodSpecification")
     if attestation.implementation_sha256 != proposal.generated_code_sha256:
@@ -63,11 +126,9 @@ def validate_method_fidelity(
     if attestation.unresolved_fields:
         raise ValueError(f"method implementation has unresolved choices: {attestation.unresolved_fields!r}")
 
-    required = {
-        field.name for field in task.method_spec.fields if field.required_for_execution
-    }
+    must_verify = {field.name for field in task.method_spec.fields if field.value is not None}
     verified = set(attestation.verified_fields)
-    missing = tuple(sorted(required - verified))
+    missing = tuple(sorted(must_verify - verified))
     if missing:
         raise ValueError(f"method-fidelity attestation did not verify required fields: {missing!r}")
 
@@ -76,7 +137,7 @@ def validate_artifact_identity(
     task: CodeAgentTask,
     attestation: ArtifactIdentityAttestation,
 ) -> None:
-    if not attestation.independent:
+    if attestation.independent is not True:
         raise ValueError("artifact identity must be verified independently")
     if attestation.task_sha256 != task.sha256():
         raise ValueError("artifact-identity attestation is bound to a different task")
@@ -113,24 +174,48 @@ def validate_comparison_evidence(
     targets: tuple[ReproductionTarget, ...],
     comparisons,
     execution: ExecutionAttestation,
-) -> None:
-    """Bind unsealed paper targets and compared cells to the locked task and execution output."""
+):
+    """Recompute canonical comparisons from values bound to attested execution output hashes."""
 
     validate_target_commitment(task, targets)
-    comparison_ids = tuple(item.target_id for item in comparisons)
+    supplied = tuple(comparisons)
+    comparison_ids = tuple(item.target_id for item in supplied)
     if comparison_ids != task.target_ids:
         raise ValueError("comparison target identities do not match the locked reproduction task")
 
     allowed_outputs = set(execution.output_artifact_sha256)
-    for comparison in comparisons:
+    reproduced: list[ReproducedCell] = []
+    for comparison in supplied:
         if comparison.status is CellComparisonStatus.MISSING:
-            if comparison.output_artifact_sha256 is not None:
-                raise ValueError("missing comparison unexpectedly references an output artifact")
+            if any(
+                value is not None
+                for value in (
+                    comparison.reproduced_value,
+                    comparison.reported_interval,
+                    comparison.output_artifact_sha256,
+                )
+            ):
+                raise ValueError("missing comparison must not carry numeric or output evidence")
             continue
-        if comparison.output_artifact_sha256 is None:
+
+        value = comparison.reproduced_value
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError("reproduced comparison value must be one finite numeric value")
+        if not math.isfinite(float(value)):
+            raise ValueError("reproduced comparison value must be finite")
+        output_sha256 = comparison.output_artifact_sha256
+        if output_sha256 is None:
             raise ValueError("reproduced comparison is missing its output artifact identity")
-        if comparison.output_artifact_sha256 not in allowed_outputs:
+        if output_sha256 not in allowed_outputs:
             raise ValueError("reproduced comparison was not produced by the attested execution")
+        reproduced.append(ReproducedCell(comparison.target_id, float(value), output_sha256))
+
+    canonical = compare_reproduced_cells(targets, tuple(reproduced))
+    if supplied != canonical:
+        raise ValueError(
+            "supplied comparison evidence does not equal the canonical Veritas comparison"
+        )
+    return canonical
 
 
 def build_attested_reproduction_report(
@@ -149,10 +234,18 @@ def build_attested_reproduction_report(
     """Only E4-capable construction path for a code-agent reproduction report."""
 
     validate_reproduction_authority(task, authority)
+    _validate_e4_runtime_types(
+        proposal,
+        sandbox_policy,
+        execution,
+        method_fidelity,
+        artifact_identity,
+    )
+    _validate_actor_separation(proposal, execution, method_fidelity, artifact_identity)
     validate_frozen_execution(task, proposal, sandbox_policy, execution)
     validate_method_fidelity(task, proposal, method_fidelity)
     validate_artifact_identity(task, artifact_identity)
-    validate_comparison_evidence(task, targets, comparisons, execution)
+    canonical_comparisons = validate_comparison_evidence(task, targets, comparisons, execution)
     evidence_binding = ReproductionEvidenceBinding(
         task_sha256=task.sha256(),
         method_spec_sha256=task.method_spec.sha256(),
@@ -165,7 +258,7 @@ def build_attested_reproduction_report(
         output_artifact_sha256=execution.output_artifact_sha256,
     )
     return _build_reproduction_report(
-        comparisons,
+        canonical_comparisons,
         authority=authority,
         method_fidelity_verified=True,
         artifact_identity_verified=True,
