@@ -8,7 +8,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from .models import ReportedNumber, SourceLocation
 from .reproduction import (
     ReproducedCell,
     ReproductionAuthority,
@@ -19,7 +18,7 @@ from .reproduction import (
 )
 from .reproduction_ingest_contract import validate_single_target_ingest_contract
 from .reproduction_json import finite_reproduction_float, load_strict_reproduction_json
-from .types import ComparisonOperator, Materiality
+from .reproduction_target_secret import reproduction_target_from_secret_mapping
 
 
 def _sha256_file(path: Path) -> str:
@@ -30,25 +29,7 @@ def load_private_reproduction_target(path: str | Path) -> ReproductionTarget:
     """Load a post-run target secret that must never enter an agent workspace."""
 
     data = load_strict_reproduction_json(path)
-    reported = data["reported"]
-    source_data = dict(data.get("source", {}))
-    if source_data.get("bbox") is not None:
-        source_data["bbox"] = tuple(source_data["bbox"])
-    return ReproductionTarget(
-        target_id=str(data["target_id"]),
-        claim_id=str(data["claim_id"]),
-        metric=str(data["metric"]),
-        reported=ReportedNumber(
-            value=finite_reproduction_float(
-                reported["value"],
-                label="private target reported value",
-            ),
-            decimals=(None if reported.get("decimals") is None else int(reported["decimals"])),
-            operator=ComparisonOperator(reported.get("operator", "=")),
-        ),
-        source=SourceLocation(**source_data),
-        materiality=Materiality(int(data.get("materiality", int(Materiality.SECONDARY_RESULT)))),
-    )
+    return reproduction_target_from_secret_mapping(data, allow_schema_version=True)
 
 
 def _require_equal(label: str, observed: object, expected: object) -> None:
