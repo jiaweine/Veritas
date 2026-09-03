@@ -87,6 +87,11 @@ def test_output_parser_rejects_duplicate_object_keys_before_schema_interpretatio
             parse_reproduction_output(payload, task)
 
 
+def test_output_parser_rejects_boolean_schema_version() -> None:
+    with pytest.raises(ReproductionOutputError, match="schema_version"):
+        parse_reproduction_output(b'{"schema_version":true,"targets":[]}', _task())
+
+
 def test_output_parser_rejects_nan_boolean_and_non_numeric_values() -> None:
     task = _task()
     for value in (True, "0.1", None):
