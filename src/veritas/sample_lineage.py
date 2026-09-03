@@ -105,7 +105,11 @@ class SampleLineage:
         if any(existing.output_snapshot_id == operation.output_snapshot_id for existing in self.operations.values()):
             raise ValueError("each sample snapshot may have at most one producing operation")
         self.operations[operation.operation_id] = operation
-        self.validate()
+        try:
+            self.validate()
+        except Exception:
+            del self.operations[operation.operation_id]
+            raise
 
     def validate(self) -> None:
         adjacency: dict[str, set[str]] = {snapshot_id: set() for snapshot_id in self.snapshots}
