@@ -15,6 +15,7 @@ from .reproduction import (
     target_commitment_sha256,
 )
 from .reproduction_ingest import _require_equal, _validate_execution_evidence
+from .reproduction_ingest_contract import validate_target_set_ingest_contract
 from .reproduction_json import finite_reproduction_float, load_strict_reproduction_json
 from .types import ComparisonOperator, Materiality
 
@@ -186,6 +187,7 @@ def build_answer_free_reproduction_target_set_certificate(
 
     if not private_targets:
         raise ValueError("target-set ingest requires at least one private target")
+    validate_target_set_ingest_contract(packet, execution)
     output = Path(output_path)
     output_sha256 = _validate_execution_evidence(packet, execution, output)
     contract, target_contracts, observed_commitment = _validate_target_set_contract(
@@ -198,8 +200,6 @@ def build_answer_free_reproduction_target_set_certificate(
     if not isinstance(execution_target_ids, list):
         raise TypeError("target-set execution must attest an ordered target_ids array")
     _require_equal("execution target ids", tuple(execution_target_ids), target_ids)
-    if any(field in execution for field in ("target_id", "reproduced_value", "reproduced_values")):
-        raise ValueError("target-set execution must not duplicate target identity or numeric output fields")
 
     reproduced = _parse_strict_target_output(
         output,
