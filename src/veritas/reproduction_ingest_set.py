@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import math
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -17,31 +15,8 @@ from .reproduction import (
     target_commitment_sha256,
 )
 from .reproduction_ingest import _require_equal, _validate_execution_evidence
+from .reproduction_json import finite_reproduction_float, load_strict_reproduction_json
 from .types import ComparisonOperator, Materiality
-
-
-def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    decoded: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in decoded:
-            raise ValueError("target-set JSON contains duplicate object keys")
-        decoded[key] = value
-    return decoded
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"target-set JSON contains unsupported numeric constant: {value}")
-
-
-def _load_strict_json(path: Path) -> Any:
-    try:
-        return json.loads(
-            path.read_text(encoding="utf-8"),
-            object_pairs_hook=_reject_duplicate_json_keys,
-            parse_constant=_reject_json_constant,
-        )
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("target-set input must be valid UTF-8 JSON") from exc
 
 
 def _target_from_mapping(data: Mapping[str, Any]) -> ReproductionTarget:
@@ -56,7 +31,10 @@ def _target_from_mapping(data: Mapping[str, Any]) -> ReproductionTarget:
         claim_id=str(data["claim_id"]),
         metric=str(data["metric"]),
         reported=ReportedNumber(
-            value=float(reported["value"]),
+            value=finite_reproduction_float(
+                reported["value"],
+                label="private target reported value",
+            ),
             decimals=(None if reported.get("decimals") is None else int(reported["decimals"])),
             operator=ComparisonOperator(reported.get("operator", "=")),
         ),
@@ -68,7 +46,7 @@ def _target_from_mapping(data: Mapping[str, Any]) -> ReproductionTarget:
 def load_private_reproduction_target_set(path: str | Path) -> tuple[ReproductionTarget, ...]:
     """Load an ordered post-run target set without exposing numeric answers to the executor."""
 
-    decoded = _load_strict_json(Path(path))
+    decoded = load_strict_reproduction_json(path)
     if not isinstance(decoded, dict) or set(decoded) != {"schema_version", "targets"}:
         raise ValueError("private target set must contain exactly schema_version and targets")
     if decoded["schema_version"] != 1:
@@ -93,7 +71,7 @@ def _parse_strict_target_output(
     target_ids: tuple[str, ...],
     output_sha256: str,
 ) -> tuple[ReproducedCell, ...]:
-    decoded = _load_strict_json(output_path)
+    decoded = load_strict_reproduction_json(output_path)
     if not isinstance(decoded, dict) or set(decoded) != {"schema_version", "targets"}:
         raise ValueError("target-set output must contain exactly schema_version and targets")
     if decoded["schema_version"] != 1:
@@ -116,9 +94,10 @@ def _parse_strict_target_output(
             raise ValueError(f"duplicate target-set output target_id: {target_id!r}")
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise TypeError(f"target {target_id!r} must contain one finite numeric value")
-        numeric = float(value)
-        if not math.isfinite(numeric):
-            raise ValueError(f"target {target_id!r} must contain one finite numeric value")
+        numeric = finite_reproduction_float(
+            value,
+            label=f"target {target_id!r}",
+        )
         seen.add(target_id)
         cells.append(ReproducedCell(target_id, numeric, output_sha256))
     return tuple(cells)
@@ -310,8 +289,8 @@ def build_answer_free_target_set_certificate_from_files(
     private_targets_path: str | Path,
     output_path: str | Path,
 ) -> dict[str, Any]:
-    packet = json.loads(Path(packet_path).read_text(encoding="utf-8"))
-    execution = json.loads(Path(execution_path).read_text(encoding="utf-8"))
+    packet = load_strict_reproduction_json(packet_path)
+    execution = load_strict_reproduction_json(execution_path)
     targets = load_private_reproduction_target_set(private_targets_path)
     return build_answer_free_reproduction_target_set_certificate(
         packet=packet,

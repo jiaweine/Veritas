@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import hashlib
-import json
 import math
 import re
 from collections.abc import Mapping
@@ -18,6 +17,7 @@ from .reproduction import (
     compare_reproduced_cells,
     target_commitment_sha256,
 )
+from .reproduction_json import finite_reproduction_float, load_strict_reproduction_json
 from .types import ComparisonOperator, Materiality
 
 
@@ -28,7 +28,7 @@ def _sha256_file(path: Path) -> str:
 def load_private_reproduction_target(path: str | Path) -> ReproductionTarget:
     """Load a post-run target secret that must never enter an agent workspace."""
 
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    data = load_strict_reproduction_json(path)
     reported = data["reported"]
     source_data = dict(data.get("source", {}))
     if source_data.get("bbox") is not None:
@@ -38,7 +38,10 @@ def load_private_reproduction_target(path: str | Path) -> ReproductionTarget:
         claim_id=str(data["claim_id"]),
         metric=str(data["metric"]),
         reported=ReportedNumber(
-            value=float(reported["value"]),
+            value=finite_reproduction_float(
+                reported["value"],
+                label="private target reported value",
+            ),
             decimals=(None if reported.get("decimals") is None else int(reported["decimals"])),
             operator=ComparisonOperator(reported.get("operator", "=")),
         ),
@@ -93,13 +96,10 @@ def _validate_execution_evidence(
 
 
 def _finite_float(value_text: str) -> float:
-    try:
-        value = float(value_text.replace(",", "").strip())
-    except ValueError as exc:
-        raise ValueError("bound reproduced value is missing or non-numeric") from exc
-    if not math.isfinite(value):
-        raise ValueError("bound reproduced value must be finite")
-    return value
+    return finite_reproduction_float(
+        value_text.replace(",", "").strip(),
+        label="bound reproduced value",
+    )
 
 
 def _extract_bound_csv_value(output_path: Path, binding: Mapping[str, Any]) -> float:
@@ -146,19 +146,6 @@ def _extract_bound_text_regex_value(output_path: Path, binding: Mapping[str, Any
     return _finite_float(matches[0].group("value"))
 
 
-def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    decoded: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in decoded:
-            raise ValueError("json_path output contains duplicate object keys")
-        decoded[key] = value
-    return decoded
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"json_path output contains unsupported numeric constant: {value}")
-
-
 def _extract_bound_json_path_value(output_path: Path, binding: Mapping[str, Any]) -> float:
     path = binding.get("path")
     if not isinstance(path, list) or not path:
@@ -171,14 +158,7 @@ def _extract_bound_json_path_value(output_path: Path, binding: Mapping[str, Any]
         if isinstance(component, int) and component < 0:
             raise ValueError("json_path array indices must be non-negative")
 
-    try:
-        decoded = json.loads(
-            output_path.read_text(encoding="utf-8"),
-            object_pairs_hook=_reject_duplicate_json_keys,
-            parse_constant=_reject_json_constant,
-        )
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("json_path output must be valid UTF-8 JSON") from exc
+    decoded = load_strict_reproduction_json(output_path)
 
     current: Any = decoded
     for component in path:
@@ -193,7 +173,7 @@ def _extract_bound_json_path_value(output_path: Path, binding: Mapping[str, Any]
 
     if isinstance(current, bool) or not isinstance(current, (str, int, float)):
         raise TypeError("json_path reproduced-value binding must resolve to one numeric scalar")
-    return _finite_float(str(current))
+    return finite_reproduction_float(current, label="bound reproduced value")
 
 
 def _extract_bound_value(output_path: Path, binding: Mapping[str, Any]) -> float:
@@ -234,7 +214,10 @@ def build_answer_free_reproduction_certificate(
     binding = target_contract["reproduced_value_binding"]
     reproduced_value = _extract_bound_value(output, binding)
     if "reproduced_value" in execution:
-        attested_value = float(execution["reproduced_value"])
+        attested_value = finite_reproduction_float(
+            execution["reproduced_value"],
+            label="execution attestation reproduced value",
+        )
         if not math.isclose(attested_value, reproduced_value, rel_tol=0.0, abs_tol=0.0):
             raise ValueError("execution attestation value does not match the bound output artifact")
 
@@ -307,8 +290,8 @@ def build_answer_free_certificate_from_files(
     private_target_path: str | Path,
     output_path: str | Path,
 ) -> dict[str, Any]:
-    packet = json.loads(Path(packet_path).read_text(encoding="utf-8"))
-    execution = json.loads(Path(execution_path).read_text(encoding="utf-8"))
+    packet = load_strict_reproduction_json(packet_path)
+    execution = load_strict_reproduction_json(execution_path)
     target = load_private_reproduction_target(private_target_path)
     return build_answer_free_reproduction_certificate(
         packet=packet,
