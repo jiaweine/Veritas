@@ -189,12 +189,12 @@ def _validate_binding(binding_value: object) -> None:
         )
         path = binding["path"]
         if not isinstance(path, list) or not path:
-            raise ValueError("json_path path must be a non-empty array")
+            raise ValueError("json_path reproduced-value binding requires a non-empty path")
         if len(path) > 32:
             raise ValueError("json_path path is too deep")
         for component in path:
             if isinstance(component, bool) or not isinstance(component, (str, int)):
-                raise TypeError("json_path components must be strings or non-negative integers")
+                raise TypeError("json_path components must be object keys or non-negative array indices")
             if isinstance(component, int) and component < 0:
                 raise ValueError("json_path array indices must be non-negative")
         return
