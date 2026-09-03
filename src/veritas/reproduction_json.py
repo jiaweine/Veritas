@@ -10,7 +10,7 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     decoded: dict[str, Any] = {}
     for key, value in pairs:
         if key in decoded:
-            raise ValueError(f"reproduction JSON contains duplicate object key: {key!r}")
+            raise ValueError(f"reproduction JSON contains duplicate object keys: {key!r}")
         decoded[key] = value
     return decoded
 
