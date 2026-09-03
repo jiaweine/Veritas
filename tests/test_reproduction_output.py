@@ -76,6 +76,17 @@ def test_output_parser_rejects_unrequested_targets_duplicates_and_extra_claims()
             parse_reproduction_output(payload, task)
 
 
+def test_output_parser_rejects_duplicate_object_keys_before_schema_interpretation() -> None:
+    task = _task()
+    bad_payloads = (
+        b'{"schema_version":1,"schema_version":1,"targets":[]}',
+        b'{"schema_version":1,"targets":[{"target_id":"beta","value":0.1,"value":0.2}]}',
+    )
+    for payload in bad_payloads:
+        with pytest.raises(ReproductionOutputError, match="duplicate object keys"):
+            parse_reproduction_output(payload, task)
+
+
 def test_output_parser_rejects_nan_boolean_and_non_numeric_values() -> None:
     task = _task()
     for value in (True, "0.1", None):
@@ -85,11 +96,14 @@ def test_output_parser_rejects_nan_boolean_and_non_numeric_values() -> None:
         with pytest.raises(ReproductionOutputError, match="finite numeric value"):
             parse_reproduction_output(payload, task)
 
-    with pytest.raises(ReproductionOutputError, match="finite numeric value"):
-        parse_reproduction_output(
-            b'{"schema_version":1,"targets":[{"target_id":"beta","value":NaN}]}',
-            task,
+    for constant in (b"NaN", b"Infinity", b"-Infinity"):
+        payload = (
+            b'{"schema_version":1,"targets":[{"target_id":"beta","value":'
+            + constant
+            + b"}]}"
         )
+        with pytest.raises(ReproductionOutputError, match="finite numeric value"):
+            parse_reproduction_output(payload, task)
 
 
 def test_agent_output_instructions_expose_metrics_but_not_reported_values() -> None:
