@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from veritas.reproduction_ingest_contract import (
     validate_single_target_ingest_contract,
     validate_target_set_ingest_contract,
 )
+from veritas.reproduction_ingest_set import _parse_strict_target_output
 
 SOURCE_SHA = "1" * 64
 ENV_SHA = "2" * 64
@@ -201,3 +204,14 @@ def test_target_set_contract_metadata_boolean_is_typed() -> None:
     packet["target_set_contract"]["reported_numeric_values_stored_in_repository"] = "false"
     with pytest.raises(TypeError, match="reported_numeric_values.*boolean"):
         validate_target_set_ingest_contract(packet, _set_execution())
+
+
+def test_target_set_output_rejects_boolean_schema_version(tmp_path: Path) -> None:
+    output = tmp_path / "results.json"
+    output.write_text('{"schema_version":true,"targets":[]}', encoding="utf-8")
+    with pytest.raises(ValueError, match="schema_version"):
+        _parse_strict_target_output(
+            output,
+            target_ids=("beta",),
+            output_sha256=OUTPUT_SHA,
+        )
