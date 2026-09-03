@@ -68,20 +68,20 @@ def test_agent_view_strips_method_provenance_that_may_fingerprint_or_leak_result
     assert view.method_fields[0].value == "ols"
 
 
-def test_agent_view_contains_output_identity_but_not_reported_number() -> None:
+def test_agent_view_contains_output_identity_but_not_internal_paper_identity() -> None:
     task = build_code_agent_task(
-        task_id="blind-target",
+        task_id="ssrn-7138278-internal-task",
         mode=ReproductionMode.INDEPENDENT_REIMPLEMENTATION,
         method_spec=MethodSpecification(
-            spec_id="method",
+            spec_id="doi:10.1234/internal-method",
             object_type="RegressionResult",
             fields=(MethodField("estimator", "ols"),),
         ),
         artifacts=(ReproductionArtifact("data", "analysis_data", "a" * 64),),
         targets=(
             ReproductionTarget(
-                "table2-treatment-p",
-                "claim-main",
+                "target-1",
+                "doi:10.1234/internal-claim",
                 "p_value",
                 ReportedNumber(0.000123, decimals=6),
                 SourceLocation(page=5, table="Table 2", row="Treatment", column="p"),
@@ -91,10 +91,15 @@ def test_agent_view_contains_output_identity_but_not_reported_number() -> None:
 
     view = build_agent_task_view(task)
     rendered = view.to_json()
-    assert "table2-treatment-p" in rendered
-    assert "claim-main" in rendered
+    assert "target-1" in rendered
     assert "p_value" in rendered
     assert "0.000123" not in rendered
+    assert "ssrn-7138278-internal-task" not in rendered
+    assert "doi:10.1234/internal-method" not in rendered
+    assert "doi:10.1234/internal-claim" not in rendered
+    assert not hasattr(view, "task_id")
+    assert not hasattr(view, "method_spec_id")
+    assert not hasattr(view.targets[0], "claim_id")
 
 
 def test_independent_agent_view_rejects_paper_or_result_artifacts_even_for_manual_tasks() -> None:
