@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from .models import ReportedNumber, SourceLocation
 from .reproduction import (
     CellComparison,
     ReproducedCell,
@@ -17,31 +16,7 @@ from .reproduction import (
 from .reproduction_ingest import _require_equal, _validate_execution_evidence
 from .reproduction_ingest_contract import validate_target_set_ingest_contract
 from .reproduction_json import finite_reproduction_float, load_strict_reproduction_json
-from .types import ComparisonOperator, Materiality
-
-
-def _target_from_mapping(data: Mapping[str, Any]) -> ReproductionTarget:
-    reported = data["reported"]
-    if not isinstance(reported, Mapping):
-        raise TypeError("private target reported field must be an object")
-    source_data = dict(data.get("source", {}))
-    if source_data.get("bbox") is not None:
-        source_data["bbox"] = tuple(source_data["bbox"])
-    return ReproductionTarget(
-        target_id=str(data["target_id"]),
-        claim_id=str(data["claim_id"]),
-        metric=str(data["metric"]),
-        reported=ReportedNumber(
-            value=finite_reproduction_float(
-                reported["value"],
-                label="private target reported value",
-            ),
-            decimals=(None if reported.get("decimals") is None else int(reported["decimals"])),
-            operator=ComparisonOperator(reported.get("operator", "=")),
-        ),
-        source=SourceLocation(**source_data),
-        materiality=Materiality(int(data.get("materiality", int(Materiality.SECONDARY_RESULT)))),
-    )
+from .reproduction_target_secret import reproduction_target_from_secret_mapping
 
 
 def load_private_reproduction_target_set(path: str | Path) -> tuple[ReproductionTarget, ...]:
@@ -50,20 +25,18 @@ def load_private_reproduction_target_set(path: str | Path) -> tuple[Reproduction
     decoded = load_strict_reproduction_json(path)
     if not isinstance(decoded, dict) or set(decoded) != {"schema_version", "targets"}:
         raise ValueError("private target set must contain exactly schema_version and targets")
-    if decoded["schema_version"] != 1:
+    if isinstance(decoded["schema_version"], bool) or decoded["schema_version"] != 1:
         raise ValueError("unsupported private target-set schema_version")
     rows = decoded["targets"]
     if not isinstance(rows, list) or not rows:
         raise ValueError("private target set requires at least one target")
 
-    targets: list[ReproductionTarget] = []
-    for row in rows:
-        if not isinstance(row, Mapping):
-            raise TypeError("private target rows must be objects")
-        targets.append(_target_from_mapping(row))
-    locked = tuple(targets)
-    target_commitment_sha256(locked)
-    return locked
+    targets = tuple(
+        reproduction_target_from_secret_mapping(row, allow_schema_version=False)
+        for row in rows
+    )
+    target_commitment_sha256(targets)
+    return targets
 
 
 def _parse_strict_target_output(
