@@ -102,6 +102,8 @@ Primary goal: connect publication language to the statistical object being audit
 
 Primary goal: add stronger evidence when authors provide code/data, while keeping unavailable artifacts neutral.
 
+A v0.11 hardening stack already implements **experimental prerequisite security/control-plane primitives** for this future milestone: strict reproduction control JSON, sealed-target commitments and answer-free ingest, leak-minimized blind agent views, pre-egress dispatch checks, frozen-execution attestations, artifact-bound outputs, and a canonical fully-attested E4-capable report builder. These primitives remain experimental and do **not** mark the end-to-end runner, held-out validation, governance, or production-certification work below as complete. See `docs/reproduction-security-invariants-v0.11.md`.
+
 - [ ] isolated R and Python replication runners with network disabled
 - [ ] environment and dependency capture
 - [ ] generated table/figure to publication-object matching
