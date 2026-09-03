@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict, dataclass
 from typing import Protocol
 
@@ -41,17 +42,18 @@ class AgentArtifactView:
 
 @dataclass(frozen=True)
 class AgentTargetView:
+    """Only the output identity and metric required for machine-readable result emission."""
+
     target_id: str
-    claim_id: str
     metric: str
 
 
 @dataclass(frozen=True)
 class AgentTaskView:
+    """Model-visible projection with internal task/spec/claim identifiers removed."""
+
     task_sha256: str
-    task_id: str
     mode: ReproductionMode
-    method_spec_id: str
     method_object_type: str
     method_spec_version: str
     method_fields: tuple[AgentMethodFieldView, ...]
@@ -74,7 +76,50 @@ class BlindCodeAgentBackend(Protocol):
     def solve(self, task: AgentTaskView) -> CodeAgentProposal: ...
 
 
+def _validate_view_runtime_types(task: CodeAgentTask) -> None:
+    if not isinstance(task.mode, ReproductionMode):
+        raise AgentTaskViewBlocked("reproduction mode must be a ReproductionMode value")
+
+    policy = task.visibility_policy
+    for field in (
+        "allow_reported_outcomes",
+        "allow_original_code",
+        "allow_network",
+        "allow_package_install",
+        "reveal_numeric_comparison_during_iteration",
+    ):
+        if type(getattr(policy, field)) is not bool:
+            raise AgentTaskViewBlocked(f"visibility policy {field} must be a boolean")
+
+    for item in task.method_spec.fields:
+        if not isinstance(item.name, str) or not item.name.strip():
+            raise AgentTaskViewBlocked("method field names must be non-empty strings")
+        if isinstance(item.confidence, bool) or not isinstance(item.confidence, (int, float)):
+            raise AgentTaskViewBlocked("method field confidence must be numeric")
+        if not math.isfinite(float(item.confidence)) or not 0.0 <= float(item.confidence) <= 1.0:
+            raise AgentTaskViewBlocked("method field confidence must be finite and in [0, 1]")
+        if type(item.required_for_execution) is not bool:
+            raise AgentTaskViewBlocked("method field required_for_execution must be a boolean")
+        if item.value is not None and not isinstance(item.value, (str, int, float, bool)):
+            raise AgentTaskViewBlocked("method field values must be scalar JSON-compatible values")
+        if isinstance(item.value, float) and not math.isfinite(item.value):
+            raise AgentTaskViewBlocked("method field numeric values must be finite")
+
+    for artifact in task.artifacts:
+        if not isinstance(artifact.artifact_id, str) or not artifact.artifact_id.strip():
+            raise AgentTaskViewBlocked("artifact_id must be a non-empty string")
+        if not isinstance(artifact.role, str) or not artifact.role.strip():
+            raise AgentTaskViewBlocked("artifact role must be a non-empty string")
+
+    for target in task.targets:
+        if not isinstance(target.target_id, str) or not target.target_id.strip():
+            raise AgentTaskViewBlocked("target_id must be a non-empty string")
+        if not isinstance(target.metric, str) or not target.metric.strip():
+            raise AgentTaskViewBlocked("target metric must be a non-empty string")
+
+
 def _validate_independent_view_boundary(task: CodeAgentTask) -> None:
+    _validate_view_runtime_types(task)
     if task.mode is not ReproductionMode.INDEPENDENT_REIMPLEMENTATION:
         return
 
@@ -111,7 +156,7 @@ def build_agent_task_view(task: CodeAgentTask) -> AgentTaskView:
         AgentMethodFieldView(
             name=item.name,
             value=item.value,
-            confidence=item.confidence,
+            confidence=float(item.confidence),
             required_for_execution=item.required_for_execution,
         )
         for item in task.method_spec.fields
@@ -127,7 +172,6 @@ def build_agent_task_view(task: CodeAgentTask) -> AgentTaskView:
     targets = tuple(
         AgentTargetView(
             target_id=item.target_id,
-            claim_id=item.claim_id,
             metric=item.metric,
         )
         for item in task.targets
@@ -135,9 +179,7 @@ def build_agent_task_view(task: CodeAgentTask) -> AgentTaskView:
     policy = task.visibility_policy
     return AgentTaskView(
         task_sha256=task.sha256(),
-        task_id=task.task_id,
         mode=task.mode,
-        method_spec_id=task.method_spec.spec_id,
         method_object_type=task.method_spec.object_type,
         method_spec_version=task.method_spec.version,
         method_fields=fields,

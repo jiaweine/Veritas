@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import pytest
 
 from veritas.models import ReportedNumber, SourceLocation
 from veritas.reproduction import (
+    AgentVisibilityPolicy,
     CodeAgentProposal,
     CodeAgentTask,
     MethodField,
@@ -177,3 +178,14 @@ def test_author_dispatch_rejects_independent_reimplementation_task() -> None:
 
     with pytest.raises(ValueError, match="reserved for author-code reproduction"):
         dispatch_author_code_agent(task, backend=RecordingAuthorBackend())
+
+
+def test_author_dispatch_requires_real_boolean_original_code_authorization() -> None:
+    task = _author_task()
+    unsafe = replace(
+        task,
+        visibility_policy=AgentVisibilityPolicy(allow_original_code="false"),  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(TypeError, match="allow_original_code.*boolean"):
+        dispatch_author_code_agent(unsafe, backend=RecordingAuthorBackend())

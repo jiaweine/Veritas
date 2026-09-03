@@ -25,7 +25,10 @@ def dispatch_author_code_agent(
 
     if task.mode is not ReproductionMode.AUTHOR_CODE:
         raise ValueError("full-task agent dispatch is reserved for author-code reproduction")
-    if not task.visibility_policy.allow_original_code:
+    allow_original_code = task.visibility_policy.allow_original_code
+    if type(allow_original_code) is not bool:
+        raise TypeError("author-code allow_original_code authorization must be a boolean")
+    if allow_original_code is not True:
         raise ValueError("author-code dispatch requires explicit original-code visibility")
     proposal = backend.solve(task)
     validate_agent_proposal(task, proposal)

@@ -48,7 +48,7 @@ def _parse_strict_target_output(
     decoded = load_strict_reproduction_json(output_path)
     if not isinstance(decoded, dict) or set(decoded) != {"schema_version", "targets"}:
         raise ValueError("target-set output must contain exactly schema_version and targets")
-    if decoded["schema_version"] != 1:
+    if isinstance(decoded["schema_version"], bool) or decoded["schema_version"] != 1:
         raise ValueError("unsupported target-set output schema_version")
     rows = decoded["targets"]
     if not isinstance(rows, list):
