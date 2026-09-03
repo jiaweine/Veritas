@@ -143,9 +143,12 @@ def _parse_source(value: object) -> SourceLocation:
             minimum=minimum,
         )
 
-    if "char_start" in normalized and "char_end" in normalized:
-        if normalized["char_end"] < normalized["char_start"]:
-            raise ValueError("private target source char_end must be >= char_start")
+    if (
+        "char_start" in normalized
+        and "char_end" in normalized
+        and normalized["char_end"] < normalized["char_start"]
+    ):
+        raise ValueError("private target source char_end must be >= char_start")
 
     if "bbox" in source and source["bbox"] is not None:
         bbox = source["bbox"]
