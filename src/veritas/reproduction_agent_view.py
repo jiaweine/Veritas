@@ -41,17 +41,18 @@ class AgentArtifactView:
 
 @dataclass(frozen=True)
 class AgentTargetView:
+    """Only the output identity and metric required for machine-readable result emission."""
+
     target_id: str
-    claim_id: str
     metric: str
 
 
 @dataclass(frozen=True)
 class AgentTaskView:
+    """Model-visible projection with internal task/spec/claim identifiers removed."""
+
     task_sha256: str
-    task_id: str
     mode: ReproductionMode
-    method_spec_id: str
     method_object_type: str
     method_spec_version: str
     method_fields: tuple[AgentMethodFieldView, ...]
@@ -127,7 +128,6 @@ def build_agent_task_view(task: CodeAgentTask) -> AgentTaskView:
     targets = tuple(
         AgentTargetView(
             target_id=item.target_id,
-            claim_id=item.claim_id,
             metric=item.metric,
         )
         for item in task.targets
@@ -135,9 +135,7 @@ def build_agent_task_view(task: CodeAgentTask) -> AgentTaskView:
     policy = task.visibility_policy
     return AgentTaskView(
         task_sha256=task.sha256(),
-        task_id=task.task_id,
         mode=task.mode,
-        method_spec_id=task.method_spec.spec_id,
         method_object_type=task.method_spec.object_type,
         method_spec_version=task.method_spec.version,
         method_fields=fields,
