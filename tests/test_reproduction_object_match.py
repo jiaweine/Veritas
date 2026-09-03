@@ -10,6 +10,7 @@ from veritas.reproduction_object_match import (
     match_generated_figure,
     match_generated_table,
 )
+from veritas.types import ComparisonOperator
 
 
 def test_generated_table_matches_rounding_compatible_publication_cells() -> None:
@@ -37,6 +38,32 @@ def test_generated_table_matches_rounding_compatible_publication_cells() -> None
     assert result.comparable_cells == 3
     assert result.matched_cells == 3
     assert result.coverage == 1.0
+
+
+def test_generated_table_honors_reported_inequality_cells() -> None:
+    publication = PublicationTableSignature(
+        "table-3",
+        ("Treatment",),
+        ("p",),
+        ((ReportedNumber(0.001, operator=ComparisonOperator.LT),),),
+        SourceLocation(artifact_id="paper", page=8, table="Table 3"),
+        "a" * 64,
+    )
+    matching = GeneratedTableSignature(
+        ("Treatment",),
+        ("p",),
+        ((0.0004,),),
+        "b" * 64,
+    )
+    wrong = GeneratedTableSignature(
+        ("Treatment",),
+        ("p",),
+        ((0.02,),),
+        "c" * 64,
+    )
+
+    assert match_generated_table(publication, matching).decision is PublicationObjectMatchDecision.MATCH
+    assert match_generated_table(publication, wrong).decision is PublicationObjectMatchDecision.MISMATCH
 
 
 def test_generated_table_rejects_wrong_row_identity_before_numeric_match() -> None:
