@@ -196,6 +196,8 @@ def validate_target_set_ingest_contract(
         )
 
     execution = _require_mapping(execution, label="execution attestation")
+    if any(field in execution for field in ("target_id", "reproduced_value", "reproduced_values")):
+        raise ValueError("target-set execution must not duplicate target identity or numeric output fields")
     _require_keys(
         execution,
         label="target-set execution attestation",
