@@ -23,6 +23,7 @@ from .reproduction import (
     validate_frozen_execution,
     validate_target_commitment,
 )
+from .types import ComparisonOperator, Materiality
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -91,6 +92,32 @@ def _validate_e4_runtime_types(
     _require_runtime_bool(execution.read_only_inputs, label="execution read_only_inputs")
     _require_runtime_bool(method_fidelity.independent, label="method verifier independent")
     _require_runtime_bool(artifact_identity.independent, label="artifact verifier independent")
+
+
+def _validate_e4_targets(targets: tuple[ReproductionTarget, ...]) -> None:
+    for target in targets:
+        for label, value in (
+            ("target_id", target.target_id),
+            ("claim_id", target.claim_id),
+            ("metric", target.metric),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise TypeError(f"E4 target {label} must be a non-empty string")
+        reported_value = target.reported.value
+        if isinstance(reported_value, bool) or not isinstance(reported_value, (int, float)):
+            raise TypeError("E4 target reported value must be one finite numeric value")
+        if not math.isfinite(float(reported_value)):
+            raise ValueError("E4 target reported value must be finite")
+        decimals = target.reported.decimals
+        if decimals is not None:
+            if isinstance(decimals, bool) or not isinstance(decimals, int):
+                raise TypeError("E4 target decimals must be a non-negative integer or null")
+            if decimals < 0:
+                raise ValueError("E4 target decimals must be non-negative")
+        if not isinstance(target.reported.operator, ComparisonOperator):
+            raise TypeError("E4 target comparison operator must be a ComparisonOperator")
+        if not isinstance(target.materiality, Materiality):
+            raise TypeError("E4 target materiality must be a Materiality value")
 
 
 def _validate_actor_separation(
@@ -177,7 +204,16 @@ def validate_comparison_evidence(
 ):
     """Recompute canonical comparisons from values bound to attested execution output hashes."""
 
+    _validate_e4_targets(targets)
     validate_target_commitment(task, targets)
+    for descriptor, target in zip(task.targets, targets, strict=True):
+        if (
+            descriptor.target_id != target.target_id
+            or descriptor.claim_id != target.claim_id
+            or descriptor.metric != target.metric
+        ):
+            raise ValueError("locked task target descriptors drifted from the sealed target set")
+
     supplied = tuple(comparisons)
     comparison_ids = tuple(item.target_id for item in supplied)
     if comparison_ids != task.target_ids:
