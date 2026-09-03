@@ -4,29 +4,71 @@ from dataclasses import asdict
 
 from .models import CheckResult, Finding, SourceLocation
 from .reproduction import (
+    CodeAgentProposal,
+    CodeAgentTask,
+    ExecutionAttestation,
+    MethodFidelityAttestation,
+    ReproductionAuthority,
     ReproductionDecision,
     ReproductionReport,
+    ReproductionRootCause,
+    ReproductionTarget,
+    SandboxPolicy,
+)
+from .reproduction_attestation import (
+    ArtifactIdentityAttestation,
+    build_attested_reproduction_report,
 )
 from .types import CheckStatus, EvidenceFamily, EvidenceGrade, Materiality
 
 
-def build_reproduction_e4_check(
+def build_attested_reproduction_e4_check(
+    comparisons,
+    *,
+    task: CodeAgentTask,
+    targets: tuple[ReproductionTarget, ...],
+    proposal: CodeAgentProposal,
+    sandbox_policy: SandboxPolicy,
+    execution: ExecutionAttestation,
+    method_fidelity: MethodFidelityAttestation,
+    artifact_identity: ArtifactIdentityAttestation,
+    authority: ReproductionAuthority,
+    object_id: str,
+    source: SourceLocation,
+    root_cause: ReproductionRootCause = ReproductionRootCause.UNKNOWN,
+    finding_id: str = "reproduction:e4",
+) -> CheckResult:
+    """Canonical E4 audit path; callers cannot inject a hand-built ReproductionReport."""
+
+    report = build_attested_reproduction_report(
+        comparisons,
+        task=task,
+        targets=targets,
+        proposal=proposal,
+        sandbox_policy=sandbox_policy,
+        execution=execution,
+        method_fidelity=method_fidelity,
+        artifact_identity=artifact_identity,
+        authority=authority,
+        root_cause=root_cause,
+    )
+    return _check_from_attested_report(
+        report,
+        object_id=object_id,
+        source=source,
+        finding_id=finding_id,
+    )
+
+
+def _check_from_attested_report(
     report: ReproductionReport,
     *,
     object_id: str,
     source: SourceLocation,
-    finding_id: str = "reproduction:e4",
+    finding_id: str,
 ) -> CheckResult:
-    """Convert only immutable, fully attested reproduction evidence into an E4 audit check."""
-
     if report.evidence_binding is None:
-        raise ValueError("E4 audit path requires immutable reproduction evidence binding")
-    if not (
-        report.method_fidelity_verified
-        and report.artifact_identity_verified
-        and report.execution_attested
-    ):
-        raise ValueError("E4 audit path requires the complete verified reproduction chain")
+        raise RuntimeError("canonical attested report unexpectedly lacks evidence binding")
 
     if report.decision is ReproductionDecision.MATCH:
         return CheckResult(
@@ -57,7 +99,7 @@ def build_reproduction_e4_check(
         )
 
     if report.max_evidence_grade is not EvidenceGrade.REPRODUCTION_CONTRADICTION:
-        raise ValueError("mismatch report lacks E4 reproduction-contradiction authority")
+        raise RuntimeError("canonical mismatch report unexpectedly lacks E4 authority")
 
     materiality = report.agreement.max_mismatch_materiality or Materiality.SECONDARY_RESULT
     evidence = {
