@@ -31,8 +31,14 @@ class ArtifactAccessClassification:
     basis: str = ""
 
     def __post_init__(self) -> None:
-        if not _SHA256_RE.fullmatch(self.artifact_sha256):
+        if not isinstance(self.artifact_sha256, str) or not _SHA256_RE.fullmatch(self.artifact_sha256):
             raise ValueError("artifact_sha256 must be a lowercase SHA-256 hex digest")
+        if not isinstance(self.sensitivity, DataSensitivity):
+            raise TypeError("sensitivity must be a DataSensitivity value")
+        if type(self.external_model_egress_authorized) is not bool:
+            raise TypeError("external_model_egress_authorized must be a boolean")
+        if not isinstance(self.basis, str):
+            raise TypeError("basis must be a string")
 
 
 @dataclass(frozen=True)
@@ -42,8 +48,12 @@ class AgentDispatchPolicy:
     confidential_compute_approved: bool = False
 
     def __post_init__(self) -> None:
-        if not self.provider_id.strip():
+        if not isinstance(self.location, AgentExecutionLocation):
+            raise TypeError("location must be an AgentExecutionLocation value")
+        if not isinstance(self.provider_id, str) or not self.provider_id.strip():
             raise ValueError("provider_id is required")
+        if type(self.confidential_compute_approved) is not bool:
+            raise TypeError("confidential_compute_approved must be a boolean")
 
 
 class AgentDispatchBlocked(RuntimeError):
@@ -73,7 +83,7 @@ def validate_agent_dispatch(
         return
 
     if policy.location is AgentExecutionLocation.TRUSTED_CONFIDENTIAL_COMPUTE:
-        if not policy.confidential_compute_approved:
+        if policy.confidential_compute_approved is not True:
             raise AgentDispatchBlocked("confidential compute has not been explicitly approved")
         if any(item.sensitivity is DataSensitivity.UNKNOWN for item in classifications):
             raise AgentDispatchBlocked("unknown-sensitivity artifacts cannot enter confidential compute")
@@ -84,7 +94,7 @@ def validate_agent_dispatch(
         if item.sensitivity is not DataSensitivity.PUBLIC:
             unsafe.append(f"{item.artifact_sha256}:{item.sensitivity.value}")
             continue
-        if not item.external_model_egress_authorized:
+        if item.external_model_egress_authorized is not True:
             unsafe.append(f"{item.artifact_sha256}:public_but_egress_not_authorized")
     if unsafe:
         raise AgentDispatchBlocked(
