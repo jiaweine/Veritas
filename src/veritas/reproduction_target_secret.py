@@ -31,6 +31,7 @@ _SOURCE_TEXT_KEYS = frozenset(
     {"artifact_id", "section", "table", "figure", "row", "column", "text_quote"}
 )
 _SOURCE_INT_KEYS = frozenset({"page", "char_start", "char_end"})
+_NONFINITE_TEXT = frozenset({"NaN", "Infinity", "+Infinity", "-Infinity"})
 
 
 def _require_mapping(value: object, *, label: str) -> Mapping[str, Any]:
@@ -78,6 +79,8 @@ def _require_int(value: object, *, label: str, minimum: int | None = None) -> in
 
 
 def _require_json_number(value: object, *, label: str) -> float:
+    if isinstance(value, str) and value in _NONFINITE_TEXT:
+        raise ValueError(f"{label} must be finite")
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError(f"{label} must be a JSON number")
     return finite_reproduction_float(value, label=label)
