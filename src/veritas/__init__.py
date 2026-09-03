@@ -15,6 +15,7 @@ from .benchmark import (
     evaluate_hard_alert_certification,
     issue_production_calibration_certificate,
 )
+from .claim_audit import bind_cross_location_claim_findings
 from .claim_identity import (
     ClaimEstimateAlignment,
     EstimandIdentity,
@@ -240,6 +241,7 @@ __all__ = [
     "assign_article_family_split",
     "assign_paper_split",
     "benchmark_manifest_sha256",
+    "bind_cross_location_claim_findings",
     "build_blinded_seed_review_packets",
     "build_claim_estimate_alignment",
     "build_extraction_selectivity_curve",
