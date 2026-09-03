@@ -1,14 +1,33 @@
 from __future__ import annotations
 
-import json
 from hashlib import sha256
 from math import isfinite
 
 from .reproduction import CodeAgentTask, ReproducedCell
+from .reproduction_json import loads_strict_reproduction_json
 
 
 class ReproductionOutputError(ValueError):
     pass
+
+
+def _decode_reproduction_output(payload: bytes):
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ReproductionOutputError("reproduction output must be valid UTF-8 JSON") from exc
+
+    try:
+        return loads_strict_reproduction_json(text)
+    except ValueError as exc:
+        message = str(exc)
+        if "duplicate object key" in message:
+            raise ReproductionOutputError("reproduction output contains duplicate object keys") from exc
+        if "unsupported numeric constant" in message:
+            raise ReproductionOutputError(
+                "reproduction output contains unsupported non-finite numeric value"
+            ) from exc
+        raise ReproductionOutputError("reproduction output must be valid UTF-8 JSON") from exc
 
 
 def parse_reproduction_output(payload: bytes, task: CodeAgentTask) -> tuple[ReproducedCell, ...]:
@@ -20,10 +39,7 @@ def parse_reproduction_output(payload: bytes, task: CodeAgentTask) -> tuple[Repr
     """
 
     artifact_sha256 = sha256(payload).hexdigest()
-    try:
-        decoded = json.loads(payload.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ReproductionOutputError("reproduction output must be valid UTF-8 JSON") from exc
+    decoded = _decode_reproduction_output(payload)
 
     if not isinstance(decoded, dict) or set(decoded) != {"schema_version", "targets"}:
         raise ReproductionOutputError("output must contain exactly schema_version and targets")
