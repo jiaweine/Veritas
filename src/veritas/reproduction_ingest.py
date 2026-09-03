@@ -17,6 +17,7 @@ from .reproduction import (
     compare_reproduced_cells,
     target_commitment_sha256,
 )
+from .reproduction_ingest_contract import validate_single_target_ingest_contract
 from .reproduction_json import finite_reproduction_float, load_strict_reproduction_json
 from .types import ComparisonOperator, Materiality
 
@@ -196,6 +197,7 @@ def build_answer_free_reproduction_certificate(
 ) -> dict[str, Any]:
     """Compare a frozen output with a post-run secret without persisting numeric answers."""
 
+    validate_single_target_ingest_contract(packet, execution)
     target_contract = packet["target_contract"]
     output = Path(output_path)
     output_sha256 = _validate_execution_evidence(packet, execution, output)
