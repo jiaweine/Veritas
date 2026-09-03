@@ -65,7 +65,7 @@ def test_raw_to_analysis_lineage_tracks_exclusion_and_transformation() -> None:
     assert len(lineage.sha256()) == 64
 
 
-def test_filter_cannot_increase_row_count() -> None:
+def test_filter_cannot_increase_row_count_without_mutating_state() -> None:
     lineage = SampleLineage()
     lineage.add_snapshot(_snapshot("raw", 4, "a"))
     lineage.add_snapshot(_snapshot("filtered", 5, "b"))
@@ -83,8 +83,11 @@ def test_filter_cannot_increase_row_count() -> None:
             )
         )
 
+    assert lineage.operations == {}
+    lineage.validate()
 
-def test_transformation_must_preserve_row_count() -> None:
+
+def test_transformation_must_preserve_row_count_without_mutating_state() -> None:
     lineage = SampleLineage()
     lineage.add_snapshot(_snapshot("before", 4, "a"))
     lineage.add_snapshot(_snapshot("after", 3, "b"))
@@ -102,8 +105,10 @@ def test_transformation_must_preserve_row_count() -> None:
             )
         )
 
+    assert lineage.operations == {}
 
-def test_lineage_cycle_fails_closed() -> None:
+
+def test_lineage_cycle_fails_closed_without_mutating_state() -> None:
     lineage = SampleLineage()
     lineage.add_snapshot(_snapshot("a", 4, "a"))
     lineage.add_snapshot(_snapshot("b", 4, "b"))
@@ -131,6 +136,9 @@ def test_lineage_cycle_fails_closed() -> None:
                 SourceLocation(artifact_id="code"),
             )
         )
+
+    assert set(lineage.operations) == {"a-to-b"}
+    lineage.validate()
 
 
 def test_row_identity_hash_is_order_invariant_but_rejects_duplicates() -> None:
