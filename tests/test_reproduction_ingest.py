@@ -227,11 +227,12 @@ def test_json_path_binding_rejects_duplicate_object_keys(tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize(
-    "path,value,error",
+    "path,value,error,exception_type",
     [
-        ([], 0.0495, "non-empty path"),
-        (["results", -1], 0.0495, "non-negative"),
-        (["results", "CAD", "p_value"], True, "numeric scalar"),
+        ([], 0.0495, "non-empty path", ValueError),
+        (["results", -1], 0.0495, "non-negative", ValueError),
+        (["results", 1.5], 0.0495, "object keys", TypeError),
+        (["results", "CAD", "p_value"], True, "numeric scalar", TypeError),
     ],
 )
 def test_json_path_binding_rejects_unsafe_paths_and_values(
@@ -239,12 +240,13 @@ def test_json_path_binding_rejects_unsafe_paths_and_values(
     path: list[object],
     value: object,
     error: str,
+    exception_type: type[Exception],
 ) -> None:
     target = _target()
     output, output_sha256 = _write_json_output(tmp_path, value=value)
     packet = _packet(output_sha256, target, binding={"format": "json_path", "path": path})
 
-    with pytest.raises(ValueError, match=error):
+    with pytest.raises(exception_type, match=error):
         build_answer_free_reproduction_certificate(
             packet=packet,
             execution=_execution(output_sha256),

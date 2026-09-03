@@ -167,7 +167,7 @@ def _extract_bound_json_path_value(output_path: Path, binding: Mapping[str, Any]
         raise ValueError("json_path reproduced-value binding path is too deep")
     for component in path:
         if isinstance(component, bool) or not isinstance(component, (str, int)):
-            raise ValueError("json_path path components must be object keys or non-negative array indices")
+            raise TypeError("json_path path components must be object keys or non-negative array indices")
         if isinstance(component, int) and component < 0:
             raise ValueError("json_path array indices must be non-negative")
 
@@ -192,7 +192,7 @@ def _extract_bound_json_path_value(output_path: Path, binding: Mapping[str, Any]
             current = current[component]
 
     if isinstance(current, bool) or not isinstance(current, (str, int, float)):
-        raise ValueError("json_path reproduced-value binding must resolve to one numeric scalar")
+        raise TypeError("json_path reproduced-value binding must resolve to one numeric scalar")
     return _finite_float(str(current))
 
 
