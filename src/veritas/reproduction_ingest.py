@@ -146,12 +146,64 @@ def _extract_bound_text_regex_value(output_path: Path, binding: Mapping[str, Any
     return _finite_float(matches[0].group("value"))
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    decoded: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in decoded:
+            raise ValueError("json_path output contains duplicate object keys")
+        decoded[key] = value
+    return decoded
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"json_path output contains unsupported numeric constant: {value}")
+
+
+def _extract_bound_json_path_value(output_path: Path, binding: Mapping[str, Any]) -> float:
+    path = binding.get("path")
+    if not isinstance(path, list) or not path:
+        raise ValueError("json_path reproduced-value binding requires a non-empty path")
+    if len(path) > 32:
+        raise ValueError("json_path reproduced-value binding path is too deep")
+    for component in path:
+        if isinstance(component, bool) or not isinstance(component, (str, int)):
+            raise ValueError("json_path path components must be object keys or non-negative array indices")
+        if isinstance(component, int) and component < 0:
+            raise ValueError("json_path array indices must be non-negative")
+
+    try:
+        decoded = json.loads(
+            output_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("json_path output must be valid UTF-8 JSON") from exc
+
+    current: Any = decoded
+    for component in path:
+        if isinstance(component, str):
+            if not isinstance(current, dict) or component not in current:
+                raise ValueError("json_path reproduced-value binding did not resolve exactly")
+            current = current[component]
+        else:
+            if not isinstance(current, list) or component >= len(current):
+                raise ValueError("json_path reproduced-value binding did not resolve exactly")
+            current = current[component]
+
+    if isinstance(current, bool) or not isinstance(current, (str, int, float)):
+        raise ValueError("json_path reproduced-value binding must resolve to one numeric scalar")
+    return _finite_float(str(current))
+
+
 def _extract_bound_value(output_path: Path, binding: Mapping[str, Any]) -> float:
     format_name = binding.get("format")
     if format_name == "csv":
         return _extract_bound_csv_value(output_path, binding)
     if format_name == "text_regex":
         return _extract_bound_text_regex_value(output_path, binding)
+    if format_name == "json_path":
+        return _extract_bound_json_path_value(output_path, binding)
     raise ValueError(f"unsupported reproduced-value binding format: {format_name!r}")
 
 
