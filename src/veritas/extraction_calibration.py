@@ -14,6 +14,7 @@ from .extraction_benchmark import (
     ExtractionSelectivityCurve,
     build_extraction_selectivity_curve,
 )
+from .extraction_split_manifest import ExtractionSplitManifest
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -22,9 +23,8 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 class ExtractionThresholdObservation:
     threshold_id: str
     threshold: float
-    split: BenchmarkSplit
     report: ExtractionBenchmarkReport
-    manifest_sha256: str
+    manifest: ExtractionSplitManifest
 
     def __post_init__(self) -> None:
         if not isinstance(self.threshold_id, str) or not self.threshold_id.strip():
@@ -36,50 +36,44 @@ class ExtractionThresholdObservation:
             or float(self.threshold) < 0.0
         ):
             raise ValueError("threshold must be a finite non-negative number")
-        if not isinstance(self.split, BenchmarkSplit):
-            raise TypeError("split must be a BenchmarkSplit")
         if not isinstance(self.report, ExtractionBenchmarkReport):
             raise TypeError("report must be an ExtractionBenchmarkReport")
-        if not _SHA256_RE.fullmatch(self.manifest_sha256):
-            raise ValueError("manifest_sha256 must be a lowercase SHA-256 digest")
+        if not isinstance(self.manifest, ExtractionSplitManifest):
+            raise TypeError("manifest must be an ExtractionSplitManifest")
+        self.manifest.validate_report_membership(self.report)
+
+    @property
+    def split(self) -> BenchmarkSplit:
+        return self.manifest.split
+
+    @property
+    def manifest_sha256(self) -> str:
+        return self.manifest.sha256()
 
 
 @dataclass(frozen=True)
 class ExtractionSelectivityEvidence:
-    """Manifest-bound observations for one benchmark split and its selectivity curve."""
+    """Canonical split manifest plus all threshold observations used for a selectivity curve."""
 
-    split: BenchmarkSplit
-    manifest_sha256: str
+    manifest: ExtractionSplitManifest
     observations: tuple[ExtractionThresholdObservation, ...]
     schema_version: int = 1
 
     def __post_init__(self) -> None:
-        if not isinstance(self.split, BenchmarkSplit):
-            raise TypeError("selectivity evidence split must be a BenchmarkSplit")
-        if not _SHA256_RE.fullmatch(self.manifest_sha256):
-            raise ValueError("selectivity evidence manifest_sha256 must be a lowercase SHA-256 digest")
+        if not isinstance(self.manifest, ExtractionSplitManifest):
+            raise TypeError("selectivity evidence manifest must be an ExtractionSplitManifest")
         if self.schema_version != 1 or isinstance(self.schema_version, bool):
             raise ValueError("selectivity evidence schema_version must be 1")
         if not self.observations:
             raise ValueError("selectivity evidence requires at least one threshold observation")
-        wrong_split = [
-            observation.threshold_id
-            for observation in self.observations
-            if observation.split is not self.split
-        ]
-        if wrong_split:
-            raise ValueError(
-                "selectivity evidence observations must all use the declared split: "
-                f"{tuple(sorted(wrong_split))!r}"
-            )
         wrong_manifest = [
             observation.threshold_id
             for observation in self.observations
-            if observation.manifest_sha256 != self.manifest_sha256
+            if observation.manifest.sha256() != self.manifest.sha256()
         ]
         if wrong_manifest:
             raise ValueError(
-                "selectivity evidence observations must all use the declared manifest: "
+                "selectivity evidence observations must all use the declared split manifest: "
                 f"{tuple(sorted(wrong_manifest))!r}"
             )
         ids = [observation.threshold_id for observation in self.observations]
@@ -88,6 +82,16 @@ class ExtractionSelectivityEvidence:
         thresholds = [float(observation.threshold) for observation in self.observations]
         if len(set(thresholds)) != len(thresholds):
             raise ValueError("selectivity evidence threshold values must be unique")
+        for observation in self.observations:
+            self.manifest.validate_report_membership(observation.report)
+
+    @property
+    def split(self) -> BenchmarkSplit:
+        return self.manifest.split
+
+    @property
+    def manifest_sha256(self) -> str:
+        return self.manifest.sha256()
 
     def observation_set_sha256(self) -> str:
         return threshold_observations_sha256(self.observations)
@@ -237,13 +241,15 @@ def select_development_threshold(
     observations: tuple[ExtractionThresholdObservation, ...] | list[ExtractionThresholdObservation],
     *,
     policy: ExtractionThresholdPolicy,
-    development_manifest_sha256: str,
+    development_manifest: ExtractionSplitManifest,
 ) -> FrozenExtractionThreshold:
     observations = tuple(observations)
     if not observations:
         raise ValueError("at least one threshold observation is required")
-    if not _SHA256_RE.fullmatch(development_manifest_sha256):
-        raise ValueError("development_manifest_sha256 must be a lowercase SHA-256 digest")
+    if not isinstance(development_manifest, ExtractionSplitManifest):
+        raise TypeError("development_manifest must be an ExtractionSplitManifest")
+    if development_manifest.split is not BenchmarkSplit.DEVELOPMENT:
+        raise ValueError("threshold selection requires a DEVELOPMENT split manifest")
     non_development = [
         observation.threshold_id
         for observation in observations
@@ -257,7 +263,7 @@ def select_development_threshold(
     wrong_manifest = [
         observation.threshold_id
         for observation in observations
-        if observation.manifest_sha256 != development_manifest_sha256
+        if observation.manifest_sha256 != development_manifest.sha256()
     ]
     if wrong_manifest:
         raise ValueError(
@@ -292,7 +298,7 @@ def select_development_threshold(
     return FrozenExtractionThreshold(
         threshold_id=selected.threshold_id,
         threshold=float(selected.threshold),
-        development_manifest_sha256=development_manifest_sha256,
+        development_manifest_sha256=development_manifest.sha256(),
         development_observation_set_sha256=threshold_observations_sha256(observations),
         policy_sha256=policy.sha256(),
         candidate_threshold_ids=tuple(sorted(ids)),
@@ -302,17 +308,17 @@ def select_development_threshold(
 def lock_test_evaluation(
     frozen_threshold: FrozenExtractionThreshold,
     *,
-    test_manifest_sha256: str,
+    test_manifest: ExtractionSplitManifest,
 ) -> ExtractionTestEvaluationLock:
-    """Bind TEST evaluation to a previously frozen DEVELOPMENT-selected threshold.
+    """Bind TEST evaluation to a canonical TEST manifest and a frozen DEVELOPMENT threshold."""
 
-    This function intentionally accepts no TEST performance report and exposes no threshold
-    selection logic. TEST results may evaluate a frozen threshold but may not influence it.
-    """
-
+    if not isinstance(test_manifest, ExtractionSplitManifest):
+        raise TypeError("test_manifest must be an ExtractionSplitManifest")
+    if test_manifest.split is not BenchmarkSplit.TEST:
+        raise ValueError("TEST evaluation lock requires a TEST split manifest")
     return ExtractionTestEvaluationLock(
         frozen_threshold_sha256=frozen_threshold.sha256(),
-        test_manifest_sha256=test_manifest_sha256,
+        test_manifest_sha256=test_manifest.sha256(),
     )
 
 
@@ -341,5 +347,6 @@ def _stable_sha256(value: object) -> str:
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
+        allow_nan=False,
     ).encode("utf-8")
     return sha256(raw).hexdigest()
