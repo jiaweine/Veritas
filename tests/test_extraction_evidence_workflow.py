@@ -459,9 +459,9 @@ def test_test_seal_and_evaluation_lock_must_bind_exact_frozen_chain() -> None:
 def test_both_published_curves_must_use_precommitted_threshold_id_value_grid() -> None:
     fixture = _workflow_fixture()
     bad_development_observations = list(_threshold_observations(fixture["development_manifest"]))
-    bad_development_observations[2] = replace(
-        bad_development_observations[2],
-        threshold=0.94,
+    bad_development_observations[0] = replace(
+        bad_development_observations[0],
+        threshold=0.79,
     )
     bad_development_observations = tuple(bad_development_observations)
     bad_development_evidence = ExtractionSelectivityEvidence(
