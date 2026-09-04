@@ -21,12 +21,15 @@ from veritas.extraction_calibration import (
 from veritas.extraction_evidence_workflow import (
     ExtractionEvidencePlan,
     ExtractionSamplingFrame,
+    ExtractionSeedManifest,
     ExtractionThresholdGrid,
     build_extraction_evidence_plan,
     build_extraction_evidence_release_receipt,
     load_extraction_sampling_frame,
+    load_extraction_seed_manifest,
 )
 from veritas.extraction_review import ExtractionGoldManifest
+from veritas.extraction_review_packet import ExtractionReviewPacketTarget
 from veritas.extraction_test_seal import seal_extraction_test_set
 from veritas.ingestion import EvidenceKind
 from veritas.models import SourceLocation
@@ -52,6 +55,28 @@ def _sampling_frame(count: int = 24) -> ExtractionSamplingFrame:
     return ExtractionSamplingFrame(
         papers=tuple(_paper(index) for index in range(count)),
         source_manifest_sha256="a" * 64,
+    )
+
+
+def _seed_manifest(frame: ExtractionSamplingFrame) -> ExtractionSeedManifest:
+    return ExtractionSeedManifest(
+        source_manifest_sha256=_SEED_SHA,
+        targets=tuple(
+            ExtractionReviewPacketTarget(
+                target_id=f"target-{index:02d}",
+                case_id=f"case-{index:02d}",
+                paper_id=paper.paper_id,
+                article_family_id=paper.article_family_id,
+                doi=None,
+                pdf_url=f"https://example.org/{paper.paper_id}.pdf",
+                object_type="RegressionResult",
+                key="beta",
+                expected_page=2,
+                table_label="Table 1",
+                row_label=f"row-{index}",
+            )
+            for index, paper in enumerate(frame.papers)
+        ),
     )
 
 
@@ -118,6 +143,7 @@ def _report(*, coverage: float, accuracy: float, upper_bound: float) -> Extracti
 
 def _workflow_fixture():
     frame = _sampling_frame()
+    seed = _seed_manifest(frame)
     grid = ExtractionThresholdGrid(
         (
             ("t-080", 0.80),
@@ -178,6 +204,7 @@ def _workflow_fixture():
     )
     return {
         "frame": frame,
+        "seed": seed,
         "grid": grid,
         "plan": plan,
         "gold": gold,
@@ -198,6 +225,7 @@ def _release(**overrides):
     return build_extraction_evidence_release_receipt(
         plan=fixture["plan"],
         sampling_frame=fixture["frame"],
+        seed_manifest=fixture["seed"],
         threshold_grid=fixture["grid"],
         gold_manifest=fixture["gold"],
         split_lock=fixture["split_lock"],
@@ -219,6 +247,18 @@ def test_repository_sampling_frame_loads_as_unlabeled_exact_bytes_manifest() -> 
     assert len(frame.papers) >= 8
     assert len(frame.source_manifest_sha256) == 64
     assert len(frame.sha256()) == 64
+
+
+def test_repository_seed_manifest_loads_exact_bytes_and_review_target_universe() -> None:
+    root = Path(__file__).resolve().parents[1]
+    seed = load_extraction_seed_manifest(root / "benchmark/extraction/seed_cases_v0.11.json")
+
+    assert seed.status == "seed_corpus_not_locked_gold"
+    assert seed.production_hard_finding_authorized is False
+    assert len(seed.source_manifest_sha256) == 64
+    assert len(seed.targets) == 20
+    assert "plosone-0318226-table2-age:beta" in seed.target_map()
+    assert "frontiers-1520668-table2-f01:p_value" in seed.target_map()
 
 
 def test_release_receipt_binds_complete_precommitted_chain_and_is_nonproduction() -> None:
@@ -249,9 +289,32 @@ def test_sampling_frame_threshold_grid_or_seed_manifest_drift_fails_closed() -> 
     with pytest.raises(ValueError, match="threshold grid"):
         _release(grid=drifted_grid)
 
+    wrong_seed = replace(fixture["seed"], source_manifest_sha256="7" * 64)
+    with pytest.raises(ValueError, match="seed manifest"):
+        _release(seed=wrong_seed)
+
     wrong_seed_gold = replace(fixture["gold"], source_seed_manifest_sha256="8" * 64)
     with pytest.raises(ValueError, match="seed manifest"):
         _release(gold=wrong_seed_gold)
+
+
+def test_gold_targets_must_belong_to_exact_precommitted_seed_universe() -> None:
+    fixture = _workflow_fixture()
+    outside = replace(fixture["gold"].targets[0], target_id="not-in-seed-universe")
+    outside_gold = replace(
+        fixture["gold"],
+        targets=(outside, *fixture["gold"].targets[1:]),
+    )
+    with pytest.raises(ValueError, match="outside the precommitted seed target universe"):
+        _release(gold=outside_gold)
+
+    drifted = replace(fixture["gold"].targets[0], key="se")
+    drifted_gold = replace(
+        fixture["gold"],
+        targets=(drifted, *fixture["gold"].targets[1:]),
+    )
+    with pytest.raises(ValueError, match="identity drifted from seed manifest"):
+        _release(gold=drifted_gold)
 
 
 def test_review_protocol_and_gold_sampling_universe_are_precommitted() -> None:
@@ -269,7 +332,7 @@ def test_review_protocol_and_gold_sampling_universe_are_precommitted() -> None:
         fixture["gold"],
         targets=(outside, *fixture["gold"].targets[1:]),
     )
-    with pytest.raises(ValueError, match="outside the precommitted sampling frame"):
+    with pytest.raises(ValueError, match="identity drifted from seed manifest"):
         _release(gold=bad_gold)
 
 
