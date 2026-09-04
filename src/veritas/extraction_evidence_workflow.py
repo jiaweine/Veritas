@@ -13,10 +13,15 @@ from .corpus import AccessTier, ArticleFamilySplitLock, CorpusPaper
 from .extraction_benchmark import ExtractionSelectivityCurve
 from .extraction_calibration import ExtractionTestEvaluationLock, FrozenExtractionThreshold
 from .extraction_review import ExtractionGoldManifest
+from .extraction_review_packet import (
+    ExtractionReviewPacketTarget,
+    build_blinded_seed_review_packets,
+)
 from .extraction_test_seal import ExtractionTestSetSeal
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SAMPLING_FRAME_STATUS = "sampling_frame_only_unlabeled"
+_SEED_MANIFEST_STATUS = "seed_corpus_not_locked_gold"
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,34 @@ class ExtractionSamplingFrame:
                 ],
             }
         )
+
+
+@dataclass(frozen=True)
+class ExtractionSeedManifest:
+    source_manifest_sha256: str
+    targets: tuple[ExtractionReviewPacketTarget, ...]
+    status: str = _SEED_MANIFEST_STATUS
+    production_hard_finding_authorized: bool = False
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        _require_sha256(self.source_manifest_sha256, label="seed-manifest source")
+        if self.status != _SEED_MANIFEST_STATUS:
+            raise ValueError("extraction seed manifest must remain explicit non-gold seed data")
+        if type(self.production_hard_finding_authorized) is not bool:
+            raise TypeError("seed-manifest production authority flag must be boolean")
+        if self.production_hard_finding_authorized:
+            raise ValueError("extraction seed manifest must not carry production authority")
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("extraction seed manifest schema_version must be 1")
+        if not self.targets:
+            raise ValueError("extraction seed manifest requires at least one review target")
+        target_ids = [target.target_id for target in self.targets]
+        if len(set(target_ids)) != len(target_ids):
+            raise ValueError("extraction seed-manifest target ids must be unique")
+
+    def target_map(self) -> dict[str, ExtractionReviewPacketTarget]:
+        return {target.target_id: target for target in self.targets}
 
 
 @dataclass(frozen=True)
@@ -188,7 +221,7 @@ def load_extraction_sampling_frame(path: str | Path) -> ExtractionSamplingFrame:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ValueError("sampling-frame manifest must be UTF-8 JSON") from exc
-    payload = _loads_strict_json(text)
+    payload = _loads_strict_json(text, label="sampling-frame manifest")
     if not isinstance(payload, dict):
         raise TypeError("sampling-frame manifest root must be an object")
     if "labels" in payload:
@@ -203,6 +236,32 @@ def load_extraction_sampling_frame(path: str | Path) -> ExtractionSamplingFrame:
     return ExtractionSamplingFrame(
         papers=tuple(_paper_from_mapping(row) for row in rows),
         source_manifest_sha256=sha256(raw).hexdigest(),
+    )
+
+
+def load_extraction_seed_manifest(path: str | Path) -> ExtractionSeedManifest:
+    source_path = Path(path)
+    raw = source_path.read_bytes()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("seed manifest must be UTF-8 JSON") from exc
+    payload = _loads_strict_json(text, label="seed manifest")
+    if not isinstance(payload, dict):
+        raise TypeError("seed manifest root must be an object")
+    if payload.get("schema_version") != 1 or isinstance(payload.get("schema_version"), bool):
+        raise ValueError("seed manifest schema_version must be 1")
+    seed_sha256 = sha256(raw).hexdigest()
+    packets = build_blinded_seed_review_packets(
+        payload,
+        seed_manifest_sha256=seed_sha256,
+        reviewer_slots=("seed-universe-a", "seed-universe-b"),
+    )
+    return ExtractionSeedManifest(
+        source_manifest_sha256=seed_sha256,
+        targets=packets[0].targets,
+        status=str(payload.get("status")),
+        production_hard_finding_authorized=payload.get("production_hard_finding_authorized"),
     )
 
 
@@ -229,6 +288,7 @@ def build_extraction_evidence_release_receipt(
     *,
     plan: ExtractionEvidencePlan,
     sampling_frame: ExtractionSamplingFrame,
+    seed_manifest: ExtractionSeedManifest,
     threshold_grid: ExtractionThresholdGrid,
     gold_manifest: ExtractionGoldManifest,
     split_lock: ArticleFamilySplitLock,
@@ -246,6 +306,8 @@ def build_extraction_evidence_release_receipt(
         raise ValueError("sampling frame does not match the precommitted evidence plan")
     if sampling_frame.source_manifest_sha256 != plan.sampling_frame_source_manifest_sha256:
         raise ValueError("sampling-frame source bytes do not match the precommitted evidence plan")
+    if seed_manifest.source_manifest_sha256 != plan.source_seed_manifest_sha256:
+        raise ValueError("seed manifest does not match the precommitted evidence plan")
     if threshold_grid.sha256() != plan.threshold_grid_sha256:
         raise ValueError("threshold grid does not match the precommitted evidence plan")
     if gold_manifest.source_seed_manifest_sha256 != plan.source_seed_manifest_sha256:
@@ -255,8 +317,32 @@ def build_extraction_evidence_release_receipt(
     if gold_manifest.split_salt != plan.split_salt:
         raise ValueError("gold split salt differs from the precommitted evidence plan")
 
+    seed_targets = seed_manifest.target_map()
     family_by_paper = sampling_frame.paper_family_map()
     for target in gold_manifest.targets:
+        seed_target = seed_targets.get(target.target_id)
+        if seed_target is None:
+            raise ValueError(
+                "gold target is outside the precommitted seed target universe: "
+                f"{target.target_id!r}"
+            )
+        seed_identity = (
+            seed_target.paper_id,
+            seed_target.article_family_id,
+            seed_target.object_type,
+            seed_target.key,
+            seed_target.critical_for_hard_audit,
+        )
+        gold_identity = (
+            target.paper_id,
+            target.article_family_id,
+            target.object_type,
+            target.key,
+            target.critical_for_hard_audit,
+        )
+        if seed_identity != gold_identity:
+            raise ValueError(f"gold target identity drifted from seed manifest: {target.target_id!r}")
+
         expected_family = family_by_paper.get(target.paper_id)
         if expected_family is None:
             raise ValueError(
@@ -407,17 +493,17 @@ def _corpus_paper_payload(paper: CorpusPaper) -> dict[str, Any]:
     }
 
 
-def _loads_strict_json(text: str) -> Any:
+def _loads_strict_json(text: str, *, label: str) -> Any:
     def reject_duplicate(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
             if key in result:
-                raise ValueError(f"duplicate JSON object key: {key!r}")
+                raise ValueError(f"{label} contains duplicate JSON object key: {key!r}")
             result[key] = value
         return result
 
     def reject_constant(value: str) -> None:
-        raise ValueError(f"unsupported JSON numeric constant: {value}")
+        raise ValueError(f"{label} contains unsupported JSON numeric constant: {value}")
 
     try:
         return json.loads(
@@ -426,7 +512,7 @@ def _loads_strict_json(text: str) -> Any:
             parse_constant=reject_constant,
         )
     except json.JSONDecodeError as exc:
-        raise ValueError("sampling-frame manifest must be valid JSON") from exc
+        raise ValueError(f"{label} must be valid JSON") from exc
 
 
 def _required_string(value: object, *, label: str) -> str:
