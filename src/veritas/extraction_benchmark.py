@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from .benchmark import binomial_upper_bound
@@ -111,6 +112,25 @@ class ExtractionSelectivityPoint:
     wrong_accept_rate: float
     critical_family_wrong_accept_upper_bound: float
 
+    def __post_init__(self) -> None:
+        _require_finite_nonnegative_number(self.threshold, label="selectivity threshold")
+        for label, value in (
+            ("selective_coverage", self.selective_coverage),
+            ("accepted_full_accuracy", self.accepted_full_accuracy),
+            ("accepted_field_value_accuracy", self.accepted_field_value_accuracy),
+            (
+                "accepted_table_row_identity_accuracy",
+                self.accepted_table_row_identity_accuracy,
+            ),
+            ("accepted_semantic_gate_accuracy", self.accepted_semantic_gate_accuracy),
+            ("wrong_accept_rate", self.wrong_accept_rate),
+            (
+                "critical_family_wrong_accept_upper_bound",
+                self.critical_family_wrong_accept_upper_bound,
+            ),
+        ):
+            _require_probability(value, label=label)
+
 
 @dataclass(frozen=True)
 class ExtractionSelectivityCurve:
@@ -119,6 +139,10 @@ class ExtractionSelectivityCurve:
     points: tuple[ExtractionSelectivityPoint, ...]
 
     def __post_init__(self) -> None:
+        if not isinstance(self.points, tuple) or not self.points:
+            raise ValueError("selectivity curve requires a non-empty tuple of points")
+        if any(not isinstance(point, ExtractionSelectivityPoint) for point in self.points):
+            raise TypeError("selectivity curve points must be ExtractionSelectivityPoint values")
         thresholds = [point.threshold for point in self.points]
         if len(set(thresholds)) != len(thresholds):
             raise ValueError("selectivity-curve thresholds must be unique")
@@ -136,6 +160,16 @@ def build_extraction_selectivity_curve(
     a single scalar can hide the difference between abstaining aggressively and accepting a larger
     fraction of fields with more wrong accepts.
     """
+    reports = tuple(reports)
+    if not reports:
+        raise ValueError("selectivity curve requires at least one threshold report")
+    for item in reports:
+        if not isinstance(item, tuple) or len(item) != 2:
+            raise TypeError("selectivity curve reports must be (threshold, report) pairs")
+        threshold, report = item
+        _require_finite_nonnegative_number(threshold, label="selectivity threshold")
+        if not isinstance(report, ExtractionBenchmarkReport):
+            raise TypeError("selectivity curve reports must contain ExtractionBenchmarkReport values")
     thresholds = [threshold for threshold, _ in reports]
     if len(set(thresholds)) != len(thresholds):
         raise ValueError("selectivity-curve thresholds must be unique")
@@ -346,3 +380,23 @@ def _source_identity_components(predicted: SourceLocation, gold: SourceLocation)
 
 def _rate(numerator: int, denominator: int) -> float:
     return numerator / denominator if denominator else 0.0
+
+
+def _require_finite_nonnegative_number(value: object, *, label: str) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or float(value) < 0.0
+    ):
+        raise ValueError(f"{label} must be a finite non-negative number")
+
+
+def _require_probability(value: object, *, label: str) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or not 0.0 <= float(value) <= 1.0
+    ):
+        raise ValueError(f"{label} must be a finite number in [0, 1]")
