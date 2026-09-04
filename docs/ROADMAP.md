@@ -106,14 +106,18 @@ The v0.12 implementation is a deterministic graph/identity and fail-closed audit
 
 Primary goal: add stronger evidence when authors provide code/data, while keeping unavailable artifacts neutral.
 
-A v0.11 hardening stack already implements **experimental prerequisite security/control-plane primitives** for this future milestone: strict reproduction control JSON, sealed-target commitments and answer-free ingest, leak-minimized blind agent views, pre-egress dispatch checks, frozen-execution attestations, artifact-bound outputs, and a canonical fully-attested E4-capable report builder. These primitives remain experimental and do **not** mark the end-to-end runner, held-out validation, governance, or production-certification work below as complete. See `docs/reproduction-security-invariants-v0.11.md`.
+### Reproducibility-artifact substrate — implemented
 
-- [ ] isolated R and Python replication runners with network disabled
-- [ ] environment and dependency capture
-- [ ] generated table/figure to publication-object matching
-- [ ] processed-data and code provenance graph
-- [ ] optional licensed Stata adapter
-- [ ] E4 reproduction-contradiction evidence path
+- [x] isolated R and Python replication runners with network disabled
+- [x] environment and dependency capture
+- [x] generated table/figure to publication-object matching
+- [x] processed-data and code provenance graph
+- [x] optional licensed Stata adapter
+- [x] E4 reproduction-contradiction evidence path
+
+The v0.13 implementation builds on the v0.11 fail-closed reproduction control plane. OCI execution requires a compatible host runtime; CI validates the isolation command contract and security gates rather than pretending to certify a daemon that is not present. The optional Stata adapter requires explicit licensed-runtime authorization from the deployment. The public E4 constructor internally invokes the canonical fully-attested report builder and cannot accept a caller-forged `ReproductionReport`. See `docs/REPRODUCIBILITY_ARTIFACTS.md` and `docs/reproduction-security-invariants-v0.11.md`.
+
+These software capabilities remain separate from held-out production certification and from case-specific independent artifact/method review.
 
 ## v0.14 — data and preregistration integrity
 
