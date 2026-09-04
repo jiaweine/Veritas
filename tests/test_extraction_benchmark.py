@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from veritas.extraction import (
@@ -8,6 +10,8 @@ from veritas.extraction import (
 from veritas.extraction_benchmark import (
     ExtractionGoldTarget,
     ExtractionPrediction,
+    ExtractionSelectivityCurve,
+    ExtractionSelectivityPoint,
     build_extraction_selectivity_curve,
     evaluate_extraction_benchmark,
 )
@@ -57,6 +61,21 @@ def _prediction(target_id: str, value: str, *, source: SourceLocation | None = N
         ]
     )
     return ExtractionPrediction(target_id=target_id, resolution=resolution)
+
+
+def _point(**overrides) -> ExtractionSelectivityPoint:
+    values = {
+        "threshold": 0.5,
+        "selective_coverage": 0.8,
+        "accepted_full_accuracy": 1.0,
+        "accepted_field_value_accuracy": 1.0,
+        "accepted_table_row_identity_accuracy": 1.0,
+        "accepted_semantic_gate_accuracy": 1.0,
+        "wrong_accept_rate": 0.0,
+        "critical_family_wrong_accept_upper_bound": 0.05,
+    }
+    values.update(overrides)
+    return ExtractionSelectivityPoint(**values)
 
 
 def test_correct_accept_requires_both_value_and_source_identity():
@@ -182,3 +201,31 @@ def test_selectivity_curve_rejects_duplicate_thresholds():
     report = evaluate_extraction_benchmark([_gold("a", "fam-a", "0.18")], [])
     with pytest.raises(ValueError, match="thresholds must be unique"):
         build_extraction_selectivity_curve([(0.5, report), (0.5, report)])
+
+
+@pytest.mark.parametrize("threshold", [True, float("nan"), float("inf"), -float("inf")])
+def test_selectivity_curve_rejects_boolean_or_nonfinite_thresholds(threshold):
+    report = evaluate_extraction_benchmark([_gold("a", "fam-a", "0.18")], [])
+    with pytest.raises(ValueError, match="finite non-negative"):
+        build_extraction_selectivity_curve([(threshold, report)])
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf"), -0.01, 1.01])
+def test_selectivity_point_rejects_invalid_probability_metrics(value):
+    with pytest.raises(ValueError, match="finite number in \[0, 1\]"):
+        _point(selective_coverage=value)
+
+
+def test_selectivity_curve_rejects_empty_or_malformed_points():
+    with pytest.raises(ValueError, match="non-empty tuple"):
+        ExtractionSelectivityCurve(points=())
+    with pytest.raises(TypeError, match="ExtractionSelectivityPoint"):
+        ExtractionSelectivityCurve(points=("not-a-point",))
+
+
+def test_selectivity_curve_rejects_nonfinite_report_metrics_before_release_hashing():
+    report = evaluate_extraction_benchmark([_gold("a", "fam-a", "0.18")], [])
+    with pytest.raises(ValueError, match="selective_coverage"):
+        build_extraction_selectivity_curve(
+            [(0.5, replace(report, selective_coverage=float("nan")))]
+        )
