@@ -9,7 +9,6 @@ from veritas.extraction import (
 from veritas.extraction_benchmark import (
     ExtractionGoldTarget,
     ExtractionPrediction,
-    evaluate_extraction_benchmark,
 )
 from veritas.extraction_calibration import (
     ExtractionSelectivityEvidence,
@@ -83,9 +82,12 @@ def _prediction(target_id: str) -> ExtractionPrediction:
     return ExtractionPrediction(target_id=target_id, resolution=resolution)
 
 
-def _report(manifest: ExtractionSplitManifest, *, accepted: int):
-    predictions = [_prediction(target.target_id) for target in manifest.targets[:accepted]]
-    return evaluate_extraction_benchmark(manifest.targets, predictions)
+def _predictions(
+    manifest: ExtractionSplitManifest,
+    *,
+    accepted: int,
+) -> tuple[ExtractionPrediction, ...]:
+    return tuple(_prediction(target.target_id) for target in manifest.targets[:accepted])
 
 
 def _observation(
@@ -98,7 +100,7 @@ def _observation(
     return ExtractionThresholdObservation(
         threshold_id=threshold_id,
         threshold=threshold,
-        report=_report(manifest, accepted=accepted),
+        predictions=_predictions(manifest, accepted=accepted),
         manifest=manifest,
     )
 
@@ -175,7 +177,7 @@ def test_threshold_selection_prefers_more_coverage_when_risk_policy_is_met():
     assert frozen.development_observation_set_sha256 == threshold_observations_sha256(observations)
 
 
-def test_frozen_threshold_hash_changes_when_development_reports_change():
+def test_frozen_threshold_hash_changes_when_predictions_change():
     development_manifest, _ = _split_manifests()
     policy = _permissive_policy()
     first_observations = [_observation(development_manifest, "t-01", 0.01, accepted=1)]
@@ -216,16 +218,42 @@ def test_selectivity_evidence_rejects_mixed_split_manifests():
         )
 
 
-def test_observation_rejects_report_from_wrong_split_membership():
+def test_observation_rejects_prediction_set_from_wrong_split_membership():
     development_manifest, test_manifest = _split_manifests()
-    test_report = _report(test_manifest, accepted=1)
-    with pytest.raises(ValueError, match="target"):
+    test_predictions = _predictions(test_manifest, accepted=1)
+    with pytest.raises(ValueError, match="unknown gold targets"):
         ExtractionThresholdObservation(
             threshold_id="t-01",
             threshold=0.01,
-            report=test_report,
+            predictions=test_predictions,
             manifest=development_manifest,
         )
+
+
+def test_prediction_set_hash_is_order_independent_but_content_sensitive():
+    development_manifest, _ = _split_manifests()
+    predictions = _predictions(development_manifest, accepted=min(2, len(development_manifest.targets)))
+    first = ExtractionThresholdObservation(
+        threshold_id="t-01",
+        threshold=0.01,
+        predictions=predictions,
+        manifest=development_manifest,
+    )
+    second = ExtractionThresholdObservation(
+        threshold_id="t-01",
+        threshold=0.01,
+        predictions=tuple(reversed(predictions)),
+        manifest=development_manifest,
+    )
+    fewer = ExtractionThresholdObservation(
+        threshold_id="t-01",
+        threshold=0.01,
+        predictions=predictions[:1],
+        manifest=development_manifest,
+    )
+
+    assert first.prediction_set_sha256() == second.prediction_set_sha256()
+    assert first.prediction_set_sha256() != fewer.prediction_set_sha256()
 
 
 def test_test_evaluation_lock_binds_canonical_test_manifest_without_retuning_api():
