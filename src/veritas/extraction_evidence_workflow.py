@@ -14,7 +14,7 @@ from .extraction_benchmark import (
     ExtractionGoldTarget,
     ExtractionSelectivityCurve,
     build_extraction_selectivity_curve,
-    validate_extraction_benchmark_report,
+    evaluate_extraction_benchmark,
 )
 from .extraction_calibration import (
     ExtractionTestEvaluationLock,
@@ -547,18 +547,18 @@ def build_extraction_evidence_release_receipt(
         split=BenchmarkSplit.TEST,
         label="TEST",
     )
-    for observation in development_observations:
-        validate_extraction_benchmark_report(
-            observation.report,
-            development_gold,
-            confidence=plan.benchmark_confidence,
-        )
-    for observation in test_observations:
-        validate_extraction_benchmark_report(
-            observation.report,
-            test_gold,
-            confidence=plan.benchmark_confidence,
-        )
+    _validate_observation_prediction_reports(
+        development_observations,
+        development_gold,
+        confidence=plan.benchmark_confidence,
+        label="DEVELOPMENT",
+    )
+    _validate_observation_prediction_reports(
+        test_observations,
+        test_gold,
+        confidence=plan.benchmark_confidence,
+        label="TEST",
+    )
 
     expected_frozen_threshold = select_development_threshold(
         development_observations,
@@ -660,6 +660,29 @@ def _validate_threshold_observations_against_grid(
                 f"{label} observation threshold value differs from the precommitted threshold grid"
             )
     return observations
+
+
+def _validate_observation_prediction_reports(
+    observations: tuple[ExtractionThresholdObservation, ...],
+    gold: tuple[ExtractionGoldTarget, ...],
+    *,
+    confidence: float,
+    label: str,
+) -> None:
+    for observation in observations:
+        if observation.predictions is None:
+            raise ValueError(
+                f"{label} threshold observations require exact prediction provenance"
+            )
+        expected_report = evaluate_extraction_benchmark(
+            gold,
+            observation.predictions,
+            confidence=confidence,
+        )
+        if expected_report != observation.report:
+            raise ValueError(
+                f"{label} benchmark report differs from exact bound predictions/resolutions"
+            )
 
 
 def _gold_for_split_manifest(
