@@ -26,6 +26,7 @@ class SampleSnapshot:
     row_identity_sha256: str
     n_rows: int
     source: SourceLocation
+    artifact_identity_verified: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.snapshot_id, str) or not self.snapshot_id.strip():
@@ -40,6 +41,8 @@ class SampleSnapshot:
             raise TypeError("sample n_rows must be an integer")
         if self.n_rows < 0:
             raise ValueError("sample n_rows must be non-negative")
+        if type(self.artifact_identity_verified) is not bool:
+            raise TypeError("sample artifact_identity_verified must be a boolean")
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,7 @@ class UndocumentedLineageOperation:
 class SampleLineage:
     snapshots: dict[str, SampleSnapshot] = field(default_factory=dict)
     operations: dict[str, LineageOperation] = field(default_factory=dict)
+    completeness_verified: bool = False
 
     def add_snapshot(self, snapshot: SampleSnapshot) -> None:
         if snapshot.snapshot_id in self.snapshots:
@@ -102,7 +106,10 @@ class SampleLineage:
             raise ValueError(f"lineage operation references unknown snapshots: {missing!r}")
         if operation.output_snapshot_id in operation.input_snapshot_ids:
             raise ValueError("lineage operation output cannot also be one of its inputs")
-        if any(existing.output_snapshot_id == operation.output_snapshot_id for existing in self.operations.values()):
+        if any(
+            existing.output_snapshot_id == operation.output_snapshot_id
+            for existing in self.operations.values()
+        ):
             raise ValueError("each sample snapshot may have at most one producing operation")
         self.operations[operation.operation_id] = operation
         try:
@@ -112,6 +119,8 @@ class SampleLineage:
             raise
 
     def validate(self) -> None:
+        if type(self.completeness_verified) is not bool:
+            raise TypeError("lineage completeness_verified must be a boolean")
         adjacency: dict[str, set[str]] = {snapshot_id: set() for snapshot_id in self.snapshots}
         for operation in self.operations.values():
             for input_id in operation.input_snapshot_ids:
@@ -149,8 +158,14 @@ class SampleLineage:
                 }
                 for key, value in sorted(self.operations.items())
             },
+            "completeness_verified": self.completeness_verified,
         }
-        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        raw = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()
 
     def _validate_row_count_semantics(self, operation: LineageOperation) -> None:
@@ -163,9 +178,13 @@ class SampleLineage:
                 raise ValueError("exclusion/filter operation cannot increase sample row count")
         elif operation.kind in {LineageOperationKind.TRANSFORMATION, LineageOperationKind.DERIVATION}:
             if len(inputs) != 1:
-                raise ValueError("transformation/derivation lineage operations require exactly one input")
+                raise ValueError(
+                    "transformation/derivation lineage operations require exactly one input"
+                )
             if output.n_rows != inputs[0].n_rows:
-                raise ValueError("transformation/derivation operation must preserve sample row count")
+                raise ValueError(
+                    "transformation/derivation operation must preserve sample row count"
+                )
 
 
 def find_undocumented_lineage_operations(
@@ -211,7 +230,11 @@ def row_identity_sha256(row_ids: tuple[str, ...]) -> str:
         raise ValueError("row identities must be unique")
     if any(not isinstance(value, str) or not value for value in row_ids):
         raise ValueError("row identities must be non-empty strings")
-    raw = json.dumps(tuple(sorted(row_ids)), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    raw = json.dumps(
+        tuple(sorted(row_ids)),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 
