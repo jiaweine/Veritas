@@ -59,8 +59,8 @@ def main() -> int:
     threshold_grid = ExtractionThresholdGrid(points=tuple(args.threshold))
     plan = build_extraction_evidence_plan(
         sampling_frame,
+        seed_manifest,
         threshold_grid,
-        source_seed_manifest_sha256=seed_manifest.source_manifest_sha256,
         review_protocol_version=args.review_protocol_version,
         split_salt=args.split_salt,
     )
