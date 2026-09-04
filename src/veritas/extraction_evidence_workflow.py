@@ -21,8 +21,6 @@ _SAMPLING_FRAME_STATUS = "sampling_frame_only_unlabeled"
 
 @dataclass(frozen=True)
 class ExtractionSamplingFrame:
-    """Unlabeled real-paper sampling frame bound to the exact source-manifest bytes."""
-
     papers: tuple[CorpusPaper, ...]
     source_manifest_sha256: str
     status: str = _SAMPLING_FRAME_STATUS
@@ -44,22 +42,21 @@ class ExtractionSamplingFrame:
         return {paper.paper_id: paper.article_family_id for paper in self.papers}
 
     def sha256(self) -> str:
-        payload = {
-            "schema_version": self.schema_version,
-            "status": self.status,
-            "source_manifest_sha256": self.source_manifest_sha256,
-            "papers": [
-                _corpus_paper_payload(paper)
-                for paper in sorted(self.papers, key=lambda item: item.paper_id)
-            ],
-        }
-        return _stable_sha256(payload)
+        return _stable_sha256(
+            {
+                "schema_version": self.schema_version,
+                "status": self.status,
+                "source_manifest_sha256": self.source_manifest_sha256,
+                "papers": [
+                    _corpus_paper_payload(paper)
+                    for paper in sorted(self.papers, key=lambda item: item.paper_id)
+                ],
+            }
+        )
 
 
 @dataclass(frozen=True)
 class ExtractionThresholdGrid:
-    """Threshold candidates committed before any held-out TEST result is inspected."""
-
     points: tuple[tuple[str, float], ...]
     schema_version: int = 1
 
@@ -82,7 +79,7 @@ class ExtractionThresholdGrid:
             for threshold in thresholds
         ):
             raise ValueError("threshold-grid values must be finite non-negative numbers")
-        if len(set(float(value) for value in thresholds)) != len(thresholds):
+        if len({float(value) for value in thresholds}) != len(thresholds):
             raise ValueError("threshold-grid numeric values must be unique")
 
     @property
@@ -100,20 +97,19 @@ class ExtractionThresholdGrid:
         raise KeyError(threshold_id)
 
     def sha256(self) -> str:
-        payload = {
-            "schema_version": self.schema_version,
-            "points": [
-                {"threshold_id": threshold_id, "threshold": float(threshold)}
-                for threshold_id, threshold in sorted(self.points)
-            ],
-        }
-        return _stable_sha256(payload)
+        return _stable_sha256(
+            {
+                "schema_version": self.schema_version,
+                "points": [
+                    {"threshold_id": threshold_id, "threshold": float(threshold)}
+                    for threshold_id, threshold in sorted(self.points)
+                ],
+            }
+        )
 
 
 @dataclass(frozen=True)
 class ExtractionEvidencePlan:
-    """Pre-TEST commitment for sampling, seed, review, split, and threshold policy."""
-
     sampling_frame_sha256: str
     sampling_frame_source_manifest_sha256: str
     source_seed_manifest_sha256: str
@@ -146,8 +142,6 @@ class ExtractionEvidencePlan:
 
 @dataclass(frozen=True)
 class ExtractionEvidenceReleaseReceipt:
-    """Immutable proof that benchmark publication followed the precommitted evidence chain."""
-
     plan_sha256: str
     gold_manifest_sha256: str
     split_lock_sha256: str
@@ -196,7 +190,7 @@ def load_extraction_sampling_frame(path: str | Path) -> ExtractionSamplingFrame:
         raise ValueError("sampling-frame manifest must be UTF-8 JSON") from exc
     payload = _loads_strict_json(text)
     if not isinstance(payload, dict):
-        raise ValueError("sampling-frame manifest root must be an object")
+        raise TypeError("sampling-frame manifest root must be an object")
     if "labels" in payload:
         raise ValueError("sampling-frame manifest must not contain labels")
     if payload.get("schema_version") != 1 or isinstance(payload.get("schema_version"), bool):
@@ -206,9 +200,8 @@ def load_extraction_sampling_frame(path: str | Path) -> ExtractionSamplingFrame:
     rows = payload.get("papers")
     if not isinstance(rows, list) or not rows:
         raise ValueError("sampling-frame manifest requires a non-empty papers array")
-    papers = tuple(_paper_from_mapping(row) for row in rows)
     return ExtractionSamplingFrame(
-        papers=papers,
+        papers=tuple(_paper_from_mapping(row) for row in rows),
         source_manifest_sha256=sha256(raw).hexdigest(),
     )
 
@@ -247,8 +240,6 @@ def build_extraction_evidence_release_receipt(
     development_curve: ExtractionSelectivityCurve,
     test_curve: ExtractionSelectivityCurve,
 ) -> ExtractionEvidenceReleaseReceipt:
-    """Fail closed unless every benchmark-release stage matches one pre-TEST commitment chain."""
-
     _require_sha256(development_manifest_sha256, label="development_manifest_sha256")
     _require_sha256(test_manifest_sha256, label="test_manifest_sha256")
     if sampling_frame.sha256() != plan.sampling_frame_sha256:
@@ -295,12 +286,7 @@ def build_extraction_evidence_release_receipt(
         selected_threshold = threshold_grid.threshold_for_id(frozen_threshold.threshold_id)
     except KeyError as exc:
         raise ValueError("selected threshold id is not in the precommitted threshold grid") from exc
-    if not math.isclose(
-        selected_threshold,
-        frozen_threshold.threshold,
-        rel_tol=0.0,
-        abs_tol=0.0,
-    ):
+    if selected_threshold != frozen_threshold.threshold:
         raise ValueError("selected threshold value differs from the precommitted threshold grid")
     if frozen_threshold.development_manifest_sha256 != development_manifest_sha256:
         raise ValueError("frozen threshold is bound to a different DEVELOPMENT manifest")
@@ -314,7 +300,6 @@ def build_extraction_evidence_release_receipt(
     expected_thresholds = threshold_grid.thresholds
     _require_curve_thresholds(development_curve, expected_thresholds, label="DEVELOPMENT")
     _require_curve_thresholds(test_curve, expected_thresholds, label="TEST")
-
     return ExtractionEvidenceReleaseReceipt(
         plan_sha256=plan.sha256(),
         gold_manifest_sha256=gold_manifest.sha256(),
@@ -369,7 +354,7 @@ def _curve_sha256(curve: ExtractionSelectivityCurve) -> str:
 
 def _paper_from_mapping(value: object) -> CorpusPaper:
     if not isinstance(value, dict):
-        raise ValueError("sampling-frame paper rows must be objects")
+        raise TypeError("sampling-frame paper rows must be objects")
     required = (
         "paper_id",
         "article_family_id",
