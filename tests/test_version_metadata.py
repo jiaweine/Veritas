@@ -20,6 +20,8 @@ def test_extraction_evidence_workflow_is_exported_from_package_root() -> None:
         "ExtractionEvidenceReleaseReceipt",
         "ExtractionSamplingFrame",
         "ExtractionSeedManifest",
+        "ExtractionSelectivityEvidence",
+        "ExtractionSplitManifest",
         "ExtractionThresholdGrid",
         "build_extraction_evidence_plan",
         "build_extraction_evidence_release_receipt",
@@ -27,6 +29,7 @@ def test_extraction_evidence_workflow_is_exported_from_package_root() -> None:
         "file_sha256",
         "load_extraction_sampling_frame",
         "load_extraction_seed_manifest",
+        "threshold_observations_sha256",
     }
 
     assert expected <= set(veritas.__all__)
