@@ -115,7 +115,9 @@ from .extraction_review import (
     ExtractionReviewRecord,
     ExtractionReviewSubmission,
     ExtractionReviewTarget,
+    build_extraction_gold_manifest,
     resolve_extraction_reviews,
+    validate_extraction_gold_review_records,
 )
 from .extraction_review_packet import (
     ExtractionReviewerPacket,
@@ -380,6 +382,7 @@ __all__ = [
     "build_environment_snapshot",
     "build_extraction_evidence_plan",
     "build_extraction_evidence_release_receipt",
+    "build_extraction_gold_manifest",
     "build_extraction_selectivity_curve",
     "build_extraction_split_target_manifest",
     "capture_python_environment",
@@ -418,6 +421,7 @@ __all__ = [
     "select_development_threshold",
     "summarize_specification_robustness",
     "tree_sha256",
+    "validate_extraction_gold_review_records",
 ]
 
 __version__ = "0.14.0"
