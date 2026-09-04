@@ -7,8 +7,11 @@ import pytest
 
 from veritas.benchmark import BenchmarkSplit
 from veritas.corpus import AccessTier, CorpusPaper
+from veritas.extraction import ExtractionDecision
 from veritas.extraction_benchmark import (
     ExtractionBenchmarkReport,
+    ExtractionTargetOutcome,
+    build_extraction_benchmark_report_from_outcomes,
     build_extraction_selectivity_curve,
 )
 from veritas.extraction_calibration import (
@@ -164,15 +167,62 @@ def _report(*, coverage: float, accuracy: float, upper_bound: float) -> Extracti
     )
 
 
+def _gold_subset(gold, target_ids):
+    target_ids = set(target_ids)
+    return tuple(target for target in gold.targets if target.target_id in target_ids)
+
+
+def _bound_report(gold, accepted_count: int, *, confidence: float = 0.95):
+    outcomes = []
+    for index, target in enumerate(gold):
+        accepted = index < accepted_count
+        outcomes.append(
+            ExtractionTargetOutcome(
+                target_id=target.target_id,
+                paper_id=target.paper_id,
+                article_family_id=target.article_family_id,
+                kind=target.kind,
+                critical_for_hard_audit=target.critical_for_hard_audit,
+                decision=(ExtractionDecision.ACCEPT if accepted else ExtractionDecision.ABSTAIN),
+                accepted=accepted,
+                value_correct=True if accepted else None,
+                source_correct=True if accepted else None,
+                page_correct=True if accepted else None,
+                display_item_correct=True if accepted else None,
+                row_correct=True if accepted else None,
+                column_correct=True if accepted else None,
+            )
+        )
+    return build_extraction_benchmark_report_from_outcomes(
+        gold,
+        outcomes,
+        confidence=confidence,
+    )
+
+
+def _observation_set(gold, *, split: BenchmarkSplit, confidence: float = 0.95):
+    count = len(gold)
+    accepted_counts = (count, max(count - 1, 0), max(count - 2, 0))
+    return tuple(
+        ExtractionThresholdObservation(
+            threshold_id,
+            threshold,
+            split,
+            _bound_report(gold, accepted_count, confidence=confidence),
+        )
+        for (threshold_id, threshold), accepted_count in zip(
+            (("t-080", 0.80), ("t-090", 0.90), ("t-095", 0.95)),
+            accepted_counts,
+            strict=True,
+        )
+    )
+
+
 def _workflow_fixture():
     frame = _sampling_frame()
     seed = _seed_manifest(frame)
     grid = ExtractionThresholdGrid(
-        (
-            ("t-080", 0.80),
-            ("t-090", 0.90),
-            ("t-095", 0.95),
-        )
+        (("t-080", 0.80), ("t-090", 0.90), ("t-095", 0.95))
     )
     split_salt = "release-workflow-v1"
     review_records = _review_records(frame)
@@ -191,6 +241,7 @@ def _workflow_fixture():
         seed,
         grid,
         split_salt=split_salt,
+        benchmark_confidence=0.95,
     )
     development_manifest = build_extraction_split_target_manifest(
         gold,
@@ -202,27 +253,23 @@ def _workflow_fixture():
         split_lock,
         split=BenchmarkSplit.TEST,
     )
-    observations = (
-        ExtractionThresholdObservation(
-            "t-080",
-            0.80,
-            BenchmarkSplit.DEVELOPMENT,
-            _report(coverage=0.90, accuracy=0.995, upper_bound=0.04),
-        ),
-        ExtractionThresholdObservation(
-            "t-090",
-            0.90,
-            BenchmarkSplit.DEVELOPMENT,
-            _report(coverage=0.82, accuracy=1.0, upper_bound=0.03),
-        ),
-        ExtractionThresholdObservation(
-            "t-095",
-            0.95,
-            BenchmarkSplit.DEVELOPMENT,
-            _report(coverage=0.70, accuracy=1.0, upper_bound=0.02),
-        ),
+    development_gold = _gold_subset(gold, development_manifest.target_ids)
+    test_gold = _gold_subset(gold, test_manifest.target_ids)
+    observations = _observation_set(
+        development_gold,
+        split=BenchmarkSplit.DEVELOPMENT,
+        confidence=plan.benchmark_confidence,
     )
-    policy = ExtractionThresholdPolicy()
+    test_observations = _observation_set(
+        test_gold,
+        split=BenchmarkSplit.TEST,
+        confidence=plan.benchmark_confidence,
+    )
+    policy = ExtractionThresholdPolicy(
+        min_selective_coverage=0.0,
+        min_accepted_full_accuracy=0.0,
+        max_critical_family_wrong_accept_upper_bound=1.0,
+    )
     frozen = select_development_threshold(
         observations,
         policy=policy,
@@ -230,14 +277,11 @@ def _workflow_fixture():
     )
     test_seal = seal_extraction_test_set(gold, split_lock)
     test_lock = lock_test_evaluation(frozen, test_manifest_sha256=test_manifest.sha256())
-    curve_reports = tuple((observation.threshold, observation.report) for observation in observations)
-    development_curve = build_extraction_selectivity_curve(curve_reports)
+    development_curve = build_extraction_selectivity_curve(
+        tuple((observation.threshold, observation.report) for observation in observations)
+    )
     test_curve = build_extraction_selectivity_curve(
-        (
-            (0.80, _report(coverage=0.88, accuracy=0.99, upper_bound=0.045)),
-            (0.90, _report(coverage=0.79, accuracy=1.0, upper_bound=0.035)),
-            (0.95, _report(coverage=0.68, accuracy=1.0, upper_bound=0.025)),
-        )
+        tuple((observation.threshold, observation.report) for observation in test_observations)
     )
     return {
         "frame": frame,
@@ -249,8 +293,11 @@ def _workflow_fixture():
         "split_lock": split_lock,
         "development_manifest": development_manifest,
         "test_manifest": test_manifest,
+        "development_gold": development_gold,
+        "test_gold": test_gold,
         "policy": policy,
         "observations": observations,
+        "test_observations": test_observations,
         "frozen": frozen,
         "test_seal": test_seal,
         "test_lock": test_lock,
@@ -272,6 +319,7 @@ def _release(**overrides):
         split_lock=fixture["split_lock"],
         threshold_policy=fixture["policy"],
         development_observations=fixture["observations"],
+        test_observations=fixture["test_observations"],
         frozen_threshold=fixture["frozen"],
         test_seal=fixture["test_seal"],
         test_evaluation_lock=fixture["test_lock"],
@@ -283,7 +331,6 @@ def _release(**overrides):
 def test_repository_sampling_frame_loads_as_unlabeled_exact_bytes_manifest() -> None:
     root = Path(__file__).resolve().parents[1]
     frame = load_extraction_sampling_frame(root / "benchmark/corpus/candidates.json")
-
     assert frame.status == "sampling_frame_only_unlabeled"
     assert len(frame.papers) >= 8
     assert len(frame.source_manifest_sha256) == 64
@@ -293,7 +340,6 @@ def test_repository_sampling_frame_loads_as_unlabeled_exact_bytes_manifest() -> 
 def test_repository_seed_manifest_loads_exact_bytes_and_review_target_universe() -> None:
     root = Path(__file__).resolve().parents[1]
     seed = load_extraction_seed_manifest(root / "benchmark/extraction/seed_cases_v0.11.json")
-
     assert seed.status == "seed_corpus_not_locked_gold"
     assert seed.production_hard_finding_authorized is False
     assert len(seed.source_manifest_sha256) == 64
@@ -307,7 +353,6 @@ def test_split_target_manifests_are_deterministic_subsets_of_locked_gold() -> No
     fixture = _workflow_fixture()
     development = fixture["development_manifest"]
     test = fixture["test_manifest"]
-
     assert development.split is BenchmarkSplit.DEVELOPMENT
     assert test.split is BenchmarkSplit.TEST
     assert development.gold_manifest_sha256 == fixture["gold"].sha256()
@@ -319,47 +364,41 @@ def test_split_target_manifests_are_deterministic_subsets_of_locked_gold() -> No
     assert len(development.sha256()) == 64
     assert len(test.sha256()) == 64
 
-    target_family = {
-        target.target_id: target.article_family_id for target in fixture["gold"].targets
-    }
-    assert {
-        target_family[target_id] for target_id in development.target_ids
-    } == set(development.article_family_ids)
-    assert {target_family[target_id] for target_id in test.target_ids} == set(test.article_family_ids)
-
 
 def test_release_receipt_binds_complete_precommitted_chain_and_is_nonproduction() -> None:
     fixture = _workflow_fixture()
     first = _release()
     second = _release()
-
     assert first.production_authorized is False
     assert first.development_manifest_sha256 == fixture["development_manifest"].sha256()
     assert first.test_manifest_sha256 == fixture["test_manifest"].sha256()
+    assert len(first.development_observations_sha256) == 64
+    assert len(first.test_observations_sha256) == 64
+    assert first.development_observations_sha256 != first.test_observations_sha256
     assert first.sha256() == second.sha256()
     assert len(first.sha256()) == 64
 
 
 def test_release_requires_concrete_review_records_not_only_gold_hash_fields() -> None:
     fixture = _workflow_fixture()
-    forged_target = replace(
-        fixture["gold"].targets[0],
-        review_record_sha256="f" * 64,
-    )
+    forged_target = replace(fixture["gold"].targets[0], review_record_sha256="f" * 64)
     forged_gold = replace(
         fixture["gold"],
         targets=(forged_target, *fixture["gold"].targets[1:]),
     )
     with pytest.raises(ValueError, match="bound review record"):
         _release(gold=forged_gold)
-
     with pytest.raises(ValueError, match="target membership differs"):
         _release(review_records=fixture["review_records"][1:])
 
 
 def test_release_recomputes_development_policy_and_threshold_selection() -> None:
     fixture = _workflow_fixture()
-    changed_policy = ExtractionThresholdPolicy(min_selective_coverage=0.30)
+    changed_policy = ExtractionThresholdPolicy(
+        min_selective_coverage=0.25,
+        min_accepted_full_accuracy=0.0,
+        max_critical_family_wrong_accept_upper_bound=1.0,
+    )
     with pytest.raises(ValueError, match="deterministic DEVELOPMENT selection"):
         _release(policy=changed_policy)
 
@@ -372,17 +411,71 @@ def test_release_recomputes_development_policy_and_threshold_selection() -> None
         _release(observations=(drifted_observation, *fixture["observations"][1:]))
 
 
-def test_development_curve_must_be_derived_from_bound_observations() -> None:
+def test_release_rejects_report_membership_or_aggregate_forgery() -> None:
     fixture = _workflow_fixture()
-    changed_curve = build_extraction_selectivity_curve(
-        (
-            (0.80, _report(coverage=0.89, accuracy=0.995, upper_bound=0.04)),
-            (0.90, fixture["observations"][1].report),
-            (0.95, fixture["observations"][2].report),
-        )
+    wrong_membership = replace(
+        fixture["observations"][0],
+        report=fixture["test_observations"][0].report,
+    )
+    with pytest.raises(ValueError, match="outcome membership differs"):
+        _release(observations=(wrong_membership, *fixture["observations"][1:]))
+
+    forged_report = replace(
+        fixture["observations"][0].report,
+        accepted=fixture["observations"][0].report.accepted + 1,
+    )
+    forged_observation = replace(fixture["observations"][0], report=forged_report)
+    with pytest.raises(ValueError, match="aggregates differ"):
+        _release(observations=(forged_observation, *fixture["observations"][1:]))
+
+
+def test_development_and_test_curves_must_be_derived_from_bound_observations() -> None:
+    fixture = _workflow_fixture()
+    development_points = list(fixture["development_curve"].points)
+    development_points[0] = replace(
+        development_points[0],
+        selective_coverage=max(0.0, development_points[0].selective_coverage - 0.01),
+    )
+    changed_development = replace(
+        fixture["development_curve"],
+        points=tuple(development_points),
     )
     with pytest.raises(ValueError, match="bound DEVELOPMENT observations"):
-        _release(development_curve=changed_curve)
+        _release(development_curve=changed_development)
+
+    test_points = list(fixture["test_curve"].points)
+    test_points[0] = replace(
+        test_points[0],
+        selective_coverage=max(0.0, test_points[0].selective_coverage - 0.01),
+    )
+    changed_test = replace(fixture["test_curve"], points=tuple(test_points))
+    with pytest.raises(ValueError, match="bound TEST observations"):
+        _release(test_curve=changed_test)
+
+
+def test_benchmark_confidence_is_precommitted_and_validated() -> None:
+    frame = _sampling_frame()
+    seed = _seed_manifest(frame)
+    grid = ExtractionThresholdGrid((("t-1", 0.9),))
+    first = build_extraction_evidence_plan(
+        frame,
+        seed,
+        grid,
+        split_salt="confidence-lock",
+        benchmark_confidence=0.95,
+    )
+    second = build_extraction_evidence_plan(
+        frame,
+        seed,
+        grid,
+        split_salt="confidence-lock",
+        benchmark_confidence=0.90,
+    )
+    assert first.sha256() != second.sha256()
+    with pytest.raises(ValueError, match="benchmark_confidence"):
+        replace(first, benchmark_confidence=True)
+    with pytest.raises(ValueError, match="benchmark_confidence"):
+        replace(first, benchmark_confidence=float("nan"))
 
 
 def test_sampling_frame_threshold_grid_or_seed_manifest_drift_fails_closed() -> None:
@@ -395,11 +488,7 @@ def test_sampling_frame_threshold_grid_or_seed_manifest_drift_fails_closed() -> 
         _release(frame=drifted_frame)
 
     drifted_grid = ExtractionThresholdGrid(
-        (
-            ("t-080", 0.80),
-            ("t-090", 0.90),
-            ("t-099", 0.99),
-        )
+        (("t-080", 0.80), ("t-090", 0.90), ("t-099", 0.99))
     )
     with pytest.raises(ValueError, match="threshold grid"):
         _release(grid=drifted_grid)
@@ -526,18 +615,8 @@ def test_plan_hash_binds_split_salt_seed_and_exact_sampling_source_bytes() -> No
     frame = _sampling_frame()
     seed = _seed_manifest(frame)
     grid = ExtractionThresholdGrid((("t-1", 0.9),))
-    base = build_extraction_evidence_plan(
-        frame,
-        seed,
-        grid,
-        split_salt="salt-a",
-    )
-    changed_salt = build_extraction_evidence_plan(
-        frame,
-        seed,
-        grid,
-        split_salt="salt-b",
-    )
+    base = build_extraction_evidence_plan(frame, seed, grid, split_salt="salt-a")
+    changed_salt = build_extraction_evidence_plan(frame, seed, grid, split_salt="salt-b")
     changed_seed = build_extraction_evidence_plan(
         frame,
         replace(seed, source_manifest_sha256="7" * 64),
@@ -557,7 +636,6 @@ def test_plan_hash_binds_split_salt_seed_and_exact_sampling_source_bytes() -> No
         grid,
         split_salt="salt-a",
     )
-
     assert base.sha256() != changed_salt.sha256()
     assert base.sha256() != changed_seed.sha256()
     assert base.sha256() != changed_seed_universe.sha256()
