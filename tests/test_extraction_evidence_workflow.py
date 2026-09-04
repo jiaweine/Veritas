@@ -7,7 +7,12 @@ import pytest
 
 from veritas.benchmark import BenchmarkSplit
 from veritas.corpus import AccessTier, CorpusPaper
-from veritas.extraction_benchmark import ExtractionBenchmarkReport, ExtractionGoldTarget
+from veritas.extraction import ExtractionCandidate, ExtractionDecision, ExtractionResolution
+from veritas.extraction_benchmark import (
+    ExtractionGoldTarget,
+    ExtractionPrediction,
+    evaluate_extraction_benchmark,
+)
 from veritas.extraction_calibration import (
     ExtractionSelectivityEvidence,
     ExtractionThresholdObservation,
@@ -27,6 +32,7 @@ from veritas.extraction_evidence_workflow import (
 )
 from veritas.extraction_review import ExtractionGoldManifest
 from veritas.extraction_review_packet import ExtractionReviewPacketTarget
+from veritas.extraction_split_manifest import ExtractionSplitManifest
 from veritas.extraction_test_seal import seal_extraction_test_set
 from veritas.ingestion import EvidenceKind
 from veritas.models import SourceLocation
@@ -48,7 +54,7 @@ def _paper(index: int) -> CorpusPaper:
     )
 
 
-def _sampling_frame(count: int = 24) -> ExtractionSamplingFrame:
+def _sampling_frame(count: int = 64) -> ExtractionSamplingFrame:
     return ExtractionSamplingFrame(
         papers=tuple(_paper(index) for index in range(count)),
         source_manifest_sha256="a" * 64,
@@ -107,117 +113,65 @@ def _gold(frame: ExtractionSamplingFrame, *, split_salt: str) -> ExtractionGoldM
     )
 
 
-def _report(*, coverage: float, accuracy: float, upper_bound: float) -> ExtractionBenchmarkReport:
-    return ExtractionBenchmarkReport(
-        targets=10,
-        accepted=8,
-        fully_correct_accepts=8,
-        wrong_accepts=0,
-        abstentions=2,
-        conflicts=0,
-        domain_shifts=0,
-        selective_coverage=coverage,
-        accepted_full_accuracy=accuracy,
-        wrong_accept_rate=0.0,
-        accepted_value_accuracy=accuracy,
-        accepted_source_accuracy=accuracy,
-        field_targets=10,
-        accepted_field_targets=8,
-        accepted_field_value_accuracy=accuracy,
-        table_row_targets=10,
-        accepted_table_row_targets=8,
-        accepted_table_row_identity_accuracy=accuracy,
-        semantic_gate_targets=0,
-        accepted_semantic_gate_targets=0,
-        accepted_semantic_gate_accuracy=0.0,
-        critical_article_families=8,
-        critical_wrong_accept_families=0,
-        critical_family_wrong_accept_rate=0.0,
-        critical_family_wrong_accept_upper_bound=upper_bound,
-        outcomes=(),
+def _correct_prediction(target: ExtractionGoldTarget) -> ExtractionPrediction:
+    value = target.accepted_normalized_values[0]
+    candidates = (
+        ExtractionCandidate(
+            "native",
+            "native_pdf",
+            value,
+            value,
+            0.01,
+            target.source,
+        ),
+        ExtractionCandidate(
+            "vision",
+            "vision_language",
+            value,
+            value,
+            0.02,
+            target.source,
+        ),
+    )
+    return ExtractionPrediction(
+        target_id=target.target_id,
+        resolution=ExtractionResolution(
+            decision=ExtractionDecision.ACCEPT,
+            normalized_value=value,
+            accepted_candidates=candidates,
+            calibration_threshold=0.05,
+        ),
     )
 
 
+def _report(manifest: ExtractionSplitManifest, *, accepted: int):
+    predictions = [_correct_prediction(target) for target in manifest.targets[:accepted]]
+    return evaluate_extraction_benchmark(manifest.targets, predictions)
+
+
 def _observation(
+    manifest: ExtractionSplitManifest,
     threshold_id: str,
     threshold: float,
     *,
-    split: BenchmarkSplit,
-    manifest_sha256: str,
-    coverage: float,
-    accuracy: float,
-    upper_bound: float,
+    accepted: int,
 ) -> ExtractionThresholdObservation:
     return ExtractionThresholdObservation(
         threshold_id=threshold_id,
         threshold=threshold,
-        split=split,
-        report=_report(coverage=coverage, accuracy=accuracy, upper_bound=upper_bound),
-        manifest_sha256=manifest_sha256,
+        report=_report(manifest, accepted=accepted),
+        manifest=manifest,
     )
 
 
-def _development_observations(manifest_sha256: str) -> tuple[ExtractionThresholdObservation, ...]:
+def _threshold_observations(
+    manifest: ExtractionSplitManifest,
+) -> tuple[ExtractionThresholdObservation, ...]:
+    count = len(manifest.targets)
     return (
-        _observation(
-            "t-080",
-            0.80,
-            split=BenchmarkSplit.DEVELOPMENT,
-            manifest_sha256=manifest_sha256,
-            coverage=0.90,
-            accuracy=0.995,
-            upper_bound=0.04,
-        ),
-        _observation(
-            "t-090",
-            0.90,
-            split=BenchmarkSplit.DEVELOPMENT,
-            manifest_sha256=manifest_sha256,
-            coverage=0.82,
-            accuracy=1.0,
-            upper_bound=0.03,
-        ),
-        _observation(
-            "t-095",
-            0.95,
-            split=BenchmarkSplit.DEVELOPMENT,
-            manifest_sha256=manifest_sha256,
-            coverage=0.70,
-            accuracy=1.0,
-            upper_bound=0.02,
-        ),
-    )
-
-
-def _test_observations(manifest_sha256: str) -> tuple[ExtractionThresholdObservation, ...]:
-    return (
-        _observation(
-            "t-080",
-            0.80,
-            split=BenchmarkSplit.TEST,
-            manifest_sha256=manifest_sha256,
-            coverage=0.88,
-            accuracy=0.99,
-            upper_bound=0.045,
-        ),
-        _observation(
-            "t-090",
-            0.90,
-            split=BenchmarkSplit.TEST,
-            manifest_sha256=manifest_sha256,
-            coverage=0.79,
-            accuracy=1.0,
-            upper_bound=0.035,
-        ),
-        _observation(
-            "t-095",
-            0.95,
-            split=BenchmarkSplit.TEST,
-            manifest_sha256=manifest_sha256,
-            coverage=0.68,
-            accuracy=1.0,
-            upper_bound=0.025,
-        ),
+        _observation(manifest, "t-080", 0.80, accepted=max(1, count // 2)),
+        _observation(manifest, "t-090", 0.90, accepted=max(1, (3 * count) // 4)),
+        _observation(manifest, "t-095", 0.95, accepted=count),
     )
 
 
@@ -234,9 +188,16 @@ def _workflow_fixture():
     split_salt = "release-workflow-v1"
     gold = _gold(frame, split_salt=split_salt)
     split_lock = gold.build_split_lock()
-    split_values = {split for _, split in split_lock.assignments}
-    assert BenchmarkSplit.DEVELOPMENT in split_values
-    assert BenchmarkSplit.TEST in split_values
+    development_manifest = ExtractionSplitManifest(
+        gold,
+        split_lock,
+        BenchmarkSplit.DEVELOPMENT,
+    )
+    test_manifest = ExtractionSplitManifest(
+        gold,
+        split_lock,
+        BenchmarkSplit.TEST,
+    )
 
     plan = build_extraction_evidence_plan(
         frame,
@@ -244,27 +205,27 @@ def _workflow_fixture():
         grid,
         split_salt=split_salt,
     )
-    development_manifest_sha256 = "c" * 64
-    observations = _development_observations(development_manifest_sha256)
+    development_observations = _threshold_observations(development_manifest)
+    policy = ExtractionThresholdPolicy(
+        min_selective_coverage=0.0,
+        min_accepted_full_accuracy=1.0,
+        max_critical_family_wrong_accept_upper_bound=1.0,
+    )
     frozen = select_development_threshold(
-        observations,
-        policy=ExtractionThresholdPolicy(),
-        development_manifest_sha256=development_manifest_sha256,
+        development_observations,
+        policy=policy,
+        development_manifest=development_manifest,
     )
     development_curve_evidence = ExtractionSelectivityEvidence(
-        split=BenchmarkSplit.DEVELOPMENT,
-        manifest_sha256=development_manifest_sha256,
-        observations=observations,
+        manifest=development_manifest,
+        observations=development_observations,
     )
-    test_manifest_sha256 = "d" * 64
-    test_observations = _test_observations(test_manifest_sha256)
     test_curve_evidence = ExtractionSelectivityEvidence(
-        split=BenchmarkSplit.TEST,
-        manifest_sha256=test_manifest_sha256,
-        observations=test_observations,
+        manifest=test_manifest,
+        observations=_threshold_observations(test_manifest),
     )
     test_seal = seal_extraction_test_set(gold, split_lock)
-    test_lock = lock_test_evaluation(frozen, test_manifest_sha256=test_manifest_sha256)
+    test_lock = lock_test_evaluation(frozen, test_manifest=test_manifest)
     return {
         "frame": frame,
         "seed": seed,
@@ -272,11 +233,11 @@ def _workflow_fixture():
         "plan": plan,
         "gold": gold,
         "split_lock": split_lock,
-        "frozen": frozen,
-        "development_manifest_sha256": development_manifest_sha256,
+        "development_manifest": development_manifest,
         "test_seal": test_seal,
         "test_lock": test_lock,
-        "test_manifest_sha256": test_manifest_sha256,
+        "test_manifest": test_manifest,
+        "frozen": frozen,
         "development_curve_evidence": development_curve_evidence,
         "test_curve_evidence": test_curve_evidence,
     }
@@ -293,10 +254,10 @@ def _release(**overrides):
         gold_manifest=fixture["gold"],
         split_lock=fixture["split_lock"],
         frozen_threshold=fixture["frozen"],
-        development_manifest_sha256=fixture["development_manifest_sha256"],
+        development_manifest_sha256=fixture["development_manifest"].sha256(),
         test_seal=fixture["test_seal"],
         test_evaluation_lock=fixture["test_lock"],
-        test_manifest_sha256=fixture["test_manifest_sha256"],
+        test_manifest_sha256=fixture["test_manifest"].sha256(),
         development_curve_evidence=fixture["development_curve_evidence"],
         test_curve_evidence=fixture["test_curve_evidence"],
     )
@@ -438,32 +399,50 @@ def test_split_lock_and_frozen_threshold_cannot_drift() -> None:
         _release(frozen=drifted_frozen)
 
     with pytest.raises(ValueError, match="DEVELOPMENT manifest"):
-        _release(development_manifest_sha256="e" * 64)
+        _release(development_manifest=fixture["test_manifest"])
 
 
-def test_selectivity_evidence_must_match_locked_manifests_and_development_observations() -> None:
+def test_selectivity_evidence_must_match_frozen_development_observations() -> None:
     fixture = _workflow_fixture()
-    changed_observations = list(_development_observations(fixture["development_manifest_sha256"]))
-    changed_observations[0] = replace(
-        changed_observations[0],
-        report=_report(coverage=0.89, accuracy=0.995, upper_bound=0.04),
+    observations = list(_threshold_observations(fixture["development_manifest"]))
+    observations[0] = _observation(
+        fixture["development_manifest"],
+        "t-080",
+        0.80,
+        accepted=len(fixture["development_manifest"].targets),
     )
-    changed_development_evidence = ExtractionSelectivityEvidence(
-        split=BenchmarkSplit.DEVELOPMENT,
-        manifest_sha256=fixture["development_manifest_sha256"],
-        observations=tuple(changed_observations),
+    changed_evidence = ExtractionSelectivityEvidence(
+        manifest=fixture["development_manifest"],
+        observations=tuple(observations),
     )
     with pytest.raises(ValueError, match="different DEVELOPMENT observation set"):
-        _release(development_curve_evidence=changed_development_evidence)
+        _release(development_curve_evidence=changed_evidence)
 
-    wrong_test_manifest = "e" * 64
-    wrong_test_evidence = ExtractionSelectivityEvidence(
-        split=BenchmarkSplit.TEST,
-        manifest_sha256=wrong_test_manifest,
-        observations=_test_observations(wrong_test_manifest),
+
+def test_release_rejects_selectivity_evidence_from_different_gold_context() -> None:
+    fixture = _workflow_fixture()
+    other_gold = replace(fixture["gold"], split_salt="other-release-context-v1")
+    other_lock = other_gold.build_split_lock()
+    other_test_manifest = ExtractionSplitManifest(
+        other_gold,
+        other_lock,
+        BenchmarkSplit.TEST,
     )
-    with pytest.raises(ValueError, match="TEST selectivity evidence is bound to a different manifest"):
-        _release(test_curve_evidence=wrong_test_evidence)
+    other_test_evidence = ExtractionSelectivityEvidence(
+        manifest=other_test_manifest,
+        observations=_threshold_observations(other_test_manifest),
+    )
+    other_test_lock = lock_test_evaluation(
+        fixture["frozen"],
+        test_manifest=other_test_manifest,
+    )
+
+    with pytest.raises(ValueError, match="release gold|release split lock"):
+        _release(
+            test_manifest=other_test_manifest,
+            test_curve_evidence=other_test_evidence,
+            test_lock=other_test_lock,
+        )
 
 
 def test_test_seal_and_evaluation_lock_must_bind_exact_frozen_chain() -> None:
@@ -472,9 +451,6 @@ def test_test_seal_and_evaluation_lock_must_bind_exact_frozen_chain() -> None:
     with pytest.raises(ValueError, match="frozen DEVELOPMENT threshold"):
         _release(test_lock=drifted_test_lock)
 
-    with pytest.raises(ValueError, match="TEST selectivity evidence"):
-        _release(test_manifest_sha256="1" * 64)
-
     drifted_seal = replace(fixture["test_seal"], split_lock_sha256="2" * 64)
     with pytest.raises(ValueError, match="split lock"):
         _release(test_seal=drifted_seal)
@@ -482,40 +458,35 @@ def test_test_seal_and_evaluation_lock_must_bind_exact_frozen_chain() -> None:
 
 def test_both_published_curves_must_use_precommitted_threshold_id_value_grid() -> None:
     fixture = _workflow_fixture()
-    bad_development_observations = list(
-        _development_observations(fixture["development_manifest_sha256"])
-    )
+    bad_development_observations = list(_threshold_observations(fixture["development_manifest"]))
     bad_development_observations[2] = replace(
         bad_development_observations[2],
         threshold=0.94,
     )
     bad_development_observations = tuple(bad_development_observations)
     bad_development_evidence = ExtractionSelectivityEvidence(
-        split=BenchmarkSplit.DEVELOPMENT,
-        manifest_sha256=fixture["development_manifest_sha256"],
+        manifest=fixture["development_manifest"],
         observations=bad_development_observations,
     )
     bad_frozen = select_development_threshold(
         bad_development_observations,
-        policy=ExtractionThresholdPolicy(),
-        development_manifest_sha256=fixture["development_manifest_sha256"],
-    )
-    bad_test_lock = lock_test_evaluation(
-        bad_frozen,
-        test_manifest_sha256=fixture["test_manifest_sha256"],
+        policy=ExtractionThresholdPolicy(
+            min_selective_coverage=0.0,
+            min_accepted_full_accuracy=1.0,
+            max_critical_family_wrong_accept_upper_bound=1.0,
+        ),
+        development_manifest=fixture["development_manifest"],
     )
     with pytest.raises(ValueError, match="DEVELOPMENT selectivity evidence"):
         _release(
             frozen=bad_frozen,
-            test_lock=bad_test_lock,
             development_curve_evidence=bad_development_evidence,
         )
 
-    bad_test_observations = list(_test_observations(fixture["test_manifest_sha256"]))
+    bad_test_observations = list(_threshold_observations(fixture["test_manifest"]))
     bad_test_observations[2] = replace(bad_test_observations[2], threshold_id="t-099")
     bad_test_evidence = ExtractionSelectivityEvidence(
-        split=BenchmarkSplit.TEST,
-        manifest_sha256=fixture["test_manifest_sha256"],
+        manifest=fixture["test_manifest"],
         observations=tuple(bad_test_observations),
     )
     with pytest.raises(ValueError, match="TEST selectivity evidence"):
@@ -526,18 +497,8 @@ def test_plan_hash_binds_split_salt_seed_and_exact_sampling_source_bytes() -> No
     frame = _sampling_frame()
     seed = _seed_manifest(frame)
     grid = ExtractionThresholdGrid((("t-1", 0.9),))
-    base = build_extraction_evidence_plan(
-        frame,
-        seed,
-        grid,
-        split_salt="salt-a",
-    )
-    changed_salt = build_extraction_evidence_plan(
-        frame,
-        seed,
-        grid,
-        split_salt="salt-b",
-    )
+    base = build_extraction_evidence_plan(frame, seed, grid, split_salt="salt-a")
+    changed_salt = build_extraction_evidence_plan(frame, seed, grid, split_salt="salt-b")
     changed_seed = build_extraction_evidence_plan(
         frame,
         replace(seed, source_manifest_sha256="7" * 64),
