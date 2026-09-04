@@ -1,8 +1,12 @@
+from dataclasses import replace
+
+import pytest
+
 from veritas.benchmark import BenchmarkSplit
 from veritas.corpus import assign_article_family_split
 from veritas.extraction_benchmark import ExtractionGoldTarget
 from veritas.extraction_review import ExtractionGoldManifest
-from veritas.extraction_test_seal import seal_extraction_test_set
+from veritas.extraction_test_seal import ExtractionTestSetSeal, seal_extraction_test_set
 from veritas.ingestion import EvidenceKind
 from veritas.models import SourceLocation
 
@@ -79,3 +83,26 @@ def test_test_set_seal_rejects_relocked_manifest_even_with_same_split_salt():
         assert "gold manifest SHA-256" in str(exc)
     else:
         raise AssertionError("changed gold content must invalidate the TEST seal")
+
+
+def test_test_set_seal_schema_and_membership_types_fail_closed():
+    manifest = _manifest()
+    seal = seal_extraction_test_set(manifest, manifest.build_split_lock())
+
+    with pytest.raises(ValueError, match="schema_version"):
+        replace(seal, schema_version=True)
+    with pytest.raises(ValueError, match="schema_version"):
+        replace(seal, schema_version=2)
+    with pytest.raises(ValueError, match="non-empty tuple"):
+        replace(seal, test_article_family_ids=[])
+    with pytest.raises(ValueError, match="non-empty strings"):
+        replace(seal, test_article_family_ids=("",))
+
+
+def test_test_set_seal_rejects_noncanonical_direct_construction():
+    with pytest.raises(ValueError, match="unique and sorted"):
+        ExtractionTestSetSeal(
+            gold_manifest_sha256="a" * 64,
+            split_lock_sha256="b" * 64,
+            test_article_family_ids=("family-b", "family-a"),
+        )
