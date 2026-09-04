@@ -87,12 +87,14 @@ from .extraction_benchmark import (
     evaluate_extraction_benchmark,
 )
 from .extraction_calibration import (
+    ExtractionSelectivityEvidence,
     ExtractionTestEvaluationLock,
     ExtractionThresholdObservation,
     ExtractionThresholdPolicy,
     FrozenExtractionThreshold,
     lock_test_evaluation,
     select_development_threshold,
+    threshold_observations_sha256,
 )
 from .extraction_evidence_workflow import (
     ExtractionEvidencePlan,
@@ -120,6 +122,7 @@ from .extraction_review_packet import (
     ExtractionReviewPacketTarget,
     build_blinded_seed_review_packets,
 )
+from .extraction_split_manifest import ExtractionSplitManifest
 from .extraction_test_seal import ExtractionTestSetSeal, seal_extraction_test_set
 from .group_stats import GroupSummary, OneWayAnovaComparison, TwoGroupComparison
 from .ingestion import (
@@ -282,7 +285,9 @@ __all__ = [
     "ExtractionSamplingFrame",
     "ExtractionSeedManifest",
     "ExtractionSelectivityCurve",
+    "ExtractionSelectivityEvidence",
     "ExtractionSelectivityPoint",
+    "ExtractionSplitManifest",
     "ExtractionTargetOutcome",
     "ExtractionTestEvaluationLock",
     "ExtractionTestSetSeal",
@@ -413,6 +418,7 @@ __all__ = [
     "seal_extraction_test_set",
     "select_development_threshold",
     "summarize_specification_robustness",
+    "threshold_observations_sha256",
     "tree_sha256",
 ]
 
