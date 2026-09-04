@@ -1,11 +1,12 @@
 # Extraction execution evidence contract
 
-The extraction evidence workflow has two distinct software receipts.
+The extraction evidence workflow has two internal software receipts plus an optional signed external-provenance layer.
 
 1. `ExtractionEvidenceReleaseReceipt` proves that the precommitted sampling/seed/split/threshold chain is internally consistent and that benchmark reports are recomputed from exact `ExtractionPrediction` / `ExtractionResolution` provenance.
 2. `AttestedExtractionEvidenceReleaseReceipt` additionally binds that prediction provenance to persisted canonical prediction-artifact bytes and a frozen execution contract.
+3. `ExternallyVerifiedExtractionEvidenceReceipt`, from `extraction_external_provenance.py`, can additionally bind the attested release to an Ed25519-signed trusted-runner statement when the public key is genuinely pretrusted.
 
-Both receipts remain explicitly non-production.
+All receipts remain explicitly non-production.
 
 ## Pre-TEST execution plan
 
@@ -69,10 +70,24 @@ The attested release rejects missing or duplicate threshold evidence, changed ex
 
 Changing any underlying prediction artifact, execution identity, threshold, target manifest, or execution-plan commitment changes or invalidates the attested receipt.
 
+## Signed external trust root
+
+For a stronger real-run provenance claim, Veritas now provides:
+
+- `ExtractionExternalTrustRoot`;
+- `ExtractionExternalProvenanceStatement`;
+- `ExtractionSignedExternalProvenance`;
+- `verify_external_extraction_provenance()`;
+- strict UTF-8 JSON loaders for archived trust-root and signed-provenance manifests.
+
+The signed statement covers the exact attested-release receipt, execution plan, DEV/TEST execution sets, git commit, run id/attempt, input-artifact manifest, source tree, parser registry, numerical runtime, execution command, repository/workflow/runner identity, and trust-root SHA-256. Ed25519 verification is available through the optional `veritas-audit[attestation]` dependency.
+
+This only becomes an **external** trust root when the public key itself was pinned independently before TEST. A caller-generated key pair and self-signed statement are cryptographically valid but are not third-party or institutional provenance. See `docs/EXTRACTION_EXTERNAL_PROVENANCE.md`.
+
 ## Authority boundary
 
-This contract proves consistency of **supplied execution evidence objects and exact persisted prediction bytes**. It does not, by itself, prove that a remote runner actually executed at a claimed time, that a human did not fabricate an otherwise internally consistent attestation, or that an external artifact manifest contains the correct publication bytes.
+The ordinary and attested contracts prove consistency of supplied execution evidence objects and exact persisted prediction bytes. The signed external-provenance layer can additionally prove that the holder of a genuinely pretrusted Ed25519 private key signed the exact reconstructed execution/release subject.
 
-Those stronger claims require an external trust root such as a signed CI provenance statement, trusted runner identity, transparency log, or independently archived artifact store. Veritas must not infer such a trust root from an unsigned in-memory dataclass.
+None of these layers, by themselves, prove that a familiar issuer name owns a caller-supplied key. Real deployments must establish the public-key trust anchor through an independent CI/deployment policy, protected configuration, transparency log, institutional key registry, or equivalent mechanism before TEST.
 
-Likewise, execution attestation does not create reviewer independence, adjudication, untouched TEST status, or production hard-finding authority. Those remain separate governance requirements.
+Likewise, execution or signed provenance does not create reviewer independence, adjudication, untouched TEST status, correctness of the publication bytes in an input-artifact manifest, or production hard-finding authority. Those remain separate governance requirements.
