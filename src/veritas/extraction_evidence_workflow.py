@@ -293,7 +293,7 @@ def load_extraction_sampling_frame(path: str | Path) -> ExtractionSamplingFrame:
         raise ValueError("sampling-frame manifest must not contain labels")
     if payload.get("schema_version") != 1 or isinstance(payload.get("schema_version"), bool):
         raise ValueError("sampling-frame manifest schema_version must be 1")
-    if payload.get("status") != _SAMING_FRAME_STATUS:
+    if payload.get("status") != _SAMPLING_FRAME_STATUS:
         raise ValueError("sampling-frame manifest must be explicitly unlabeled")
     rows = payload.get("papers")
     if not isinstance(rows, list) or not rows:
