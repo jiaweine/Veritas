@@ -8,6 +8,7 @@ from veritas.extraction_evidence_workflow import (
     ExtractionThresholdGrid,
     build_extraction_evidence_plan,
     extraction_evidence_plan_payload,
+    file_sha256,
     load_extraction_sampling_frame,
 )
 
@@ -32,6 +33,11 @@ def main() -> int:
         type=Path,
         default=Path("benchmark/corpus/candidates.json"),
     )
+    parser.add_argument(
+        "--seed-manifest",
+        type=Path,
+        default=Path("benchmark/extraction/seed_cases_v0.11.json"),
+    )
     parser.add_argument("--split-salt", required=True)
     parser.add_argument(
         "--review-protocol-version",
@@ -52,6 +58,7 @@ def main() -> int:
     plan = build_extraction_evidence_plan(
         sampling_frame,
         threshold_grid,
+        source_seed_manifest_sha256=file_sha256(args.seed_manifest),
         review_protocol_version=args.review_protocol_version,
         split_salt=args.split_salt,
     )
