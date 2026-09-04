@@ -10,7 +10,12 @@ from typing import Any
 
 from .benchmark import BenchmarkSplit
 from .corpus import AccessTier, ArticleFamilySplitLock, CorpusPaper
-from .extraction_benchmark import ExtractionSelectivityCurve, build_extraction_selectivity_curve
+from .extraction_benchmark import (
+    ExtractionGoldTarget,
+    ExtractionSelectivityCurve,
+    build_extraction_selectivity_curve,
+    validate_extraction_benchmark_report,
+)
 from .extraction_calibration import (
     ExtractionTestEvaluationLock,
     ExtractionThresholdObservation,
@@ -215,6 +220,7 @@ class ExtractionEvidencePlan:
     review_protocol_version: str
     split_salt: str
     threshold_grid_sha256: str
+    benchmark_confidence: float = 0.95
     schema_version: int = 1
 
     def __post_init__(self) -> None:
@@ -233,6 +239,7 @@ class ExtractionEvidencePlan:
             raise ValueError("review_protocol_version is required")
         if not isinstance(self.split_salt, str) or not self.split_salt.strip():
             raise ValueError("split_salt is required")
+        _require_confidence(self.benchmark_confidence)
         if self.schema_version != 1 or isinstance(self.schema_version, bool):
             raise ValueError("extraction evidence plan schema_version must be 1")
 
@@ -247,6 +254,8 @@ class ExtractionEvidenceReleaseReceipt:
     split_lock_sha256: str
     development_manifest_sha256: str
     test_manifest_sha256: str
+    development_observations_sha256: str
+    test_observations_sha256: str
     frozen_threshold_sha256: str
     test_seal_sha256: str
     test_evaluation_lock_sha256: str
@@ -262,6 +271,8 @@ class ExtractionEvidenceReleaseReceipt:
             ("split_lock_sha256", self.split_lock_sha256),
             ("development_manifest_sha256", self.development_manifest_sha256),
             ("test_manifest_sha256", self.test_manifest_sha256),
+            ("development_observations_sha256", self.development_observations_sha256),
+            ("test_observations_sha256", self.test_observations_sha256),
             ("frozen_threshold_sha256", self.frozen_threshold_sha256),
             ("test_seal_sha256", self.test_seal_sha256),
             ("test_evaluation_lock_sha256", self.test_evaluation_lock_sha256),
@@ -343,6 +354,7 @@ def build_extraction_evidence_plan(
     *,
     review_protocol_version: str = "independent-double-review-v1",
     split_salt: str,
+    benchmark_confidence: float = 0.95,
 ) -> ExtractionEvidencePlan:
     return ExtractionEvidencePlan(
         sampling_frame_sha256=sampling_frame.sha256(),
@@ -352,6 +364,7 @@ def build_extraction_evidence_plan(
         review_protocol_version=review_protocol_version,
         split_salt=split_salt,
         threshold_grid_sha256=threshold_grid.sha256(),
+        benchmark_confidence=benchmark_confidence,
     )
 
 
@@ -405,6 +418,8 @@ def build_extraction_evidence_release_receipt(
     split_lock: ArticleFamilySplitLock,
     threshold_policy: ExtractionThresholdPolicy,
     development_observations: tuple[ExtractionThresholdObservation, ...]
+    | list[ExtractionThresholdObservation],
+    test_observations: tuple[ExtractionThresholdObservation, ...]
     | list[ExtractionThresholdObservation],
     frozen_threshold: FrozenExtractionThreshold,
     test_seal: ExtractionTestSetSeal,
@@ -506,13 +521,36 @@ def build_extraction_evidence_release_receipt(
     )
     development_manifest_sha256 = development_manifest.sha256()
     test_manifest_sha256 = test_manifest.sha256()
+    development_gold = _gold_for_split_manifest(gold_manifest, development_manifest)
+    test_gold = _gold_for_split_manifest(gold_manifest, test_manifest)
 
-    observations = _validate_development_observations_against_grid(
+    development_observations = _validate_threshold_observations_against_grid(
         development_observations,
         threshold_grid,
+        split=BenchmarkSplit.DEVELOPMENT,
+        label="DEVELOPMENT",
     )
+    test_observations = _validate_threshold_observations_against_grid(
+        test_observations,
+        threshold_grid,
+        split=BenchmarkSplit.TEST,
+        label="TEST",
+    )
+    for observation in development_observations:
+        validate_extraction_benchmark_report(
+            observation.report,
+            development_gold,
+            confidence=plan.benchmark_confidence,
+        )
+    for observation in test_observations:
+        validate_extraction_benchmark_report(
+            observation.report,
+            test_gold,
+            confidence=plan.benchmark_confidence,
+        )
+
     expected_frozen_threshold = select_development_threshold(
-        observations,
+        development_observations,
         policy=threshold_policy,
         development_manifest_sha256=development_manifest_sha256,
     )
@@ -523,10 +561,18 @@ def build_extraction_evidence_release_receipt(
         )
 
     expected_development_curve = build_extraction_selectivity_curve(
-        tuple((observation.threshold, observation.report) for observation in observations)
+        tuple(
+            (observation.threshold, observation.report)
+            for observation in development_observations
+        )
     )
     if _curve_sha256(expected_development_curve) != _curve_sha256(development_curve):
         raise ValueError("DEVELOPMENT selectivity curve differs from bound DEVELOPMENT observations")
+    expected_test_curve = build_extraction_selectivity_curve(
+        tuple((observation.threshold, observation.report) for observation in test_observations)
+    )
+    if _curve_sha256(expected_test_curve) != _curve_sha256(test_curve):
+        raise ValueError("TEST selectivity curve differs from bound TEST observations")
 
     test_seal.validate(gold_manifest, split_lock)
     if test_evaluation_lock.frozen_threshold_sha256 != frozen_threshold.sha256():
@@ -543,6 +589,8 @@ def build_extraction_evidence_release_receipt(
         split_lock_sha256=split_lock.sha256(),
         development_manifest_sha256=development_manifest_sha256,
         test_manifest_sha256=test_manifest_sha256,
+        development_observations_sha256=_observations_sha256(development_observations),
+        test_observations_sha256=_observations_sha256(test_observations),
         frozen_threshold_sha256=frozen_threshold.sha256(),
         test_seal_sha256=test_seal.sha256(),
         test_evaluation_lock_sha256=test_evaluation_lock.sha256(),
@@ -569,31 +617,64 @@ def extraction_evidence_plan_payload(
     }
 
 
-def _validate_development_observations_against_grid(
+def _validate_threshold_observations_against_grid(
     observations: tuple[ExtractionThresholdObservation, ...]
     | list[ExtractionThresholdObservation],
     threshold_grid: ExtractionThresholdGrid,
+    *,
+    split: BenchmarkSplit,
+    label: str,
 ) -> tuple[ExtractionThresholdObservation, ...]:
     observations = tuple(observations)
     if not observations:
-        raise ValueError("release workflow requires DEVELOPMENT threshold observations")
+        raise ValueError(f"release workflow requires {label} threshold observations")
     if any(not isinstance(observation, ExtractionThresholdObservation) for observation in observations):
-        raise TypeError("development_observations must contain ExtractionThresholdObservation values")
+        raise TypeError(
+            f"{label.lower()}_observations must contain ExtractionThresholdObservation values"
+        )
     observation_ids = tuple(sorted(observation.threshold_id for observation in observations))
     if observation_ids != threshold_grid.threshold_ids:
-        raise ValueError("DEVELOPMENT observation ids differ from the precommitted threshold grid")
+        raise ValueError(f"{label} observation ids differ from the precommitted threshold grid")
     for observation in observations:
-        if observation.split is not BenchmarkSplit.DEVELOPMENT:
-            raise ValueError("release DEVELOPMENT observations must use the DEVELOPMENT split")
+        if observation.split is not split:
+            raise ValueError(f"release {label} observations must use the {label} split")
         try:
             expected_threshold = threshold_grid.threshold_for_id(observation.threshold_id)
         except KeyError as exc:
-            raise ValueError("DEVELOPMENT observation id is not in the precommitted threshold grid") from exc
+            raise ValueError(
+                f"{label} observation id is not in the precommitted threshold grid"
+            ) from exc
         if float(observation.threshold) != expected_threshold:
             raise ValueError(
-                "DEVELOPMENT observation threshold value differs from the precommitted threshold grid"
+                f"{label} observation threshold value differs from the precommitted threshold grid"
             )
     return observations
+
+
+def _gold_for_split_manifest(
+    gold_manifest: ExtractionGoldManifest,
+    split_manifest: ExtractionSplitTargetManifest,
+) -> tuple[ExtractionGoldTarget, ...]:
+    target_ids = set(split_manifest.target_ids)
+    result = tuple(
+        target for target in gold_manifest.targets if target.target_id in target_ids
+    )
+    if {target.target_id for target in result} != target_ids:
+        raise ValueError("split-target manifest membership is not present in reviewed gold")
+    return result
+
+
+def _observations_sha256(
+    observations: tuple[ExtractionThresholdObservation, ...],
+) -> str:
+    return _stable_sha256(
+        {
+            "observations": [
+                asdict(observation)
+                for observation in sorted(observations, key=lambda item: item.threshold_id)
+            ]
+        }
+    )
 
 
 def _require_curve_thresholds(
@@ -707,6 +788,16 @@ def _optional_string(value: object, *, label: str) -> str | None:
     if not isinstance(value, str):
         raise TypeError(f"sampling-frame {label} must be a string or null")
     return value
+
+
+def _require_confidence(value: object) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or not 0.0 < float(value) < 1.0
+    ):
+        raise ValueError("benchmark_confidence must be a finite number in (0, 1)")
 
 
 def _require_sha256(value: str, *, label: str) -> None:
