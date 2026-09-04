@@ -220,6 +220,8 @@ class ExtractionEvidencePlan:
     review_protocol_version: str
     split_salt: str
     threshold_grid_sha256: str
+    train_fraction: float = 0.60
+    development_fraction: float = 0.20
     benchmark_confidence: float = 0.95
     schema_version: int = 1
 
@@ -239,6 +241,7 @@ class ExtractionEvidencePlan:
             raise ValueError("review_protocol_version is required")
         if not isinstance(self.split_salt, str) or not self.split_salt.strip():
             raise ValueError("split_salt is required")
+        _require_split_fractions(self.train_fraction, self.development_fraction)
         _require_confidence(self.benchmark_confidence)
         if self.schema_version != 1 or isinstance(self.schema_version, bool):
             raise ValueError("extraction evidence plan schema_version must be 1")
@@ -354,6 +357,8 @@ def build_extraction_evidence_plan(
     *,
     review_protocol_version: str = "independent-double-review-v1",
     split_salt: str,
+    train_fraction: float = 0.60,
+    development_fraction: float = 0.20,
     benchmark_confidence: float = 0.95,
 ) -> ExtractionEvidencePlan:
     return ExtractionEvidencePlan(
@@ -364,6 +369,8 @@ def build_extraction_evidence_plan(
         review_protocol_version=review_protocol_version,
         split_salt=split_salt,
         threshold_grid_sha256=threshold_grid.sha256(),
+        train_fraction=train_fraction,
+        development_fraction=development_fraction,
         benchmark_confidence=benchmark_confidence,
     )
 
@@ -495,9 +502,13 @@ def build_extraction_evidence_release_receipt(
 
     validate_extraction_gold_review_records(gold_manifest, review_records)
 
+    if float(split_lock.train_fraction) != float(plan.train_fraction):
+        raise ValueError("split lock train fraction differs from the precommitted evidence plan")
+    if float(split_lock.development_fraction) != float(plan.development_fraction):
+        raise ValueError("split lock development fraction differs from the precommitted evidence plan")
     expected_split_lock = gold_manifest.build_split_lock(
-        train_fraction=split_lock.train_fraction,
-        development_fraction=split_lock.development_fraction,
+        train_fraction=plan.train_fraction,
+        development_fraction=plan.development_fraction,
     )
     if expected_split_lock.sha256() != split_lock.sha256():
         raise ValueError("split lock is not the deterministic lock for the reviewed gold manifest")
@@ -788,6 +799,22 @@ def _optional_string(value: object, *, label: str) -> str | None:
     if not isinstance(value, str):
         raise TypeError(f"sampling-frame {label} must be a string or null")
     return value
+
+
+def _require_split_fractions(train_fraction: object, development_fraction: object) -> None:
+    for label, value in (
+        ("train_fraction", train_fraction),
+        ("development_fraction", development_fraction),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) <= 0.0
+        ):
+            raise ValueError(f"{label} must be a finite positive number")
+    if float(train_fraction) + float(development_fraction) >= 1.0:
+        raise ValueError("split fractions must leave positive mass for the TEST split")
 
 
 def _require_confidence(value: object) -> None:
