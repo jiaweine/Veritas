@@ -9,7 +9,6 @@ from veritas.benchmark import BenchmarkSplit
 from veritas.corpus import AccessTier, CorpusPaper
 from veritas.extraction_benchmark import (
     ExtractionBenchmarkReport,
-    ExtractionGoldTarget,
     build_extraction_selectivity_curve,
 )
 from veritas.extraction_calibration import (
@@ -29,7 +28,13 @@ from veritas.extraction_evidence_workflow import (
     load_extraction_sampling_frame,
     load_extraction_seed_manifest,
 )
-from veritas.extraction_review import ExtractionGoldManifest
+from veritas.extraction_review import (
+    ExtractionAdjudication,
+    ExtractionReviewSubmission,
+    ExtractionReviewTarget,
+    build_extraction_gold_manifest,
+    resolve_extraction_reviews,
+)
 from veritas.extraction_review_packet import ExtractionReviewPacketTarget
 from veritas.extraction_test_seal import seal_extraction_test_set
 from veritas.ingestion import EvidenceKind
@@ -81,34 +86,51 @@ def _seed_manifest(frame: ExtractionSamplingFrame) -> ExtractionSeedManifest:
     )
 
 
-def _gold(frame: ExtractionSamplingFrame, *, split_salt: str) -> ExtractionGoldManifest:
-    targets = tuple(
-        ExtractionGoldTarget(
-            target_id=f"target-{index:02d}",
+def _review_records(frame: ExtractionSamplingFrame):
+    records = []
+    for index, paper in enumerate(frame.papers):
+        target_id = f"target-{index:02d}"
+        value = f"{index / 100:.2f}"
+        source = SourceLocation(
+            artifact_id=paper.paper_id,
+            page=2,
+            table="Table 1",
+            row=f"row-{index}",
+            column="beta",
+        )
+        target = ExtractionReviewTarget(
+            target_id=target_id,
             paper_id=paper.paper_id,
             article_family_id=paper.article_family_id,
             object_type="RegressionResult",
             key="beta",
             kind=EvidenceKind.FIELD,
-            accepted_normalized_values=(f"{index / 100:.2f}",),
-            source=SourceLocation(
-                artifact_id=paper.paper_id,
-                page=2,
-                table="Table 1",
-                row=f"row-{index}",
-                column="beta",
-            ),
-            reviewers=("reviewer-a", "reviewer-b"),
-            adjudicated=True,
-            review_record_sha256=f"{index % 16:x}" * 64,
         )
-        for index, paper in enumerate(frame.papers)
-    )
-    return ExtractionGoldManifest(
-        targets=targets,
-        split_salt=split_salt,
-        source_seed_manifest_sha256=_SEED_SHA,
-    )
+        submissions = tuple(
+            ExtractionReviewSubmission(
+                target_id=target_id,
+                reviewer_id=reviewer_id,
+                accepted_normalized_values=(value,),
+                source=source,
+                note="independent synthetic workflow review fixture",
+            )
+            for reviewer_id in ("reviewer-a", "reviewer-b")
+        )
+        adjudication = ExtractionAdjudication(
+            target_id=target_id,
+            adjudicator_id="reviewer-c",
+            accepted_normalized_values=(value,),
+            source=source,
+            note="independent synthetic workflow adjudication fixture",
+        )
+        records.append(
+            resolve_extraction_reviews(
+                target,
+                submissions,
+                adjudication=adjudication,
+            )
+        )
+    return tuple(records)
 
 
 def _report(*, coverage: float, accuracy: float, upper_bound: float) -> ExtractionBenchmarkReport:
@@ -153,7 +175,12 @@ def _workflow_fixture():
         )
     )
     split_salt = "release-workflow-v1"
-    gold = _gold(frame, split_salt=split_salt)
+    review_records = _review_records(frame)
+    gold = build_extraction_gold_manifest(
+        review_records,
+        split_salt=split_salt,
+        source_seed_manifest_sha256=_SEED_SHA,
+    )
     split_lock = gold.build_split_lock()
     split_values = {split for _, split in split_lock.assignments}
     assert BenchmarkSplit.DEVELOPMENT in split_values
@@ -216,6 +243,7 @@ def _workflow_fixture():
         "seed": seed,
         "grid": grid,
         "plan": plan,
+        "review_records": review_records,
         "gold": gold,
         "split_lock": split_lock,
         "development_manifest": development_manifest,
@@ -237,6 +265,7 @@ def _release(**overrides):
         seed_manifest=fixture["seed"],
         threshold_grid=fixture["grid"],
         gold_manifest=fixture["gold"],
+        review_records=fixture["review_records"],
         split_lock=fixture["split_lock"],
         frozen_threshold=fixture["frozen"],
         test_seal=fixture["test_seal"],
@@ -304,6 +333,23 @@ def test_release_receipt_binds_complete_precommitted_chain_and_is_nonproduction(
     assert first.test_manifest_sha256 == fixture["test_manifest"].sha256()
     assert first.sha256() == second.sha256()
     assert len(first.sha256()) == 64
+
+
+def test_release_requires_concrete_review_records_not_only_gold_hash_fields() -> None:
+    fixture = _workflow_fixture()
+    forged_target = replace(
+        fixture["gold"].targets[0],
+        review_record_sha256="f" * 64,
+    )
+    forged_gold = replace(
+        fixture["gold"],
+        targets=(forged_target, *fixture["gold"].targets[1:]),
+    )
+    with pytest.raises(ValueError, match="bound review record"):
+        _release(gold=forged_gold)
+
+    with pytest.raises(ValueError, match="target membership differs"):
+        _release(review_records=fixture["review_records"][1:])
 
 
 def test_sampling_frame_threshold_grid_or_seed_manifest_drift_fails_closed() -> None:
