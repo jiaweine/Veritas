@@ -69,7 +69,7 @@ Primary goal: move from a four-case regression-table smoke benchmark toward a di
 - [x] report coverage–selectivity curves rather than a single extraction threshold
 - [x] move the four existing real-PDF cases into an explicit seed manifest
 - [x] prevent seed cases from carrying locked splits or production authority
-- [x] require independent double review and review-record hashes before extraction targets can enter locked gold
+- [x] require independent double review, an independent adjudicator, and review-record hashes before extraction targets can enter locked gold; reviewer consensus alone is not represented as adjudication
 - [x] expose DEVELOPMENT-only threshold selection; TEST observations are rejected from calibration APIs
 - [x] bind frozen extraction thresholds to development-manifest and policy hashes before TEST evaluation
 - [x] seal untouched extraction TEST membership to exact gold-manifest and split-lock hashes
@@ -82,24 +82,26 @@ Primary goal: move from a four-case regression-table smoke benchmark toward a di
 - [x] precommit exact sampling-frame bytes, normalized frame identity, exact seed-manifest bytes, the deterministic seed target-universe SHA-256, review protocol, split salt, and the full threshold grid before TEST
 - [x] require every reviewed gold target to belong to the precommitted seed target universe with the same target/paper/family/object/key/criticality identity and the same page/table/row source locator
 - [x] require reviewed gold papers/families to come from the precommitted sampling frame
-- [x] mechanically bind deterministic family lock, frozen DEVELOPMENT threshold, TEST seal, and TEST evaluation lock into one release chain
+- [x] deterministically derive DEVELOPMENT and TEST target manifests from the exact reviewed-gold hash and exact family split-lock hash; callers cannot substitute arbitrary membership digests
+- [x] bind the frozen DEVELOPMENT threshold to the derived DEVELOPMENT target manifest and bind the TEST evaluation lock to the derived TEST target manifest
+- [x] mechanically bind deterministic family lock, derived split manifests, frozen DEVELOPMENT threshold, TEST seal, and TEST evaluation lock into one release chain
 - [x] require published DEVELOPMENT and TEST coverage–selectivity curves to use the exact precommitted threshold grid
-- [x] issue an immutable non-production release receipt only when the complete evidence chain validates
+- [x] issue an immutable non-production release receipt only when the complete evidence chain validates, including both derived split-manifest SHA-256 values
 
-The evidence workflow is implemented by `src/veritas/extraction_evidence_workflow.py` and `scripts/build_extraction_evidence_plan.py`. The seed manifest is an explicit required CLI input rather than an implicit legacy default. The workflow prevents benchmark stages from being silently reordered or mixed across sampling frames, seed bytes, seed-derived target identities/locators, review protocols, split salts, threshold grids, DEVELOPMENT locks, or TEST seals. It does not generate labels or simulate independent reviewers.
+The evidence workflow is implemented by `src/veritas/extraction_evidence_workflow.py` and `scripts/build_extraction_evidence_plan.py`. The seed manifest is an explicit required CLI input rather than an implicit legacy default. The workflow prevents benchmark stages from being silently reordered or mixed across sampling frames, seed bytes, seed-derived target identities/locators, review protocols, split salts, derived DEVELOPMENT/TEST membership, threshold grids, DEVELOPMENT locks, or TEST seals. It does not generate labels, simulate independent reviewers, or manufacture adjudication.
 
-The four legacy PLOS parser-development cases remain seed/development fixtures, not untouched TEST evidence. Independent double review can make their extraction targets reviewed evidence, but review alone does not make a case held out if it was already used for parser development. A genuinely untouched TEST set must come through the precommitted sampling-frame/seed workflow without post-hoc promotion of development fixtures. The synthetic adversarial benchmark is a deterministic fail-closed regression gate; it does not substitute for diverse real-paper negative examples.
+The four legacy PLOS parser-development cases remain seed/development fixtures, not untouched TEST evidence. Independent review and adjudication can make their extraction targets reviewed evidence, but review alone does not make a case held out if it was already used for parser development. A genuinely untouched TEST set must come through the precommitted sampling-frame/seed workflow without post-hoc promotion of development fixtures. The synthetic adversarial benchmark is a deterministic fail-closed regression gate; it does not substitute for diverse real-paper negative examples.
 
 ### Corpus expansion and lock — external evidence work remaining
 
 - [ ] expand real open-access extraction corpus across journals, layouts, and statistical object types
 - [ ] add real-world adversarial examples for continuation tables, multi-panel layouts, footnotes, repeated labels, and OCR-like extraction failures
-- [ ] complete independent double review and adjudication for extraction gold targets
-- [ ] run geometry/native threshold calibration on locked DEVELOPMENT data using the development-only selection API
-- [ ] freeze a genuinely untouched extraction TEST set from reviewed real-paper gold
+- [ ] complete independent double review plus independent adjudication for every extraction gold target
+- [ ] run geometry/native threshold calibration on the deterministically derived locked DEVELOPMENT target manifest using the development-only selection API
+- [ ] freeze a genuinely untouched extraction TEST set from reviewed real-paper gold and its deterministically derived TEST target manifest
 - [ ] publish coverage–selectivity curves on that locked development/TEST protocol
 
-These items require new real-paper evidence and genuinely independent human review. The repository now contains the sampling-frame/seed commitment, seed-universe identity lock, review, split, calibration, TEST sealing, curve, and release-receipt machinery; Veritas must not fabricate reviewer independence or claim held-out results before that evidence exists.
+These items require new real-paper evidence and genuinely independent human review. The repository now contains the sampling-frame/seed commitment, seed-universe identity lock, review/adjudication gate, deterministic split-target manifests, calibration, TEST sealing, curve, and release-receipt machinery; Veritas must not fabricate reviewer independence, adjudication, or held-out results before that evidence exists.
 
 ## v0.12 — end-to-end empirical claim graph
 
