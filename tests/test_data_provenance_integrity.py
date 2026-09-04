@@ -107,17 +107,29 @@ def test_matching_direct_provenance_returns_pass_without_finding() -> None:
     assert check.finding is None
 
 
-def test_lineage_origin_mismatch_can_feed_direct_e5_path() -> None:
-    lineage = SampleLineage()
-    raw = SampleSnapshot("raw", "a" * 64, "b" * 64, 10, SourceLocation(artifact_id="raw"))
-    other = SampleSnapshot("other", "c" * 64, "d" * 64, 10, SourceLocation(artifact_id="other"))
-    analysis = SampleSnapshot(
-        "analysis",
-        "e" * 64,
-        "f" * 64,
+def _verified_snapshot(snapshot_id: str, artifact_char: str, row_char: str) -> SampleSnapshot:
+    return SampleSnapshot(
+        snapshot_id,
+        artifact_char * 64,
+        row_char * 64,
         10,
-        SourceLocation(artifact_id="analysis"),
+        SourceLocation(artifact_id=snapshot_id),
+        True,
     )
+
+
+def _lineage_with_wrong_origin(*, complete: bool, verify_raw: bool = True) -> SampleLineage:
+    lineage = SampleLineage(completeness_verified=complete)
+    raw = SampleSnapshot(
+        "raw",
+        "a" * 64,
+        "b" * 64,
+        10,
+        SourceLocation(artifact_id="raw"),
+        verify_raw,
+    )
+    other = _verified_snapshot("other", "c", "d")
+    analysis = _verified_snapshot("analysis", "e", "f")
     for snapshot in (raw, other, analysis):
         lineage.add_snapshot(snapshot)
     lineage.add_operation(
@@ -131,6 +143,12 @@ def test_lineage_origin_mismatch_can_feed_direct_e5_path() -> None:
             SourceLocation(artifact_id="code"),
         )
     )
+    return lineage
+
+
+def test_verified_complete_lineage_origin_mismatch_can_feed_direct_e5_path() -> None:
+    lineage = _lineage_with_wrong_origin(complete=True)
+    analysis = lineage.snapshots["analysis"]
 
     concern = compare_lineage_origin(
         lineage,
@@ -144,5 +162,39 @@ def test_lineage_origin_mismatch_can_feed_direct_e5_path() -> None:
     )
 
     assert concern.status is ProvenanceCheckStatus.MISMATCH
+    assert concern.direct_evidence_verified is True
     assert check.finding is not None
     assert check.finding.grade is EvidenceGrade.DATA_PROVENANCE_CONCERN
+
+
+def test_incomplete_lineage_cannot_feed_direct_e5_path() -> None:
+    lineage = _lineage_with_wrong_origin(complete=False)
+
+    concern = compare_lineage_origin(
+        lineage,
+        expected_raw_snapshot_id="raw",
+        analysis_snapshot_id="analysis",
+    )
+    check = build_e5_data_provenance_check(
+        (concern,),
+        object_id="dataset-main",
+        source=lineage.snapshots["analysis"].source,
+    )
+
+    assert concern.status is ProvenanceCheckStatus.UNVERIFIABLE
+    assert concern.direct_evidence_verified is False
+    assert check.status is CheckStatus.UNVERIFIABLE
+    assert check.finding is None
+
+
+def test_unverified_lineage_endpoint_cannot_feed_direct_e5_path() -> None:
+    lineage = _lineage_with_wrong_origin(complete=True, verify_raw=False)
+
+    concern = compare_lineage_origin(
+        lineage,
+        expected_raw_snapshot_id="raw",
+        analysis_snapshot_id="analysis",
+    )
+
+    assert concern.status is ProvenanceCheckStatus.UNVERIFIABLE
+    assert concern.direct_evidence_verified is False
