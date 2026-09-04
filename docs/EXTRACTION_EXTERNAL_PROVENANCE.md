@@ -15,9 +15,27 @@ The external-provenance layer adds a cryptographic trust root for that stronger 
 - a 32-byte Ed25519 public key;
 - the `ed25519` algorithm and schema version.
 
-The public key must be trusted **before** inspecting TEST results. A key generated after seeing benchmark results and then used to self-sign a provenance statement is not an external trust root, even if the Ed25519 signature is mathematically valid.
+A key generated after seeing benchmark results and then used to self-sign a provenance statement is not an external trust root, even if the Ed25519 signature is mathematically valid.
 
-In a real deployment, pin the trust root through an independent policy channel such as repository/environment configuration, CI policy, a protected configuration repository, transparency log, or institutional key registry. Archive the exact trust-root JSON bytes and their repository/history location used for the evidence run.
+## Pre-TEST trust policy
+
+For the strongest software-enforced path, build an `ExtractionExternalTrustPolicy` **before TEST**. It binds:
+
+- a policy id;
+- the already-frozen `ExtractionEvidencePlan` SHA-256;
+- the exact `ExtractionExternalTrustRoot` SHA-256;
+- issuer identity;
+- runner identity;
+- repository identity;
+- workflow identity.
+
+`scripts/build_extraction_external_trust_policy.py` takes an evidence-plan SHA-256 plus a strict trust-root JSON file and emits an immutable, non-production trust-policy JSON artifact and its SHA-256. Archive that policy through the independent channel used to establish trust.
+
+The trust policy has its own strict UTF-8 JSON loader. Duplicate keys, unknown fields, unsupported versions, non-standard numeric constants, malformed hashes, and production-authority attempts fail closed.
+
+The policy does not create trust merely by existing. Its value is that an independent deployment/CI governance channel can pin one exact root to one exact evidence plan **before** TEST, and Veritas can later mechanically reject a different root or plan.
+
+In a real deployment, archive the trust root and trust policy in a protected configuration repository, CI/deployment policy, transparency log, institutional key registry, or equivalent independent channel.
 
 ## Signed subject
 
@@ -39,55 +57,67 @@ The statement is encoded as canonical UTF-8 JSON with sorted object keys and com
 
 Changing the run id, commit, release receipt, execution plan, split execution set, input artifacts, source tree, parser registry, runtime, command, issuer, runner, repository, workflow, or trust root invalidates the signature or subject binding.
 
-## Verification
+## Verification layers
 
-`verify_external_extraction_provenance()` is the low-level subject verifier. It:
+`verify_external_extraction_provenance()` is the low-level subject verifier. It reconstructs the expected statement from the supplied trusted root, attested release receipt, and execution plan, requires exact equality, then verifies the detached Ed25519 signature.
 
-1. reconstructs the expected statement from the supplied trusted root, attested release receipt, and execution plan and requires exact equality;
-2. verifies the detached Ed25519 signature against the pinned public key.
-
-A successful low-level verification produces `ExternallyVerifiedExtractionEvidenceReceipt`, which commits the attested release receipt, execution plan, trust root, signed statement, and signed envelope hashes. It remains `production_authorized = false`.
+A successful low-level verification produces `ExternallyVerifiedExtractionEvidenceReceipt`. It remains `production_authorized = false`.
 
 ### Run-context verification
 
-A real external-run claim should use `verify_external_extraction_provenance_for_run()` rather than stopping at the low-level verifier. The caller must independently supply:
+A real external-run claim should at minimum use `verify_external_extraction_provenance_for_run()`. The caller must independently supply:
 
 - the expected run id;
 - the expected run attempt;
 - the expected git commit SHA.
 
-The function first requires those three values to match the signed statement exactly, then performs the full subject reconstruction and Ed25519 verification. Its `ExternallyVerifiedExtractionRunReceipt` preserves the verified run, commit, repository, workflow, runner, issuer, trust-root, and underlying verified-evidence receipt identity.
+The function requires those values to match the signed statement exactly before performing full subject reconstruction and Ed25519 verification. Its `ExternallyVerifiedExtractionRunReceipt` preserves the verified run, commit, repository, workflow, runner, issuer, trust-root, and underlying verified-evidence receipt identity.
 
-This prevents a historical but otherwise valid signed statement from being silently reused as proof for a different run, rerun attempt, or commit. The expected context should come from the run that the caller deliberately selected through an independent orchestration or deployment channel; it must not simply be copied from the untrusted signed envelope before verification.
+This prevents a historical but otherwise valid signed statement from being silently reused as proof for a different run, rerun attempt, or commit. Expected context must come from the deliberately selected orchestration/deployment run, not simply be copied from the untrusted signed envelope.
 
-Ed25519 verification is an optional runtime capability. Install `veritas-audit[attestation]` to provide the `cryptography` implementation. CI installs this extra and exercises valid signatures, wrong keys, modified run ids, subject drift, execution-plan drift, expected-run/attempt/commit drift, and malformed signatures.
+### Precommitted run verification
+
+For the strongest path, use `verify_precommitted_external_extraction_provenance_for_run()`. In addition to run-context and Ed25519 checks, it requires:
+
+- the supplied evidence-plan SHA-256 to equal the precommitted trust policy;
+- the supplied trust-root SHA-256 to equal the precommitted trust policy;
+- issuer/runner/repository/workflow identity to equal the policy;
+- the complete context-bound run verification to succeed.
+
+The resulting `PrecommittedExternalExtractionRunReceipt` commits the trust-policy, evidence-plan, trust-root, and verified-run receipt hashes. Changing the evidence plan, replacing the signing key/root, or changing trusted runner identity after the policy was frozen fails closed.
+
+Ed25519 verification is an optional runtime capability. Install `veritas-audit[attestation]` to provide the `cryptography` implementation. CI installs this extra and exercises valid signatures, wrong keys, modified run ids, subject drift, execution-plan drift, expected-run/attempt/commit drift, trust-policy/root drift, and malformed signatures.
 
 ## Strict JSON ingress
 
-Real trust roots and signed provenance envelopes should enter Veritas through:
+Real evidence should enter Veritas through strict file loaders:
 
 - `load_extraction_external_trust_root()`;
+- `load_extraction_external_trust_policy()`;
 - `load_extraction_signed_external_provenance()`.
 
-These loaders require UTF-8 JSON, exact schema keys, supported schema versions, and reject duplicate object keys and non-standard `NaN` / `Infinity` numeric constants. Unknown fields are rejected instead of being silently ignored.
+They require UTF-8 JSON, exact schema keys, supported schema versions, and reject duplicate object keys and non-standard `NaN` / `Infinity` numeric constants. Unknown fields are rejected rather than ignored.
 
-The serializer helpers `extraction_external_trust_root_payload()` and `extraction_signed_external_provenance_payload()` provide the corresponding schema-shaped objects for archival.
-
-The stable public import surface for execution evidence, signed provenance, strict JSON ingress, and run-context verification is `veritas.extraction_provenance`.
+The stable public import surface for execution evidence, signed provenance, trust-policy precommitment, strict JSON ingress, and context-bound verification is `veritas.extraction_provenance`.
 
 ## What this proves
 
-With a genuinely pretrusted public key and independently selected expected run context, successful run-context verification proves that the holder of the corresponding private key signed the exact execution/release subject for that expected run/attempt/commit and that Veritas reconstructed the same subject.
+With a genuinely independently archived pre-TEST trust policy, a pretrusted public key, and independently selected expected run context, successful precommitted run verification proves that:
 
-That can support a real external-run provenance claim when the private key is controlled by the claimed trusted runner or signing service.
+1. the evidence plan was associated with the exact pinned trust root in the supplied trust policy;
+2. the holder of the corresponding Ed25519 private key signed the exact execution/release subject;
+3. that subject is for the independently expected run id, attempt, and commit;
+4. Veritas independently reconstructed the same release/execution subject.
+
+That can support a real external-run provenance claim when the private key is genuinely controlled by the claimed trusted runner or signing service and the policy was actually archived before TEST.
 
 It does **not** prove by itself:
 
+- that the policy was historically archived before TEST unless the external policy channel supplies that history;
 - that the key was genuinely controlled by GitHub Actions or any named provider;
-- that the public key was pinned before TEST rather than chosen post hoc;
 - reviewer independence or adjudication;
 - untouched TEST status;
 - correctness of publication bytes in the input-artifact manifest;
 - production hard-finding authority.
 
-Those claims require the corresponding governance or external evidence. Veritas must not convert a caller-selected self-signed key into institutional trust merely because `issuer` contains a familiar service name.
+Those claims require the corresponding governance or external evidence. Veritas must not convert a caller-selected self-signed key or caller-created post-hoc policy into institutional trust merely because identity strings contain familiar service names.
