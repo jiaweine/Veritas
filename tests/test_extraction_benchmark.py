@@ -189,6 +189,7 @@ def test_noncritical_wrong_accept_does_not_contaminate_critical_family_metric():
 def test_report_validator_recomputes_aggregates_from_exact_outcomes():
     gold = [_gold("a", "fam-a", "0.18"), _gold("b", "fam-b", "0.25")]
     report = evaluate_extraction_benchmark(gold, [_prediction("a", "0.18")])
+    assert isinstance(report.outcomes[0], ExtractionTargetOutcome)
     validate_extraction_benchmark_report(report, gold)
 
     with pytest.raises(ValueError, match="aggregates differ"):
