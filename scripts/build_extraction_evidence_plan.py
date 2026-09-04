@@ -36,7 +36,8 @@ def main() -> int:
     parser.add_argument(
         "--seed-manifest",
         type=Path,
-        default=Path("benchmark/extraction/seed_cases_v0.11.json"),
+        required=True,
+        help="Exact reviewed-target seed manifest to precommit; never inferred from a legacy default.",
     )
     parser.add_argument("--split-salt", required=True)
     parser.add_argument(
