@@ -25,14 +25,35 @@ class ExtractionGoldTarget:
     review_record_sha256: str | None = None
 
     def __post_init__(self) -> None:
-        if not self.target_id.strip() or not self.paper_id.strip() or not self.article_family_id.strip():
-            raise ValueError("target_id, paper_id, and article_family_id are required")
-        if not self.accepted_normalized_values:
-            raise ValueError("at least one accepted normalized value is required")
-        if len(set(self.reviewers)) < 2 or not self.adjudicated:
-            raise ValueError("extraction gold targets require two independent reviewers and adjudication")
+        for label, value in (
+            ("target_id", self.target_id),
+            ("paper_id", self.paper_id),
+            ("article_family_id", self.article_family_id),
+            ("object_type", self.object_type),
+            ("key", self.key),
+        ):
+            _require_nonempty_string(value, label=label)
+        if not isinstance(self.kind, EvidenceKind):
+            raise TypeError("kind must be an EvidenceKind")
+        _require_nonempty_string_tuple(
+            self.accepted_normalized_values,
+            label="accepted_normalized_values",
+        )
+        if not isinstance(self.source, SourceLocation):
+            raise TypeError("source must be a SourceLocation")
+        if type(self.critical_for_hard_audit) is not bool:
+            raise TypeError("critical_for_hard_audit must be boolean")
+        if not isinstance(self.reviewers, tuple) or any(
+            not isinstance(reviewer, str) or not reviewer.strip() for reviewer in self.reviewers
+        ):
+            raise TypeError("reviewers must be a tuple of non-empty strings")
+        if len(set(self.reviewers)) < 2:
+            raise ValueError("extraction gold targets require two independent reviewers")
+        if type(self.adjudicated) is not bool or not self.adjudicated:
+            raise ValueError("extraction gold targets require adjudication")
         if self.review_record_sha256 is not None and (
-            len(self.review_record_sha256) != 64
+            not isinstance(self.review_record_sha256, str)
+            or len(self.review_record_sha256) != 64
             or any(char not in "0123456789abcdef" for char in self.review_record_sha256)
         ):
             raise ValueError("review_record_sha256 must be a lowercase SHA-256 hex digest")
@@ -380,6 +401,18 @@ def _source_identity_components(predicted: SourceLocation, gold: SourceLocation)
 
 def _rate(numerator: int, denominator: int) -> float:
     return numerator / denominator if denominator else 0.0
+
+
+def _require_nonempty_string(value: object, *, label: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be a non-empty string")
+
+
+def _require_nonempty_string_tuple(value: object, *, label: str) -> None:
+    if not isinstance(value, tuple) or not value:
+        raise TypeError(f"{label} must be a non-empty tuple of strings")
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"{label} must contain non-empty strings")
 
 
 def _require_finite_nonnegative_number(value: object, *, label: str) -> None:
