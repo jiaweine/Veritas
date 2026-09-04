@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from .benchmark import BenchmarkSplit
-from .extraction_benchmark import ExtractionBenchmarkReport
+from .extraction_benchmark import ExtractionBenchmarkReport, ExtractionPrediction
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -18,6 +18,7 @@ class ExtractionThresholdObservation:
     threshold: float
     split: BenchmarkSplit
     report: ExtractionBenchmarkReport
+    predictions: tuple[ExtractionPrediction, ...] | None = None
 
     def __post_init__(self) -> None:
         _require_nonempty_string(self.threshold_id, label="threshold_id")
@@ -26,6 +27,14 @@ class ExtractionThresholdObservation:
             raise TypeError("split must be a BenchmarkSplit")
         if not isinstance(self.report, ExtractionBenchmarkReport):
             raise TypeError("report must be an ExtractionBenchmarkReport")
+        if self.predictions is not None:
+            if not isinstance(self.predictions, tuple):
+                raise TypeError("predictions must be a tuple of ExtractionPrediction values or None")
+            if any(not isinstance(prediction, ExtractionPrediction) for prediction in self.predictions):
+                raise TypeError("predictions must contain ExtractionPrediction values")
+            target_ids = [prediction.target_id for prediction in self.predictions]
+            if len(set(target_ids)) != len(target_ids):
+                raise ValueError("prediction target_id values must be unique within an observation")
 
 
 @dataclass(frozen=True)
