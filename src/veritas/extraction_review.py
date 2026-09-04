@@ -24,15 +24,18 @@ class ExtractionReviewTarget:
     critical_for_hard_audit: bool = True
 
     def __post_init__(self) -> None:
-        required = (
-            self.target_id,
-            self.paper_id,
-            self.article_family_id,
-            self.object_type,
-            self.key,
-        )
-        if any(not value.strip() for value in required):
-            raise ValueError("review target identity fields cannot be empty")
+        for label, value in (
+            ("target_id", self.target_id),
+            ("paper_id", self.paper_id),
+            ("article_family_id", self.article_family_id),
+            ("object_type", self.object_type),
+            ("key", self.key),
+        ):
+            _require_nonempty_string(value, label=label)
+        if not isinstance(self.kind, EvidenceKind):
+            raise TypeError("kind must be an EvidenceKind")
+        if type(self.critical_for_hard_audit) is not bool:
+            raise TypeError("critical_for_hard_audit must be boolean")
 
 
 @dataclass(frozen=True)
@@ -44,12 +47,16 @@ class ExtractionReviewSubmission:
     note: str = ""
 
     def __post_init__(self) -> None:
-        if not self.target_id.strip() or not self.reviewer_id.strip():
-            raise ValueError("target_id and reviewer_id are required")
-        if not self.accepted_normalized_values:
-            raise ValueError("review submission requires at least one accepted normalized value")
-        if any(not value.strip() for value in self.accepted_normalized_values):
-            raise ValueError("accepted normalized values cannot be empty")
+        _require_nonempty_string(self.target_id, label="target_id")
+        _require_nonempty_string(self.reviewer_id, label="reviewer_id")
+        _require_nonempty_string_tuple(
+            self.accepted_normalized_values,
+            label="accepted_normalized_values",
+        )
+        if not isinstance(self.source, SourceLocation):
+            raise TypeError("source must be a SourceLocation")
+        if not isinstance(self.note, str):
+            raise TypeError("note must be a string")
 
 
 @dataclass(frozen=True)
@@ -61,12 +68,15 @@ class ExtractionAdjudication:
     note: str
 
     def __post_init__(self) -> None:
-        if not self.target_id.strip() or not self.adjudicator_id.strip():
-            raise ValueError("target_id and adjudicator_id are required")
-        if not self.accepted_normalized_values:
-            raise ValueError("adjudication requires accepted normalized values")
-        if not self.note.strip():
-            raise ValueError("adjudication note is required")
+        _require_nonempty_string(self.target_id, label="target_id")
+        _require_nonempty_string(self.adjudicator_id, label="adjudicator_id")
+        _require_nonempty_string_tuple(
+            self.accepted_normalized_values,
+            label="accepted_normalized_values",
+        )
+        if not isinstance(self.source, SourceLocation):
+            raise TypeError("source must be a SourceLocation")
+        _require_nonempty_string(self.note, label="adjudication note")
 
 
 @dataclass(frozen=True)
@@ -79,15 +89,32 @@ class ExtractionReviewRecord:
     schema_version: int = 1
 
     def __post_init__(self) -> None:
+        _require_schema_version(self.schema_version, label="review record")
+        if not isinstance(self.target, ExtractionReviewTarget):
+            raise TypeError("review record target must be an ExtractionReviewTarget")
+        if not isinstance(self.submissions, tuple) or any(
+            not isinstance(submission, ExtractionReviewSubmission)
+            for submission in self.submissions
+        ):
+            raise TypeError("review record submissions must be ExtractionReviewSubmission values")
         if len(self.submissions) < 2:
             raise ValueError("review record requires at least two independent submissions")
+        _require_nonempty_string_tuple(
+            self.accepted_normalized_values,
+            label="accepted_normalized_values",
+        )
+        if not isinstance(self.source, SourceLocation):
+            raise TypeError("review record source must be a SourceLocation")
+        if self.adjudication is not None and not isinstance(
+            self.adjudication, ExtractionAdjudication
+        ):
+            raise TypeError("review record adjudication must be an ExtractionAdjudication or None")
+
         reviewers = [submission.reviewer_id for submission in self.submissions]
         if len(set(reviewers)) != len(reviewers):
             raise ValueError("review submissions must use distinct reviewer ids")
         if any(submission.target_id != self.target.target_id for submission in self.submissions):
             raise ValueError("review submissions must reference the review target")
-        if not self.accepted_normalized_values:
-            raise ValueError("review record requires accepted normalized values")
 
         value_sets = {
             _normalized_values_key(submission.accepted_normalized_values)
@@ -171,14 +198,19 @@ class ExtractionGoldManifest:
     schema_version: int = 1
 
     def __post_init__(self) -> None:
-        if not self.targets:
-            raise ValueError("gold manifest requires at least one target")
+        _require_schema_version(self.schema_version, label="gold manifest")
+        if not isinstance(self.targets, tuple) or not self.targets:
+            raise ValueError("gold manifest requires a non-empty tuple of targets")
+        if any(not isinstance(target, ExtractionGoldTarget) for target in self.targets):
+            raise TypeError("gold manifest targets must be ExtractionGoldTarget values")
         target_ids = [target.target_id for target in self.targets]
         if len(set(target_ids)) != len(target_ids):
             raise ValueError("gold manifest target_id values must be unique")
-        if not self.split_salt.strip() or not self.review_protocol_version.strip():
-            raise ValueError("split_salt and review_protocol_version are required")
-        if not _SHA256_RE.fullmatch(self.source_seed_manifest_sha256):
+        _require_nonempty_string(self.split_salt, label="split_salt")
+        _require_nonempty_string(self.review_protocol_version, label="review_protocol_version")
+        if not isinstance(self.source_seed_manifest_sha256, str) or not _SHA256_RE.fullmatch(
+            self.source_seed_manifest_sha256
+        ):
             raise ValueError("source_seed_manifest_sha256 must be a lowercase SHA-256 hex digest")
         for target in self.targets:
             if not target.review_record_sha256 or not _SHA256_RE.fullmatch(target.review_record_sha256):
@@ -241,6 +273,8 @@ def build_extraction_gold_manifest(
     records = tuple(review_records)
     if not records:
         raise ValueError("locked gold requires at least one review record")
+    if any(not isinstance(record, ExtractionReviewRecord) for record in records):
+        raise TypeError("locked gold review records must be ExtractionReviewRecord values")
     targets = tuple(record.to_gold_target() for record in records)
     return ExtractionGoldManifest(
         targets=targets,
@@ -257,6 +291,8 @@ def validate_extraction_gold_review_records(
     records = tuple(review_records)
     if not records:
         raise ValueError("locked gold validation requires review records")
+    if any(not isinstance(record, ExtractionReviewRecord) for record in records):
+        raise TypeError("locked gold validation requires ExtractionReviewRecord values")
     record_by_id = {record.target.target_id: record for record in records}
     if len(record_by_id) != len(records):
         raise ValueError("review records must use unique target ids")
@@ -280,9 +316,15 @@ def resolve_extraction_reviews(
     *,
     adjudication: ExtractionAdjudication | None = None,
 ) -> ExtractionReviewRecord:
+    if not isinstance(target, ExtractionReviewTarget):
+        raise TypeError("target must be an ExtractionReviewTarget")
     submissions = tuple(submissions)
+    if any(not isinstance(submission, ExtractionReviewSubmission) for submission in submissions):
+        raise TypeError("submissions must contain ExtractionReviewSubmission values")
     if len(submissions) < 2:
         raise ValueError("at least two independent review submissions are required")
+    if adjudication is not None and not isinstance(adjudication, ExtractionAdjudication):
+        raise TypeError("adjudication must be an ExtractionAdjudication or None")
     reviewers = [submission.reviewer_id for submission in submissions]
     if len(set(reviewers)) != len(reviewers):
         raise ValueError("review submissions must use distinct reviewer ids")
@@ -376,3 +418,20 @@ def _gold_target_payload(target: ExtractionGoldTarget) -> dict[str, object]:
         "adjudicated": target.adjudicated,
         "review_record_sha256": target.review_record_sha256,
     }
+
+
+def _require_nonempty_string(value: object, *, label: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be a non-empty string")
+
+
+def _require_nonempty_string_tuple(value: object, *, label: str) -> None:
+    if not isinstance(value, tuple) or not value:
+        raise TypeError(f"{label} must be a non-empty tuple of strings")
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"{label} must contain non-empty strings")
+
+
+def _require_schema_version(value: object, *, label: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value != 1:
+        raise ValueError(f"{label} schema_version must be integer 1")
