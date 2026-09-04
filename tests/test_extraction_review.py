@@ -181,7 +181,7 @@ def test_gold_review_validation_rejects_forged_hash_or_missing_record():
 
     with pytest.raises(ValueError, match="differs from bound review record"):
         validate_extraction_gold_review_records(forged_manifest, (record,))
-    with pytest.raises(ValueError, match="target membership differs"):
+    with pytest.raises(ValueError, match="requires review records"):
         validate_extraction_gold_review_records(manifest, ())
 
 
