@@ -12,7 +12,11 @@ from .benchmark import BenchmarkSplit
 from .corpus import AccessTier, ArticleFamilySplitLock, CorpusPaper
 from .extraction_benchmark import ExtractionSelectivityCurve
 from .extraction_calibration import ExtractionTestEvaluationLock, FrozenExtractionThreshold
-from .extraction_review import ExtractionGoldManifest
+from .extraction_review import (
+    ExtractionGoldManifest,
+    ExtractionReviewRecord,
+    validate_extraction_gold_review_records,
+)
 from .extraction_review_packet import (
     ExtractionReviewPacketTarget,
     build_blinded_seed_review_packets,
@@ -289,7 +293,7 @@ def load_extraction_sampling_frame(path: str | Path) -> ExtractionSamplingFrame:
         raise ValueError("sampling-frame manifest must not contain labels")
     if payload.get("schema_version") != 1 or isinstance(payload.get("schema_version"), bool):
         raise ValueError("sampling-frame manifest schema_version must be 1")
-    if payload.get("status") != _SAMPLING_FRAME_STATUS:
+    if payload.get("status") != _SAMING_FRAME_STATUS:
         raise ValueError("sampling-frame manifest must be explicitly unlabeled")
     rows = payload.get("papers")
     if not isinstance(rows, list) or not rows:
@@ -391,6 +395,7 @@ def build_extraction_evidence_release_receipt(
     seed_manifest: ExtractionSeedManifest,
     threshold_grid: ExtractionThresholdGrid,
     gold_manifest: ExtractionGoldManifest,
+    review_records: tuple[ExtractionReviewRecord, ...] | list[ExtractionReviewRecord],
     split_lock: ArticleFamilySplitLock,
     frozen_threshold: FrozenExtractionThreshold,
     test_seal: ExtractionTestSetSeal,
@@ -463,6 +468,8 @@ def build_extraction_evidence_release_receipt(
             )
         if expected_family != target.article_family_id:
             raise ValueError(f"gold target article-family identity drifted: {target.target_id!r}")
+
+    validate_extraction_gold_review_records(gold_manifest, review_records)
 
     expected_split_lock = gold_manifest.build_split_lock(
         train_fraction=split_lock.train_fraction,
