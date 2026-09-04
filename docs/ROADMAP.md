@@ -76,6 +76,17 @@ Primary goal: move from a four-case regression-table smoke benchmark toward a di
 - [x] register adversarial negative families as a non-production benchmark contract
 - [x] execute gating synthetic adversarial fixtures for repeated labels, continuation tables, footnotes, multi-panel tables, and OCR-like text corruption
 
+### External evidence orchestration — implemented
+
+- [x] maintain an explicitly unlabeled real-paper sampling frame separate from benchmark labels
+- [x] precommit exact sampling-frame bytes, normalized frame identity, review protocol, split salt, and the full threshold grid before TEST
+- [x] require reviewed gold papers/families to come from the precommitted sampling frame
+- [x] mechanically bind deterministic family lock, frozen DEVELOPMENT threshold, TEST seal, and TEST evaluation lock into one release chain
+- [x] require published DEVELOPMENT and TEST coverage–selectivity curves to use the exact precommitted threshold grid
+- [x] issue an immutable non-production release receipt only when the complete evidence chain validates
+
+The evidence workflow is implemented by `src/veritas/extraction_evidence_workflow.py` and `scripts/build_extraction_evidence_plan.py`. It prevents benchmark stages from being silently reordered or mixed across manifests, review protocols, split salts, threshold grids, DEVELOPMENT locks, or TEST seals. It does not generate labels or simulate independent reviewers.
+
 The current four PLOS cases remain **seed cases**, not locked gold. Their legacy manual checks must be replaced by two independent reviewers plus adjudication before they can enter a frozen benchmark split. The synthetic adversarial benchmark is a deterministic fail-closed regression gate; it does not substitute for diverse real-paper negative examples.
 
 ### Corpus expansion and lock — external evidence work remaining
@@ -87,7 +98,7 @@ The current four PLOS cases remain **seed cases**, not locked gold. Their legacy
 - [ ] freeze a genuinely untouched extraction TEST set from reviewed real-paper gold
 - [ ] publish coverage–selectivity curves on that locked development/TEST protocol
 
-These items require new real-paper evidence and genuinely independent human review. The repository contains the split/review/calibration/sealing machinery, but Veritas must not fabricate reviewer independence or claim held-out results before that evidence exists.
+These items require new real-paper evidence and genuinely independent human review. The repository now contains the sampling-frame commitment, review, split, calibration, TEST sealing, curve, and release-receipt machinery; Veritas must not fabricate reviewer independence or claim held-out results before that evidence exists.
 
 ## v0.12 — end-to-end empirical claim graph
 
