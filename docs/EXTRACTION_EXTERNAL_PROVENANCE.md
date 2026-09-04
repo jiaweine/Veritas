@@ -41,14 +41,26 @@ Changing the run id, commit, release receipt, execution plan, split execution se
 
 ## Verification
 
-`verify_external_extraction_provenance()` performs two independent checks:
+`verify_external_extraction_provenance()` is the low-level subject verifier. It:
 
-1. reconstruct the expected statement from the supplied trusted root, attested release receipt, and execution plan and require exact equality;
-2. verify the detached Ed25519 signature against the pinned public key.
+1. reconstructs the expected statement from the supplied trusted root, attested release receipt, and execution plan and requires exact equality;
+2. verifies the detached Ed25519 signature against the pinned public key.
 
-A successful verification produces `ExternallyVerifiedExtractionEvidenceReceipt`, which commits the attested release receipt, execution plan, trust root, signed statement, and signed envelope hashes. It remains `production_authorized = false`.
+A successful low-level verification produces `ExternallyVerifiedExtractionEvidenceReceipt`, which commits the attested release receipt, execution plan, trust root, signed statement, and signed envelope hashes. It remains `production_authorized = false`.
 
-Ed25519 verification is an optional runtime capability. Install `veritas-audit[attestation]` to provide the `cryptography` implementation. CI installs this extra and exercises valid signatures, wrong keys, modified run ids, subject drift, execution-plan drift, and malformed signatures.
+### Run-context verification
+
+A real external-run claim should use `verify_external_extraction_provenance_for_run()` rather than stopping at the low-level verifier. The caller must independently supply:
+
+- the expected run id;
+- the expected run attempt;
+- the expected git commit SHA.
+
+The function first requires those three values to match the signed statement exactly, then performs the full subject reconstruction and Ed25519 verification. Its `ExternallyVerifiedExtractionRunReceipt` preserves the verified run, commit, repository, workflow, runner, issuer, trust-root, and underlying verified-evidence receipt identity.
+
+This prevents a historical but otherwise valid signed statement from being silently reused as proof for a different run, rerun attempt, or commit. The expected context should come from the run that the caller deliberately selected through an independent orchestration or deployment channel; it must not simply be copied from the untrusted signed envelope before verification.
+
+Ed25519 verification is an optional runtime capability. Install `veritas-audit[attestation]` to provide the `cryptography` implementation. CI installs this extra and exercises valid signatures, wrong keys, modified run ids, subject drift, execution-plan drift, expected-run/attempt/commit drift, and malformed signatures.
 
 ## Strict JSON ingress
 
@@ -61,9 +73,11 @@ These loaders require UTF-8 JSON, exact schema keys, supported schema versions, 
 
 The serializer helpers `extraction_external_trust_root_payload()` and `extraction_signed_external_provenance_payload()` provide the corresponding schema-shaped objects for archival.
 
+The stable public import surface for execution evidence, signed provenance, strict JSON ingress, and run-context verification is `veritas.extraction_provenance`.
+
 ## What this proves
 
-With a genuinely pretrusted public key, successful verification proves that the holder of the corresponding private key signed the exact execution/release subject that Veritas independently reconstructed.
+With a genuinely pretrusted public key and independently selected expected run context, successful run-context verification proves that the holder of the corresponding private key signed the exact execution/release subject for that expected run/attempt/commit and that Veritas reconstructed the same subject.
 
 That can support a real external-run provenance claim when the private key is controlled by the claimed trusted runner or signing service.
 
