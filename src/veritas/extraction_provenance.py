@@ -19,6 +19,10 @@ from .extraction_external_provenance import (
     extraction_external_provenance_statement_bytes,
     verify_external_extraction_provenance,
 )
+from .extraction_external_provenance_context import (
+    ExternallyVerifiedExtractionRunReceipt,
+    verify_external_extraction_provenance_for_run,
+)
 from .extraction_external_provenance_json import (
     extraction_external_trust_root_payload,
     extraction_signed_external_provenance_payload,
@@ -29,6 +33,7 @@ from .extraction_external_provenance_json import (
 __all__ = [
     "AttestedExtractionEvidenceReleaseReceipt",
     "ExternallyVerifiedExtractionEvidenceReceipt",
+    "ExternallyVerifiedExtractionRunReceipt",
     "ExtractionExecutionAttestation",
     "ExtractionExecutionEvidence",
     "ExtractionExecutionPlan",
@@ -46,4 +51,5 @@ __all__ = [
     "load_extraction_external_trust_root",
     "load_extraction_signed_external_provenance",
     "verify_external_extraction_provenance",
+    "verify_external_extraction_provenance_for_run",
 ]
