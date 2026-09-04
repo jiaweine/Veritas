@@ -156,10 +156,13 @@ def _observation(
     *,
     accepted: int,
 ) -> ExtractionThresholdObservation:
+    predictions = tuple(
+        _correct_prediction(target) for target in manifest.targets[:accepted]
+    )
     return ExtractionThresholdObservation(
         threshold_id=threshold_id,
         threshold=threshold,
-        report=_report(manifest, accepted=accepted),
+        predictions=predictions,
         manifest=manifest,
     )
 
