@@ -48,7 +48,23 @@ def _submission(
     )
 
 
-def test_two_agreeing_reviewers_create_review_bound_gold():
+def _adjudication(
+    *,
+    target_id: str = "t1",
+    adjudicator: str = "reviewer-c",
+    value: str = "0.18",
+    row: str = "Treatment",
+) -> ExtractionAdjudication:
+    return ExtractionAdjudication(
+        target_id=target_id,
+        adjudicator_id=adjudicator,
+        accepted_normalized_values=(value,),
+        source=_source(row=row),
+        note="independently checked the publication source",
+    )
+
+
+def test_two_agreeing_reviewers_create_review_record_but_not_locked_gold():
     record = resolve_extraction_reviews(
         _target(),
         (_submission("reviewer-a"), _submission("reviewer-b")),
@@ -56,6 +72,18 @@ def test_two_agreeing_reviewers_create_review_bound_gold():
     assert record.adjudicated is False
     assert record.accepted_normalized_values == ("0.18",)
     assert len(record.sha256()) == 64
+
+    with pytest.raises(ValueError, match="requires independent adjudication"):
+        record.to_gold_target()
+
+
+def test_agreeing_reviewers_can_be_independently_adjudicated_for_locked_gold():
+    record = resolve_extraction_reviews(
+        _target(),
+        (_submission("reviewer-a"), _submission("reviewer-b")),
+        adjudication=_adjudication(),
+    )
+    assert record.adjudicated is True
 
     gold = record.to_gold_target()
     assert gold.review_record_sha256 == record.sha256()
@@ -84,36 +112,22 @@ def test_disagreement_requires_independent_adjudication():
 
 
 def test_adjudicator_must_not_be_one_of_the_original_reviewers():
-    adjudication = ExtractionAdjudication(
-        target_id="t1",
-        adjudicator_id="reviewer-a",
-        accepted_normalized_values=("0.18",),
-        source=_source(),
-        note="resolved against PDF",
-    )
     with pytest.raises(ValueError, match="adjudicator must be independent"):
         resolve_extraction_reviews(
             _target(),
             (_submission("reviewer-a", value="0.18"), _submission("reviewer-b", value="0.81")),
-            adjudication=adjudication,
+            adjudication=_adjudication(adjudicator="reviewer-a"),
         )
 
 
 def test_value_or_row_disagreement_can_be_adjudicated_by_third_reviewer():
-    adjudication = ExtractionAdjudication(
-        target_id="t1",
-        adjudicator_id="reviewer-c",
-        accepted_normalized_values=("0.18",),
-        source=_source(),
-        note="checked the publication table and selected the treatment row",
-    )
     record = resolve_extraction_reviews(
         _target(),
         (
             _submission("reviewer-a", value="0.18"),
             _submission("reviewer-b", value="0.18", row="Control"),
         ),
-        adjudication=adjudication,
+        adjudication=_adjudication(),
     )
     assert record.adjudicated is True
     assert record.source.row == "Treatment"
@@ -135,6 +149,7 @@ def test_locked_gold_manifest_requires_review_provenance_and_binds_split_lock():
             _submission("reviewer-a", target_id="t1"),
             _submission("reviewer-b", target_id="t1"),
         ),
+        adjudication=_adjudication(target_id="t1"),
     ).to_gold_target()
     second = resolve_extraction_reviews(
         _target("t2", "family-2"),
@@ -142,6 +157,7 @@ def test_locked_gold_manifest_requires_review_provenance_and_binds_split_lock():
             _submission("reviewer-a", target_id="t2"),
             _submission("reviewer-b", target_id="t2"),
         ),
+        adjudication=_adjudication(target_id="t2"),
     ).to_gold_target()
     manifest = ExtractionGoldManifest(
         targets=(first, second),
@@ -157,6 +173,7 @@ def test_locked_gold_manifest_rejects_legacy_gold_without_review_hash():
     record = resolve_extraction_reviews(
         _target(),
         (_submission("reviewer-a"), _submission("reviewer-b")),
+        adjudication=_adjudication(),
     )
     legacy = record.to_gold_target()
     object.__setattr__(legacy, "review_record_sha256", None)
