@@ -78,7 +78,7 @@ Primary goal: move from a four-case regression-table smoke benchmark toward a di
 
 The current four PLOS cases remain **seed cases**, not locked gold. Their legacy manual checks must be replaced by two independent reviewers plus adjudication before they can enter a frozen benchmark split. The synthetic adversarial benchmark is a deterministic fail-closed regression gate; it does not substitute for diverse real-paper negative examples.
 
-### Corpus expansion and lock — remaining
+### Corpus expansion and lock — external evidence work remaining
 
 - [ ] expand real open-access extraction corpus across journals, layouts, and statistical object types
 - [ ] add real-world adversarial examples for continuation tables, multi-panel layouts, footnotes, repeated labels, and OCR-like extraction failures
@@ -86,6 +86,8 @@ The current four PLOS cases remain **seed cases**, not locked gold. Their legacy
 - [ ] run geometry/native threshold calibration on locked DEVELOPMENT data using the development-only selection API
 - [ ] freeze a genuinely untouched extraction TEST set from reviewed real-paper gold
 - [ ] publish coverage–selectivity curves on that locked development/TEST protocol
+
+These items require new real-paper evidence and genuinely independent human review. The repository contains the split/review/calibration/sealing machinery, but Veritas must not fabricate reviewer independence or claim held-out results before that evidence exists.
 
 ## v0.12 — end-to-end empirical claim graph
 
@@ -121,14 +123,18 @@ These software capabilities remain separate from held-out production certificati
 
 ## v0.14 — data and preregistration integrity
 
-- [ ] preregistration / PAP / registry comparison
-- [ ] raw-to-analysis sample lineage
-- [ ] undocumented exclusion and transformation checks
-- [ ] survey careless-response modules with multi-signal applicability gates
-- [ ] provenance and randomization-record checks where artifacts permit
-- [ ] E5 direct data/provenance concern path with human-review escalation rules
+### Data/provenance integrity substrate — implemented
 
-## Production-certification milestone
+- [x] preregistration / PAP / registry comparison
+- [x] raw-to-analysis sample lineage
+- [x] undocumented exclusion and transformation checks
+- [x] survey careless-response modules with multi-signal applicability gates
+- [x] provenance and randomization-record checks where artifacts permit
+- [x] E5 direct data/provenance concern path with human-review escalation rules
+
+The v0.14 implementation distinguishes protocol deviations, review signals, and direct provenance contradictions. Undocumented analysis operations and survey-response diagnostics do not create E5 findings by themselves. E5 requires a verified direct artifact/randomization/lineage identity mismatch, forces human-review escalation, forbids intent inference, and remains non-production by default. Missing raw/registration/randomization artifacts remain neutral or `UNVERIFIABLE`. See `docs/DATA_PREREGISTRATION_INTEGRITY.md`.
+
+## Production-certification milestone — external evidence work remaining
 
 Production hard-finding authority remains a separate milestone rather than a version checkbox. It requires a sufficiently large, locked, held-out paper corpus to satisfy the certification policy for the **exact** parser/schema/promotion-spec/source-tree/detector/numerical-runtime combination being deployed.
 

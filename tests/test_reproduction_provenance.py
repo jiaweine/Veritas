@@ -49,7 +49,7 @@ def test_processed_data_and_generated_output_have_data_and_code_ancestry() -> No
     assert len(graph.sha256()) == 64
 
 
-def test_provenance_graph_rejects_multiple_producers() -> None:
+def test_provenance_graph_rejects_multiple_producers_without_mutating_state() -> None:
     graph = ReproductionProvenanceGraph()
     for artifact in (
         _artifact("raw", ProvenanceArtifactRole.RAW_DATA, "a"),
@@ -67,8 +67,11 @@ def test_provenance_graph_rejects_multiple_producers() -> None:
             ProvenanceTransform("second", "code-2", ("raw",), ("out",), "f" * 64)
         )
 
+    assert set(graph.transforms) == {"first"}
+    graph.validate()
 
-def test_provenance_graph_rejects_cycles() -> None:
+
+def test_provenance_graph_rejects_cycles_without_mutating_state() -> None:
     graph = ReproductionProvenanceGraph()
     for artifact in (
         _artifact("a", ProvenanceArtifactRole.ANALYSIS_DATA, "a"),
@@ -85,6 +88,9 @@ def test_provenance_graph_rejects_cycles() -> None:
         graph.add_transform(
             ProvenanceTransform("b-to-a", "code-2", ("b",), ("a",), "f" * 64)
         )
+
+    assert set(graph.transforms) == {"a-to-b"}
+    graph.validate()
 
 
 def test_output_without_data_ancestor_fails_closed() -> None:
