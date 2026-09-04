@@ -425,6 +425,18 @@ def build_extraction_evidence_release_receipt(
         raise ValueError("DEVELOPMENT selectivity evidence is bound to a different manifest")
     if test_curve_evidence.manifest_sha256 != test_manifest_sha256:
         raise ValueError("TEST selectivity evidence is bound to a different manifest")
+    _require_selectivity_evidence_context(
+        development_curve_evidence,
+        gold_manifest,
+        split_lock,
+        label="DEVELOPMENT",
+    )
+    _require_selectivity_evidence_context(
+        test_curve_evidence,
+        gold_manifest,
+        split_lock,
+        label="TEST",
+    )
     if (
         frozen_threshold.development_observation_set_sha256
         != development_curve_evidence.observation_set_sha256()
@@ -483,6 +495,19 @@ def extraction_evidence_plan_payload(
     }
 
 
+def _require_selectivity_evidence_context(
+    evidence: ExtractionSelectivityEvidence,
+    gold_manifest: ExtractionGoldManifest,
+    split_lock: ArticleFamilySplitLock,
+    *,
+    label: str,
+) -> None:
+    if evidence.manifest.gold_manifest.sha256() != gold_manifest.sha256():
+        raise ValueError(f"{label} selectivity evidence belongs to a different release gold manifest")
+    if evidence.manifest.split_lock.sha256() != split_lock.sha256():
+        raise ValueError(f"{label} selectivity evidence belongs to a different release split lock")
+
+
 def _require_selectivity_evidence_grid(
     evidence: ExtractionSelectivityEvidence,
     threshold_grid: ExtractionThresholdGrid,
@@ -501,19 +526,6 @@ def _require_selectivity_evidence_grid(
     if actual != expected:
         raise ValueError(
             f"{label} selectivity evidence does not match the precommitted threshold grid"
-        )
-
-
-def _require_curve_thresholds(
-    curve: ExtractionSelectivityCurve,
-    expected: tuple[float, ...],
-    *,
-    label: str,
-) -> None:
-    actual = tuple(float(point.threshold) for point in curve.points)
-    if actual != expected:
-        raise ValueError(
-            f"{label} selectivity curve does not match the precommitted threshold grid"
         )
 
 
@@ -628,5 +640,6 @@ def _stable_sha256(value: object) -> str:
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
+        allow_nan=False,
     ).encode("utf-8")
     return sha256(raw).hexdigest()
