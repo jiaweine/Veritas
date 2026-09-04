@@ -80,7 +80,7 @@ def test_reviewer_packet_blinding_flags_and_schema_are_strictly_typed():
         replace(packet, blinded_to_legacy_values=1)
     with pytest.raises(ValueError, match="other reviews"):
         replace(packet, blinded_to_other_reviews=1)
-    with pytest.raises(ValueError, match="schema_version"):
+    with pytest.raises(TypeError, match="schema_version"):
         replace(packet, schema_version=True)
     with pytest.raises(ValueError, match="schema_version"):
         replace(packet, schema_version=2)
