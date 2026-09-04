@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-
 from test_extraction_evidence_workflow import _release, _workflow_fixture
 
 
