@@ -25,6 +25,7 @@ from veritas.extraction_evidence_workflow import (
     ExtractionThresholdGrid,
     build_extraction_evidence_plan,
     build_extraction_evidence_release_receipt,
+    build_extraction_split_target_manifest,
     load_extraction_sampling_frame,
     load_extraction_seed_manifest,
 )
@@ -164,7 +165,16 @@ def _workflow_fixture():
         grid,
         split_salt=split_salt,
     )
-    development_manifest_sha256 = "c" * 64
+    development_manifest = build_extraction_split_target_manifest(
+        gold,
+        split_lock,
+        split=BenchmarkSplit.DEVELOPMENT,
+    )
+    test_manifest = build_extraction_split_target_manifest(
+        gold,
+        split_lock,
+        split=BenchmarkSplit.TEST,
+    )
     observations = (
         ExtractionThresholdObservation(
             "t-080",
@@ -188,11 +198,10 @@ def _workflow_fixture():
     frozen = select_development_threshold(
         observations,
         policy=ExtractionThresholdPolicy(),
-        development_manifest_sha256=development_manifest_sha256,
+        development_manifest_sha256=development_manifest.sha256(),
     )
-    test_manifest_sha256 = "d" * 64
     test_seal = seal_extraction_test_set(gold, split_lock)
-    test_lock = lock_test_evaluation(frozen, test_manifest_sha256=test_manifest_sha256)
+    test_lock = lock_test_evaluation(frozen, test_manifest_sha256=test_manifest.sha256())
     curve_reports = tuple((observation.threshold, observation.report) for observation in observations)
     development_curve = build_extraction_selectivity_curve(curve_reports)
     test_curve = build_extraction_selectivity_curve(
@@ -209,11 +218,11 @@ def _workflow_fixture():
         "plan": plan,
         "gold": gold,
         "split_lock": split_lock,
+        "development_manifest": development_manifest,
+        "test_manifest": test_manifest,
         "frozen": frozen,
-        "development_manifest_sha256": development_manifest_sha256,
         "test_seal": test_seal,
         "test_lock": test_lock,
-        "test_manifest_sha256": test_manifest_sha256,
         "development_curve": development_curve,
         "test_curve": test_curve,
     }
@@ -230,10 +239,8 @@ def _release(**overrides):
         gold_manifest=fixture["gold"],
         split_lock=fixture["split_lock"],
         frozen_threshold=fixture["frozen"],
-        development_manifest_sha256=fixture["development_manifest_sha256"],
         test_seal=fixture["test_seal"],
         test_evaluation_lock=fixture["test_lock"],
-        test_manifest_sha256=fixture["test_manifest_sha256"],
         development_curve=fixture["development_curve"],
         test_curve=fixture["test_curve"],
     )
@@ -262,11 +269,39 @@ def test_repository_seed_manifest_loads_exact_bytes_and_review_target_universe()
     assert "frontiers-1520668-table2-f01:p_value" in seed.target_map()
 
 
+def test_split_target_manifests_are_deterministic_subsets_of_locked_gold() -> None:
+    fixture = _workflow_fixture()
+    development = fixture["development_manifest"]
+    test = fixture["test_manifest"]
+
+    assert development.split is BenchmarkSplit.DEVELOPMENT
+    assert test.split is BenchmarkSplit.TEST
+    assert development.gold_manifest_sha256 == fixture["gold"].sha256()
+    assert test.gold_manifest_sha256 == fixture["gold"].sha256()
+    assert development.split_lock_sha256 == fixture["split_lock"].sha256()
+    assert test.split_lock_sha256 == fixture["split_lock"].sha256()
+    assert set(development.article_family_ids).isdisjoint(test.article_family_ids)
+    assert set(development.target_ids).isdisjoint(test.target_ids)
+    assert len(development.sha256()) == 64
+    assert len(test.sha256()) == 64
+
+    target_family = {
+        target.target_id: target.article_family_id for target in fixture["gold"].targets
+    }
+    assert {
+        target_family[target_id] for target_id in development.target_ids
+    } == set(development.article_family_ids)
+    assert {target_family[target_id] for target_id in test.target_ids} == set(test.article_family_ids)
+
+
 def test_release_receipt_binds_complete_precommitted_chain_and_is_nonproduction() -> None:
+    fixture = _workflow_fixture()
     first = _release()
     second = _release()
 
     assert first.production_authorized is False
+    assert first.development_manifest_sha256 == fixture["development_manifest"].sha256()
+    assert first.test_manifest_sha256 == fixture["test_manifest"].sha256()
     assert first.sha256() == second.sha256()
     assert len(first.sha256()) == 64
 
@@ -372,8 +407,12 @@ def test_split_lock_and_frozen_threshold_cannot_drift() -> None:
     with pytest.raises(ValueError, match="threshold value"):
         _release(frozen=drifted_frozen)
 
+    wrong_development_manifest = replace(
+        fixture["frozen"],
+        development_manifest_sha256="e" * 64,
+    )
     with pytest.raises(ValueError, match="DEVELOPMENT manifest"):
-        _release(development_manifest_sha256="e" * 64)
+        _release(frozen=wrong_development_manifest)
 
 
 def test_test_seal_and_evaluation_lock_must_bind_exact_frozen_chain() -> None:
@@ -382,8 +421,9 @@ def test_test_seal_and_evaluation_lock_must_bind_exact_frozen_chain() -> None:
     with pytest.raises(ValueError, match="frozen DEVELOPMENT threshold"):
         _release(test_lock=drifted_test_lock)
 
+    wrong_test_manifest = replace(fixture["test_lock"], test_manifest_sha256="1" * 64)
     with pytest.raises(ValueError, match="TEST manifest"):
-        _release(test_manifest_sha256="1" * 64)
+        _release(test_lock=wrong_test_manifest)
 
     drifted_seal = replace(fixture["test_seal"], split_lock_sha256="2" * 64)
     with pytest.raises(ValueError, match="split lock"):
