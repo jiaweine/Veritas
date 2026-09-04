@@ -31,6 +31,8 @@ from veritas.extraction_test_seal import seal_extraction_test_set
 from veritas.ingestion import EvidenceKind
 from veritas.models import SourceLocation
 
+_SEED_SHA = "b" * 64
+
 
 def _paper(index: int) -> CorpusPaper:
     paper_id = f"paper-{index:02d}"
@@ -79,7 +81,7 @@ def _gold(frame: ExtractionSamplingFrame, *, split_salt: str) -> ExtractionGoldM
     return ExtractionGoldManifest(
         targets=targets,
         split_salt=split_salt,
-        source_seed_manifest_sha256="b" * 64,
+        source_seed_manifest_sha256=_SEED_SHA,
     )
 
 
@@ -116,11 +118,13 @@ def _report(*, coverage: float, accuracy: float, upper_bound: float) -> Extracti
 
 def _workflow_fixture():
     frame = _sampling_frame()
-    grid = ExtractionThresholdGrid((
-        ("t-080", 0.80),
-        ("t-090", 0.90),
-        ("t-095", 0.95),
-    ))
+    grid = ExtractionThresholdGrid(
+        (
+            ("t-080", 0.80),
+            ("t-090", 0.90),
+            ("t-095", 0.95),
+        )
+    )
     split_salt = "release-workflow-v1"
     gold = _gold(frame, split_salt=split_salt)
     split_lock = gold.build_split_lock()
@@ -128,17 +132,31 @@ def _workflow_fixture():
     assert BenchmarkSplit.DEVELOPMENT in split_values
     assert BenchmarkSplit.TEST in split_values
 
-    plan = build_extraction_evidence_plan(frame, grid, split_salt=split_salt)
+    plan = build_extraction_evidence_plan(
+        frame,
+        grid,
+        source_seed_manifest_sha256=_SEED_SHA,
+        split_salt=split_salt,
+    )
     development_manifest_sha256 = "c" * 64
     observations = (
         ExtractionThresholdObservation(
-            "t-080", 0.80, BenchmarkSplit.DEVELOPMENT, _report(coverage=0.90, accuracy=0.995, upper_bound=0.04)
+            "t-080",
+            0.80,
+            BenchmarkSplit.DEVELOPMENT,
+            _report(coverage=0.90, accuracy=0.995, upper_bound=0.04),
         ),
         ExtractionThresholdObservation(
-            "t-090", 0.90, BenchmarkSplit.DEVELOPMENT, _report(coverage=0.82, accuracy=1.0, upper_bound=0.03)
+            "t-090",
+            0.90,
+            BenchmarkSplit.DEVELOPMENT,
+            _report(coverage=0.82, accuracy=1.0, upper_bound=0.03),
         ),
         ExtractionThresholdObservation(
-            "t-095", 0.95, BenchmarkSplit.DEVELOPMENT, _report(coverage=0.70, accuracy=1.0, upper_bound=0.02)
+            "t-095",
+            0.95,
+            BenchmarkSplit.DEVELOPMENT,
+            _report(coverage=0.70, accuracy=1.0, upper_bound=0.02),
         ),
     )
     frozen = select_development_threshold(
@@ -149,9 +167,7 @@ def _workflow_fixture():
     test_manifest_sha256 = "d" * 64
     test_seal = seal_extraction_test_set(gold, split_lock)
     test_lock = lock_test_evaluation(frozen, test_manifest_sha256=test_manifest_sha256)
-    curve_reports = tuple(
-        (observation.threshold, observation.report) for observation in observations
-    )
+    curve_reports = tuple((observation.threshold, observation.report) for observation in observations)
     development_curve = build_extraction_selectivity_curve(curve_reports)
     test_curve = build_extraction_selectivity_curve(
         (
@@ -214,7 +230,7 @@ def test_release_receipt_binds_complete_precommitted_chain_and_is_nonproduction(
     assert len(first.sha256()) == 64
 
 
-def test_sampling_frame_or_threshold_grid_drift_fails_closed() -> None:
+def test_sampling_frame_threshold_grid_or_seed_manifest_drift_fails_closed() -> None:
     fixture = _workflow_fixture()
     drifted_frame = ExtractionSamplingFrame(
         papers=fixture["frame"].papers[:-1],
@@ -223,13 +239,19 @@ def test_sampling_frame_or_threshold_grid_drift_fails_closed() -> None:
     with pytest.raises(ValueError, match="sampling frame"):
         _release(frame=drifted_frame)
 
-    drifted_grid = ExtractionThresholdGrid((
-        ("t-080", 0.80),
-        ("t-090", 0.90),
-        ("t-099", 0.99),
-    ))
+    drifted_grid = ExtractionThresholdGrid(
+        (
+            ("t-080", 0.80),
+            ("t-090", 0.90),
+            ("t-099", 0.99),
+        )
+    )
     with pytest.raises(ValueError, match="threshold grid"):
         _release(grid=drifted_grid)
+
+    wrong_seed_gold = replace(fixture["gold"], source_seed_manifest_sha256="8" * 64)
+    with pytest.raises(ValueError, match="seed manifest"):
+        _release(gold=wrong_seed_gold)
 
 
 def test_review_protocol_and_gold_sampling_universe_are_precommitted() -> None:
@@ -273,10 +295,7 @@ def test_split_lock_and_frozen_threshold_cannot_drift() -> None:
 
 def test_test_seal_and_evaluation_lock_must_bind_exact_frozen_chain() -> None:
     fixture = _workflow_fixture()
-    drifted_test_lock = replace(
-        fixture["test_lock"],
-        frozen_threshold_sha256="f" * 64,
-    )
+    drifted_test_lock = replace(fixture["test_lock"], frozen_threshold_sha256="f" * 64)
     with pytest.raises(ValueError, match="frozen DEVELOPMENT threshold"):
         _release(test_lock=drifted_test_lock)
 
@@ -289,7 +308,6 @@ def test_test_seal_and_evaluation_lock_must_bind_exact_frozen_chain() -> None:
 
 
 def test_both_published_curves_must_use_precommitted_threshold_grid() -> None:
-    fixture = _workflow_fixture()
     bad_curve = build_extraction_selectivity_curve(
         (
             (0.80, _report(coverage=0.8, accuracy=1.0, upper_bound=0.04)),
@@ -302,18 +320,36 @@ def test_both_published_curves_must_use_precommitted_threshold_grid() -> None:
         _release(test_curve=bad_curve)
 
 
-def test_plan_hash_binds_split_salt_and_exact_sampling_source_bytes() -> None:
+def test_plan_hash_binds_split_salt_seed_and_exact_sampling_source_bytes() -> None:
     frame = _sampling_frame()
     grid = ExtractionThresholdGrid((("t-1", 0.9),))
-    base = build_extraction_evidence_plan(frame, grid, split_salt="salt-a")
-    changed_salt = build_extraction_evidence_plan(frame, grid, split_salt="salt-b")
+    base = build_extraction_evidence_plan(
+        frame,
+        grid,
+        source_seed_manifest_sha256=_SEED_SHA,
+        split_salt="salt-a",
+    )
+    changed_salt = build_extraction_evidence_plan(
+        frame,
+        grid,
+        source_seed_manifest_sha256=_SEED_SHA,
+        split_salt="salt-b",
+    )
+    changed_seed = build_extraction_evidence_plan(
+        frame,
+        grid,
+        source_seed_manifest_sha256="7" * 64,
+        split_salt="salt-a",
+    )
     changed_bytes = build_extraction_evidence_plan(
         replace(frame, source_manifest_sha256="9" * 64),
         grid,
+        source_seed_manifest_sha256=_SEED_SHA,
         split_salt="salt-a",
     )
 
     assert base.sha256() != changed_salt.sha256()
+    assert base.sha256() != changed_seed.sha256()
     assert base.sha256() != changed_bytes.sha256()
 
 
@@ -337,7 +373,8 @@ def test_evidence_plan_dataclass_rejects_non_hash_commitments() -> None:
         ExtractionEvidencePlan(
             sampling_frame_sha256="not-a-hash",
             sampling_frame_source_manifest_sha256="a" * 64,
+            source_seed_manifest_sha256="b" * 64,
             review_protocol_version="independent-double-review-v1",
             split_salt="salt",
-            threshold_grid_sha256="b" * 64,
+            threshold_grid_sha256="c" * 64,
         )
