@@ -229,3 +229,21 @@ def test_selectivity_curve_rejects_nonfinite_report_metrics_before_release_hashi
         build_extraction_selectivity_curve(
             [(0.5, replace(report, selective_coverage=float("nan")))]
         )
+
+
+def test_gold_target_rejects_nonboolean_authority_flags():
+    target = _gold("typed", "fam-a", "0.18")
+    with pytest.raises(TypeError, match="critical_for_hard_audit"):
+        replace(target, critical_for_hard_audit=1)
+    with pytest.raises(ValueError, match="requires adjudication"):
+        replace(target, adjudicated=1)
+
+
+def test_gold_target_rejects_malformed_identity_values_and_reviewers():
+    target = _gold("typed", "fam-a", "0.18")
+    with pytest.raises(ValueError, match="object_type"):
+        replace(target, object_type="")
+    with pytest.raises(TypeError, match="non-empty tuple"):
+        replace(target, accepted_normalized_values=["0.18"])
+    with pytest.raises(TypeError, match="reviewers"):
+        replace(target, reviewers=("reviewer-a", 1))
