@@ -195,3 +195,28 @@ def test_locked_gold_manifest_rejects_legacy_gold_without_review_hash():
             split_salt="v0.11-extraction-lock",
             source_seed_manifest_sha256="a" * 64,
         )
+
+
+def test_review_and_gold_schema_versions_fail_closed():
+    record = _record()
+    with pytest.raises(ValueError, match="review record schema_version"):
+        replace(record, schema_version=True)
+    with pytest.raises(ValueError, match="review record schema_version"):
+        replace(record, schema_version=2)
+
+    manifest = build_extraction_gold_manifest(
+        (record,),
+        split_salt="v0.11-extraction-lock",
+        source_seed_manifest_sha256="a" * 64,
+    )
+    with pytest.raises(ValueError, match="gold manifest schema_version"):
+        replace(manifest, schema_version=False)
+
+
+def test_review_objects_reject_ambiguous_types_before_hashing():
+    with pytest.raises(TypeError, match="critical_for_hard_audit"):
+        replace(_target(), critical_for_hard_audit=1)
+    with pytest.raises(TypeError, match="non-empty tuple"):
+        replace(_submission("reviewer-a"), accepted_normalized_values=["0.18"])
+    with pytest.raises(TypeError, match="submissions"):
+        replace(_record(), submissions=list(_record().submissions))
