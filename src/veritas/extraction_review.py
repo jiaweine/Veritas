@@ -64,7 +64,7 @@ class ExtractionAdjudication:
         if not self.target_id.strip() or not self.adjudicator_id.strip():
             raise ValueError("target_id and adjudicator_id are required")
         if not self.accepted_normalized_values:
-            raise ValueError("adjudication requires at least one accepted normalized value")
+            raise ValueError("adjudication requires accepted normalized values")
         if not self.note.strip():
             raise ValueError("adjudication note is required")
 
@@ -86,13 +86,37 @@ class ExtractionReviewRecord:
             raise ValueError("review submissions must use distinct reviewer ids")
         if any(submission.target_id != self.target.target_id for submission in self.submissions):
             raise ValueError("review submissions must reference the review target")
-        if self.adjudication is not None:
-            if self.adjudication.target_id != self.target.target_id:
-                raise ValueError("adjudication must reference the review target")
-            if self.adjudication.adjudicator_id in set(reviewers):
-                raise ValueError("adjudicator must be independent of the original reviewers")
         if not self.accepted_normalized_values:
             raise ValueError("review record requires accepted normalized values")
+
+        value_sets = {
+            _normalized_values_key(submission.accepted_normalized_values)
+            for submission in self.submissions
+        }
+        source_keys = {_source_identity_key(submission.source) for submission in self.submissions}
+        consensus = len(value_sets) == 1 and len(source_keys) == 1
+
+        if self.adjudication is None:
+            if not consensus:
+                raise ValueError("review disagreement requires independent adjudication")
+            expected_values = _canonical_values(self.submissions[0].accepted_normalized_values)
+            expected_source = self.submissions[0].source
+            if _canonical_values(self.accepted_normalized_values) != expected_values:
+                raise ValueError("review record values differ from reviewer consensus")
+            if _source_identity_key(self.source) != _source_identity_key(expected_source):
+                raise ValueError("review record source differs from reviewer consensus")
+            return
+
+        if self.adjudication.target_id != self.target.target_id:
+            raise ValueError("adjudication must reference the review target")
+        if self.adjudication.adjudicator_id in set(reviewers):
+            raise ValueError("adjudicator must be independent of the original reviewers")
+        if _canonical_values(self.accepted_normalized_values) != _canonical_values(
+            self.adjudication.accepted_normalized_values
+        ):
+            raise ValueError("review record values differ from adjudication")
+        if _source_identity_key(self.source) != _source_identity_key(self.adjudication.source):
+            raise ValueError("review record source differs from adjudication")
 
     @property
     def reviewers(self) -> tuple[str, ...]:
@@ -120,6 +144,8 @@ class ExtractionReviewRecord:
         return sha256(raw).hexdigest()
 
     def to_gold_target(self) -> ExtractionGoldTarget:
+        if self.adjudication is None:
+            raise ValueError("locked gold promotion requires independent adjudication")
         return ExtractionGoldTarget(
             target_id=self.target.target_id,
             paper_id=self.target.paper_id,
@@ -224,14 +250,12 @@ def resolve_extraction_reviews(
     source_keys = {_source_identity_key(submission.source) for submission in submissions}
     consensus = len(value_sets) == 1 and len(source_keys) == 1
 
-    if consensus:
+    if adjudication is None:
+        if not consensus:
+            raise ValueError("review disagreement requires independent adjudication")
         accepted = _canonical_values(submissions[0].accepted_normalized_values)
         source = submissions[0].source
-        if adjudication is not None:
-            raise ValueError("adjudication is not needed when independent reviewers already agree")
     else:
-        if adjudication is None:
-            raise ValueError("review disagreement requires independent adjudication")
         if adjudication.target_id != target.target_id:
             raise ValueError("adjudication must reference the target")
         if adjudication.adjudicator_id in set(reviewers):
