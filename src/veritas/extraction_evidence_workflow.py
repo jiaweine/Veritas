@@ -87,6 +87,20 @@ class ExtractionSeedManifest:
     def target_map(self) -> dict[str, ExtractionReviewPacketTarget]:
         return {target.target_id: target for target in self.targets}
 
+    def sha256(self) -> str:
+        return _stable_sha256(
+            {
+                "schema_version": self.schema_version,
+                "status": self.status,
+                "source_manifest_sha256": self.source_manifest_sha256,
+                "production_hard_finding_authorized": self.production_hard_finding_authorized,
+                "targets": [
+                    asdict(target)
+                    for target in sorted(self.targets, key=lambda item: item.target_id)
+                ],
+            }
+        )
+
 
 @dataclass(frozen=True)
 class ExtractionThresholdGrid:
@@ -146,6 +160,7 @@ class ExtractionEvidencePlan:
     sampling_frame_sha256: str
     sampling_frame_source_manifest_sha256: str
     source_seed_manifest_sha256: str
+    seed_target_universe_sha256: str
     review_protocol_version: str
     split_salt: str
     threshold_grid_sha256: str
@@ -159,6 +174,7 @@ class ExtractionEvidencePlan:
                 self.sampling_frame_source_manifest_sha256,
             ),
             ("source_seed_manifest_sha256", self.source_seed_manifest_sha256),
+            ("seed_target_universe_sha256", self.seed_target_universe_sha256),
             ("threshold_grid_sha256", self.threshold_grid_sha256),
         ):
             _require_sha256(value, label=label)
@@ -267,17 +283,17 @@ def load_extraction_seed_manifest(path: str | Path) -> ExtractionSeedManifest:
 
 def build_extraction_evidence_plan(
     sampling_frame: ExtractionSamplingFrame,
+    seed_manifest: ExtractionSeedManifest,
     threshold_grid: ExtractionThresholdGrid,
     *,
-    source_seed_manifest_sha256: str,
     review_protocol_version: str = "independent-double-review-v1",
     split_salt: str,
 ) -> ExtractionEvidencePlan:
-    _require_sha256(source_seed_manifest_sha256, label="source_seed_manifest_sha256")
     return ExtractionEvidencePlan(
         sampling_frame_sha256=sampling_frame.sha256(),
         sampling_frame_source_manifest_sha256=sampling_frame.source_manifest_sha256,
-        source_seed_manifest_sha256=source_seed_manifest_sha256,
+        source_seed_manifest_sha256=seed_manifest.source_manifest_sha256,
+        seed_target_universe_sha256=seed_manifest.sha256(),
         review_protocol_version=review_protocol_version,
         split_salt=split_salt,
         threshold_grid_sha256=threshold_grid.sha256(),
@@ -308,6 +324,8 @@ def build_extraction_evidence_release_receipt(
         raise ValueError("sampling-frame source bytes do not match the precommitted evidence plan")
     if seed_manifest.source_manifest_sha256 != plan.source_seed_manifest_sha256:
         raise ValueError("seed manifest does not match the precommitted evidence plan")
+    if seed_manifest.sha256() != plan.seed_target_universe_sha256:
+        raise ValueError("seed target universe does not match the precommitted evidence plan")
     if threshold_grid.sha256() != plan.threshold_grid_sha256:
         raise ValueError("threshold grid does not match the precommitted evidence plan")
     if gold_manifest.source_seed_manifest_sha256 != plan.source_seed_manifest_sha256:
@@ -342,6 +360,20 @@ def build_extraction_evidence_release_receipt(
         )
         if seed_identity != gold_identity:
             raise ValueError(f"gold target identity drifted from seed manifest: {target.target_id!r}")
+        seed_locator = (
+            seed_target.expected_page,
+            seed_target.table_label,
+            seed_target.row_label,
+        )
+        gold_locator = (
+            target.source.page,
+            target.source.table,
+            target.source.row,
+        )
+        if seed_locator != gold_locator:
+            raise ValueError(
+                f"gold target source locator drifted from seed manifest: {target.target_id!r}"
+            )
 
         expected_family = family_by_paper.get(target.paper_id)
         if expected_family is None:
