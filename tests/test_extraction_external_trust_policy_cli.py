@@ -73,6 +73,7 @@ def test_build_external_trust_policy_cli_rejects_bad_plan_hash(tmp_path: Path) -
             str(tmp_path / "policy.json"),
         ],
         cwd=_root(),
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -100,6 +101,7 @@ def test_build_external_trust_policy_cli_rejects_unknown_root_fields(tmp_path: P
             str(tmp_path / "policy.json"),
         ],
         cwd=_root(),
+        check=False,
         capture_output=True,
         text=True,
     )
