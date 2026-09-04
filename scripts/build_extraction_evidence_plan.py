@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 from veritas.extraction_evidence_workflow import (
@@ -22,6 +23,16 @@ def _threshold(value: str) -> tuple[str, float]:
     except ValueError as exc:
         raise argparse.ArgumentTypeError("threshold VALUE must be numeric") from exc
     return threshold_id, numeric
+
+
+def _confidence(value: str) -> float:
+    try:
+        numeric = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("benchmark confidence must be numeric") from exc
+    if not math.isfinite(numeric) or not 0.0 < numeric < 1.0:
+        raise argparse.ArgumentTypeError("benchmark confidence must be finite and in (0, 1)")
+    return numeric
 
 
 def main() -> int:
@@ -45,6 +56,12 @@ def main() -> int:
         default="independent-double-review-v1",
     )
     parser.add_argument(
+        "--benchmark-confidence",
+        type=_confidence,
+        default=0.95,
+        help="One-sided benchmark confidence level to precommit before DEVELOPMENT/TEST evaluation.",
+    )
+    parser.add_argument(
         "--threshold",
         action="append",
         type=_threshold,
@@ -63,6 +80,7 @@ def main() -> int:
         threshold_grid,
         review_protocol_version=args.review_protocol_version,
         split_salt=args.split_salt,
+        benchmark_confidence=args.benchmark_confidence,
     )
     payload = extraction_evidence_plan_payload(plan, threshold_grid)
     args.output.parent.mkdir(parents=True, exist_ok=True)
