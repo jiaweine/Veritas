@@ -23,7 +23,10 @@ The comparison reports protocol differences. It does not infer whether a differe
 - artifact SHA-256;
 - row-identity-set SHA-256;
 - row count;
-- exact source provenance.
+- exact source provenance;
+- an explicit `artifact_identity_verified` flag.
+
+The lineage itself carries `completeness_verified`. This is deliberately separate from merely having hashes: a cryptographic digest identifies supplied bytes, but it does not prove that those bytes are the independently verified raw/analysis artifact or that the recorded DAG includes every relevant transformation.
 
 `LineageOperation` records exclusions, filters, transformations, merges, and derivations with an evidence hash and optional registered-plan item identity. The lineage is a DAG, each produced snapshot has at most one producer, and invalid mutations are rolled back rather than leaving a partially corrupted graph.
 
@@ -49,7 +52,7 @@ The strongest survey-only output is `REVIEW`. Survey response heuristics never c
 
 A randomization mismatch is a direct provenance concern only when the randomization artifact identity is verified and the observed assignment extraction meets the high-confidence gate. Otherwise the result is `UNVERIFIABLE`.
 
-`compare_artifact_identity()` performs exact byte-identity checks against a verified expected artifact hash. `compare_lineage_origin()` checks whether a declared raw sample is actually an ancestor of the analysis sample in the verified lineage DAG.
+`compare_artifact_identity()` performs exact byte-identity checks against a verified expected artifact hash. `compare_lineage_origin()` checks whether a declared raw sample is actually an ancestor of the analysis sample. A lineage-origin result can be direct evidence only when **both endpoint artifact identities are verified and lineage completeness is independently verified**. If any of those conditions is absent, lineage-origin comparison returns `UNVERIFIABLE` rather than treating graph absence as a contradiction.
 
 ## E5 direct data/provenance concern path
 
