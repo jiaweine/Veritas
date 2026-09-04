@@ -222,9 +222,10 @@ def _workflow_fixture():
             _report(coverage=0.70, accuracy=1.0, upper_bound=0.02),
         ),
     )
+    policy = ExtractionThresholdPolicy()
     frozen = select_development_threshold(
         observations,
-        policy=ExtractionThresholdPolicy(),
+        policy=policy,
         development_manifest_sha256=development_manifest.sha256(),
     )
     test_seal = seal_extraction_test_set(gold, split_lock)
@@ -248,6 +249,8 @@ def _workflow_fixture():
         "split_lock": split_lock,
         "development_manifest": development_manifest,
         "test_manifest": test_manifest,
+        "policy": policy,
+        "observations": observations,
         "frozen": frozen,
         "test_seal": test_seal,
         "test_lock": test_lock,
@@ -267,6 +270,8 @@ def _release(**overrides):
         gold_manifest=fixture["gold"],
         review_records=fixture["review_records"],
         split_lock=fixture["split_lock"],
+        threshold_policy=fixture["policy"],
+        development_observations=fixture["observations"],
         frozen_threshold=fixture["frozen"],
         test_seal=fixture["test_seal"],
         test_evaluation_lock=fixture["test_lock"],
@@ -350,6 +355,34 @@ def test_release_requires_concrete_review_records_not_only_gold_hash_fields() ->
 
     with pytest.raises(ValueError, match="target membership differs"):
         _release(review_records=fixture["review_records"][1:])
+
+
+def test_release_recomputes_development_policy_and_threshold_selection() -> None:
+    fixture = _workflow_fixture()
+    changed_policy = ExtractionThresholdPolicy(min_selective_coverage=0.30)
+    with pytest.raises(ValueError, match="deterministic DEVELOPMENT selection"):
+        _release(policy=changed_policy)
+
+    forged_frozen = replace(fixture["frozen"], policy_sha256="f" * 64)
+    with pytest.raises(ValueError, match="deterministic DEVELOPMENT selection"):
+        _release(frozen=forged_frozen)
+
+    drifted_observation = replace(fixture["observations"][0], threshold=0.81)
+    with pytest.raises(ValueError, match="threshold value differs"):
+        _release(observations=(drifted_observation, *fixture["observations"][1:]))
+
+
+def test_development_curve_must_be_derived_from_bound_observations() -> None:
+    fixture = _workflow_fixture()
+    changed_curve = build_extraction_selectivity_curve(
+        (
+            (0.80, _report(coverage=0.89, accuracy=0.995, upper_bound=0.04)),
+            (0.90, fixture["observations"][1].report),
+            (0.95, fixture["observations"][2].report),
+        )
+    )
+    with pytest.raises(ValueError, match="bound DEVELOPMENT observations"):
+        _release(development_curve=changed_curve)
 
 
 def test_sampling_frame_threshold_grid_or_seed_manifest_drift_fails_closed() -> None:
@@ -450,14 +483,14 @@ def test_split_lock_and_frozen_threshold_cannot_drift() -> None:
         _release(split_lock=drifted_split)
 
     drifted_frozen = replace(fixture["frozen"], threshold=fixture["frozen"].threshold + 0.001)
-    with pytest.raises(ValueError, match="threshold value"):
+    with pytest.raises(ValueError, match="deterministic DEVELOPMENT selection"):
         _release(frozen=drifted_frozen)
 
     wrong_development_manifest = replace(
         fixture["frozen"],
         development_manifest_sha256="e" * 64,
     )
-    with pytest.raises(ValueError, match="DEVELOPMENT manifest"):
+    with pytest.raises(ValueError, match="deterministic DEVELOPMENT selection"):
         _release(frozen=wrong_development_manifest)
 
 
