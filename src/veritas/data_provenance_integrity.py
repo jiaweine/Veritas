@@ -111,7 +111,10 @@ def compare_randomization_record(
         observed.unit_universe_sha256,
         observed.treatment_assignment_sha256,
     )
-    if not record.artifact_identity_verified or observed.extraction_confidence < minimum_extraction_confidence:
+    if (
+        not record.artifact_identity_verified
+        or observed.extraction_confidence < minimum_extraction_confidence
+    ):
         return ProvenanceConcern(
             ProvenanceConcernKind.RANDOMIZATION_RECORD,
             ProvenanceCheckStatus.UNVERIFIABLE,
@@ -190,6 +193,24 @@ def compare_lineage_origin(
         raise ValueError("analysis snapshot is not present in the lineage")
     raw = lineage.snapshots[expected_raw_snapshot_id]
     analysis = lineage.snapshots[analysis_snapshot_id]
+    evidence = (raw.artifact_sha256, analysis.artifact_sha256, lineage.sha256())
+    if not (
+        raw.artifact_identity_verified
+        and analysis.artifact_identity_verified
+        and lineage.completeness_verified
+    ):
+        return ProvenanceConcern(
+            ProvenanceConcernKind.SAMPLE_LINEAGE,
+            ProvenanceCheckStatus.UNVERIFIABLE,
+            (
+                "sample-lineage origin requires verified raw/analysis artifact identities "
+                "and independently verified lineage completeness"
+            ),
+            analysis.source,
+            evidence,
+            False,
+        )
+
     ancestors = set(lineage.trace_ancestors(analysis_snapshot_id))
     if expected_raw_snapshot_id == analysis_snapshot_id or expected_raw_snapshot_id in ancestors:
         status = ProvenanceCheckStatus.MATCH
@@ -202,7 +223,7 @@ def compare_lineage_origin(
         status,
         explanation,
         analysis.source,
-        (raw.artifact_sha256, analysis.artifact_sha256, lineage.sha256()),
+        evidence,
         True,
     )
 
