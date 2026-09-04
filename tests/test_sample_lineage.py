@@ -141,6 +141,31 @@ def test_lineage_cycle_fails_closed_without_mutating_state() -> None:
     lineage.validate()
 
 
+def test_lineage_verification_flags_require_real_booleans() -> None:
+    with pytest.raises(TypeError, match="artifact_identity_verified"):
+        SampleSnapshot(
+            "raw",
+            "a" * 64,
+            "b" * 64,
+            4,
+            SourceLocation(artifact_id="raw"),
+            "true",  # type: ignore[arg-type]
+        )
+
+    lineage = SampleLineage(completeness_verified="true")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="completeness_verified"):
+        lineage.validate()
+
+
+def test_lineage_hash_binds_completeness_verification_state() -> None:
+    unverified = SampleLineage(completeness_verified=False)
+    verified = SampleLineage(completeness_verified=True)
+    for lineage in (unverified, verified):
+        lineage.add_snapshot(_snapshot("raw", 4, "a"))
+
+    assert unverified.sha256() != verified.sha256()
+
+
 def test_row_identity_hash_is_order_invariant_but_rejects_duplicates() -> None:
     assert row_identity_sha256(("b", "a")) == row_identity_sha256(("a", "b"))
     with pytest.raises(ValueError, match="unique"):
