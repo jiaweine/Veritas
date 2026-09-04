@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-
 from test_extraction_evidence_workflow import _workflow_fixture
+
 from veritas.benchmark import BenchmarkSplit
 from veritas.extraction_execution_evidence import (
     ExtractionExecutionEvidence,
