@@ -175,12 +175,7 @@ def build_extraction_selectivity_curve(
     reports: tuple[tuple[float, ExtractionBenchmarkReport], ...]
     | list[tuple[float, ExtractionBenchmarkReport]],
 ) -> ExtractionSelectivityCurve:
-    """Expose the coverage/error trade-off across frozen thresholds.
-
-    The returned object intentionally has no AUC or aggregate score. For integrity auditing,
-    a single scalar can hide the difference between abstaining aggressively and accepting a larger
-    fraction of fields with more wrong accepts.
-    """
+    """Expose the coverage/error trade-off across frozen thresholds."""
     reports = tuple(reports)
     if not reports:
         raise ValueError("selectivity curve requires at least one threshold report")
@@ -210,12 +205,156 @@ def build_extraction_selectivity_curve(
     return ExtractionSelectivityCurve(points=points)
 
 
+def build_extraction_benchmark_report_from_outcomes(
+    gold: tuple[ExtractionGoldTarget, ...] | list[ExtractionGoldTarget],
+    outcomes: tuple[ExtractionTargetOutcome, ...] | list[ExtractionTargetOutcome],
+    *,
+    confidence: float = 0.95,
+) -> ExtractionBenchmarkReport:
+    """Recompute benchmark aggregates from exact gold membership and per-target outcomes."""
+    gold = tuple(gold)
+    outcomes = tuple(outcomes)
+    _require_confidence(confidence)
+    if any(not isinstance(target, ExtractionGoldTarget) for target in gold):
+        raise TypeError("gold must contain ExtractionGoldTarget values")
+    if any(not isinstance(outcome, ExtractionTargetOutcome) for outcome in outcomes):
+        raise TypeError("outcomes must contain ExtractionTargetOutcome values")
+
+    gold_by_id = {target.target_id: target for target in gold}
+    if len(gold_by_id) != len(gold):
+        raise ValueError("gold target_id values must be unique")
+    outcome_by_id = {outcome.target_id: outcome for outcome in outcomes}
+    if len(outcome_by_id) != len(outcomes):
+        raise ValueError("outcome target_id values must be unique")
+    if set(outcome_by_id) != set(gold_by_id):
+        missing = tuple(sorted(set(gold_by_id) - set(outcome_by_id)))
+        extra = tuple(sorted(set(outcome_by_id) - set(gold_by_id)))
+        raise ValueError(
+            "benchmark outcome membership differs from exact gold membership: "
+            f"missing={missing!r}, extra={extra!r}"
+        )
+
+    ordered_outcomes = tuple(outcome_by_id[target.target_id] for target in gold)
+    for target, outcome in zip(gold, ordered_outcomes, strict=True):
+        _validate_outcome_against_gold(outcome, target)
+
+    accepted_outcomes = [outcome for outcome in ordered_outcomes if outcome.accepted]
+    fully_correct = sum(outcome.fully_correct_accept for outcome in accepted_outcomes)
+    wrong = sum(outcome.wrong_accept for outcome in accepted_outcomes)
+    critical = [outcome for outcome in ordered_outcomes if outcome.critical_for_hard_audit]
+    critical_families = {outcome.article_family_id for outcome in critical}
+    wrong_families = {
+        outcome.article_family_id for outcome in critical if outcome.wrong_accept
+    }
+
+    field_outcomes = [outcome for outcome in ordered_outcomes if outcome.kind is EvidenceKind.FIELD]
+    accepted_fields = [outcome for outcome in field_outcomes if outcome.accepted]
+    semantic_outcomes = [
+        outcome for outcome in ordered_outcomes if outcome.kind is EvidenceKind.SEMANTIC_GATE
+    ]
+    accepted_semantic = [outcome for outcome in semantic_outcomes if outcome.accepted]
+
+    table_row_target_ids = {
+        target.target_id
+        for target in gold
+        if target.kind is EvidenceKind.FIELD
+        and (target.source.table is not None or target.source.figure is not None)
+        and target.source.row is not None
+    }
+    table_row_outcomes = [
+        outcome for outcome in ordered_outcomes if outcome.target_id in table_row_target_ids
+    ]
+    accepted_table_rows = [outcome for outcome in table_row_outcomes if outcome.accepted]
+
+    accepted_count = len(accepted_outcomes)
+    target_count = len(ordered_outcomes)
+    family_count = len(critical_families)
+    family_wrong_count = len(wrong_families)
+
+    return ExtractionBenchmarkReport(
+        targets=target_count,
+        accepted=accepted_count,
+        fully_correct_accepts=fully_correct,
+        wrong_accepts=wrong,
+        abstentions=sum(
+            outcome.decision is ExtractionDecision.ABSTAIN for outcome in ordered_outcomes
+        ),
+        conflicts=sum(
+            outcome.decision is ExtractionDecision.CONFLICT for outcome in ordered_outcomes
+        ),
+        domain_shifts=sum(
+            outcome.decision is ExtractionDecision.DOMAIN_SHIFT for outcome in ordered_outcomes
+        ),
+        selective_coverage=_rate(accepted_count, target_count),
+        accepted_full_accuracy=_rate(fully_correct, accepted_count),
+        wrong_accept_rate=_rate(wrong, target_count),
+        accepted_value_accuracy=_rate(
+            sum(outcome.value_correct is True for outcome in accepted_outcomes),
+            accepted_count,
+        ),
+        accepted_source_accuracy=_rate(
+            sum(outcome.source_correct is True for outcome in accepted_outcomes),
+            accepted_count,
+        ),
+        field_targets=len(field_outcomes),
+        accepted_field_targets=len(accepted_fields),
+        accepted_field_value_accuracy=_rate(
+            sum(outcome.value_correct is True for outcome in accepted_fields),
+            len(accepted_fields),
+        ),
+        table_row_targets=len(table_row_outcomes),
+        accepted_table_row_targets=len(accepted_table_rows),
+        accepted_table_row_identity_accuracy=_rate(
+            sum(
+                outcome.display_item_correct is True and outcome.row_correct is True
+                for outcome in accepted_table_rows
+            ),
+            len(accepted_table_rows),
+        ),
+        semantic_gate_targets=len(semantic_outcomes),
+        accepted_semantic_gate_targets=len(accepted_semantic),
+        accepted_semantic_gate_accuracy=_rate(
+            sum(outcome.fully_correct_accept for outcome in accepted_semantic),
+            len(accepted_semantic),
+        ),
+        critical_article_families=family_count,
+        critical_wrong_accept_families=family_wrong_count,
+        critical_family_wrong_accept_rate=_rate(family_wrong_count, family_count),
+        critical_family_wrong_accept_upper_bound=binomial_upper_bound(
+            family_wrong_count,
+            family_count,
+            confidence=confidence,
+        ),
+        outcomes=ordered_outcomes,
+    )
+
+
+def validate_extraction_benchmark_report(
+    report: ExtractionBenchmarkReport,
+    gold: tuple[ExtractionGoldTarget, ...] | list[ExtractionGoldTarget],
+    *,
+    confidence: float = 0.95,
+) -> None:
+    """Fail closed unless report aggregates exactly recompute from its outcomes and gold."""
+    if not isinstance(report, ExtractionBenchmarkReport):
+        raise TypeError("report must be an ExtractionBenchmarkReport")
+    expected = build_extraction_benchmark_report_from_outcomes(
+        gold,
+        report.outcomes,
+        confidence=confidence,
+    )
+    if expected != report:
+        raise ValueError("extraction benchmark report aggregates differ from bound outcomes")
+
+
 def evaluate_extraction_benchmark(
     gold: tuple[ExtractionGoldTarget, ...] | list[ExtractionGoldTarget],
     predictions: tuple[ExtractionPrediction, ...] | list[ExtractionPrediction],
     *,
     confidence: float = 0.95,
 ) -> ExtractionBenchmarkReport:
+    gold = tuple(gold)
+    predictions = tuple(predictions)
     gold_by_id = {target.target_id: target for target in gold}
     if len(gold_by_id) != len(gold):
         raise ValueError("gold target_id values must be unique")
@@ -295,87 +434,62 @@ def evaluate_extraction_benchmark(
             )
         )
 
-    accepted_outcomes = [outcome for outcome in outcomes if outcome.accepted]
-    fully_correct = sum(outcome.fully_correct_accept for outcome in accepted_outcomes)
-    wrong = sum(outcome.wrong_accept for outcome in accepted_outcomes)
-    critical = [outcome for outcome in outcomes if outcome.critical_for_hard_audit]
-    critical_families = {outcome.article_family_id for outcome in critical}
-    wrong_families = {
-        outcome.article_family_id for outcome in critical if outcome.wrong_accept
-    }
-
-    field_outcomes = [outcome for outcome in outcomes if outcome.kind is EvidenceKind.FIELD]
-    accepted_fields = [outcome for outcome in field_outcomes if outcome.accepted]
-    semantic_outcomes = [
-        outcome for outcome in outcomes if outcome.kind is EvidenceKind.SEMANTIC_GATE
-    ]
-    accepted_semantic = [outcome for outcome in semantic_outcomes if outcome.accepted]
-
-    table_row_target_ids = {
-        target.target_id
-        for target in gold
-        if target.kind is EvidenceKind.FIELD
-        and (target.source.table is not None or target.source.figure is not None)
-        and target.source.row is not None
-    }
-    table_row_outcomes = [outcome for outcome in outcomes if outcome.target_id in table_row_target_ids]
-    accepted_table_rows = [outcome for outcome in table_row_outcomes if outcome.accepted]
-
-    accepted_count = len(accepted_outcomes)
-    target_count = len(outcomes)
-    family_count = len(critical_families)
-    family_wrong_count = len(wrong_families)
-
-    return ExtractionBenchmarkReport(
-        targets=target_count,
-        accepted=accepted_count,
-        fully_correct_accepts=fully_correct,
-        wrong_accepts=wrong,
-        abstentions=sum(outcome.decision is ExtractionDecision.ABSTAIN for outcome in outcomes),
-        conflicts=sum(outcome.decision is ExtractionDecision.CONFLICT for outcome in outcomes),
-        domain_shifts=sum(outcome.decision is ExtractionDecision.DOMAIN_SHIFT for outcome in outcomes),
-        selective_coverage=_rate(accepted_count, target_count),
-        accepted_full_accuracy=_rate(fully_correct, accepted_count),
-        wrong_accept_rate=_rate(wrong, target_count),
-        accepted_value_accuracy=_rate(
-            sum(outcome.value_correct is True for outcome in accepted_outcomes),
-            accepted_count,
-        ),
-        accepted_source_accuracy=_rate(
-            sum(outcome.source_correct is True for outcome in accepted_outcomes),
-            accepted_count,
-        ),
-        field_targets=len(field_outcomes),
-        accepted_field_targets=len(accepted_fields),
-        accepted_field_value_accuracy=_rate(
-            sum(outcome.value_correct is True for outcome in accepted_fields),
-            len(accepted_fields),
-        ),
-        table_row_targets=len(table_row_outcomes),
-        accepted_table_row_targets=len(accepted_table_rows),
-        accepted_table_row_identity_accuracy=_rate(
-            sum(
-                outcome.display_item_correct is True and outcome.row_correct is True
-                for outcome in accepted_table_rows
-            ),
-            len(accepted_table_rows),
-        ),
-        semantic_gate_targets=len(semantic_outcomes),
-        accepted_semantic_gate_targets=len(accepted_semantic),
-        accepted_semantic_gate_accuracy=_rate(
-            sum(outcome.fully_correct_accept for outcome in accepted_semantic),
-            len(accepted_semantic),
-        ),
-        critical_article_families=family_count,
-        critical_wrong_accept_families=family_wrong_count,
-        critical_family_wrong_accept_rate=_rate(family_wrong_count, family_count),
-        critical_family_wrong_accept_upper_bound=binomial_upper_bound(
-            family_wrong_count,
-            family_count,
-            confidence=confidence,
-        ),
-        outcomes=tuple(outcomes),
+    return build_extraction_benchmark_report_from_outcomes(
+        gold,
+        outcomes,
+        confidence=confidence,
     )
+
+
+def _validate_outcome_against_gold(
+    outcome: ExtractionTargetOutcome,
+    target: ExtractionGoldTarget,
+) -> None:
+    if (
+        outcome.target_id,
+        outcome.paper_id,
+        outcome.article_family_id,
+        outcome.kind,
+        outcome.critical_for_hard_audit,
+    ) != (
+        target.target_id,
+        target.paper_id,
+        target.article_family_id,
+        target.kind,
+        target.critical_for_hard_audit,
+    ):
+        raise ValueError(f"benchmark outcome identity differs from gold: {target.target_id!r}")
+    if not isinstance(outcome.decision, ExtractionDecision):
+        raise TypeError("benchmark outcome decision must be an ExtractionDecision")
+    if type(outcome.accepted) is not bool:
+        raise TypeError("benchmark outcome accepted must be boolean")
+    if type(outcome.critical_for_hard_audit) is not bool:
+        raise TypeError("benchmark outcome critical_for_hard_audit must be boolean")
+    if outcome.accepted != (outcome.decision is ExtractionDecision.ACCEPT):
+        raise ValueError("benchmark outcome accepted flag must match ACCEPT decision")
+
+    correctness = (
+        outcome.value_correct,
+        outcome.source_correct,
+        outcome.page_correct,
+        outcome.display_item_correct,
+        outcome.row_correct,
+        outcome.column_correct,
+    )
+    if outcome.accepted:
+        if any(type(value) is not bool for value in correctness):
+            raise TypeError("accepted benchmark outcomes require boolean correctness fields")
+        if outcome.source_correct and not all(
+            (
+                outcome.page_correct,
+                outcome.display_item_correct,
+                outcome.row_correct,
+                outcome.column_correct,
+            )
+        ):
+            raise ValueError("source-correct outcome cannot contain an incorrect source component")
+    elif any(value is not None for value in correctness):
+        raise ValueError("non-accepted benchmark outcomes must not carry correctness labels")
 
 
 def _source_identity_components(predicted: SourceLocation, gold: SourceLocation) -> dict[str, bool]:
@@ -413,6 +527,16 @@ def _require_nonempty_string_tuple(value: object, *, label: str) -> None:
         raise TypeError(f"{label} must be a non-empty tuple of strings")
     if any(not isinstance(item, str) or not item.strip() for item in value):
         raise ValueError(f"{label} must contain non-empty strings")
+
+
+def _require_confidence(value: object) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or not 0.0 < float(value) < 1.0
+    ):
+        raise ValueError("confidence must be a finite number in (0, 1)")
 
 
 def _require_finite_nonnegative_number(value: object, *, label: str) -> None:
