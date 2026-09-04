@@ -6,14 +6,18 @@ from veritas.extraction import (
     ConformalCalibration,
     ConformalExtractionGate,
     ExtractionCandidate,
+    ExtractionDecision,
 )
 from veritas.extraction_benchmark import (
     ExtractionGoldTarget,
     ExtractionPrediction,
     ExtractionSelectivityCurve,
     ExtractionSelectivityPoint,
+    ExtractionTargetOutcome,
+    build_extraction_benchmark_report_from_outcomes,
     build_extraction_selectivity_curve,
     evaluate_extraction_benchmark,
+    validate_extraction_benchmark_report,
 )
 from veritas.ingestion import EvidenceKind
 from veritas.models import SourceLocation
@@ -180,6 +184,53 @@ def test_noncritical_wrong_accept_does_not_contaminate_critical_family_metric():
     assert report.wrong_accepts == 1
     assert report.critical_wrong_accept_families == 0
     assert report.critical_family_wrong_accept_rate == 0.0
+
+
+def test_report_validator_recomputes_aggregates_from_exact_outcomes():
+    gold = [_gold("a", "fam-a", "0.18"), _gold("b", "fam-b", "0.25")]
+    report = evaluate_extraction_benchmark(gold, [_prediction("a", "0.18")])
+    validate_extraction_benchmark_report(report, gold)
+
+    with pytest.raises(ValueError, match="aggregates differ"):
+        validate_extraction_benchmark_report(replace(report, accepted=2), gold)
+    with pytest.raises(ValueError, match="outcome membership differs"):
+        validate_extraction_benchmark_report(
+            replace(report, outcomes=report.outcomes[:-1]),
+            gold,
+        )
+
+
+def test_report_validator_rejects_outcome_identity_and_decision_inconsistency():
+    target = _gold("a", "fam-a", "0.18")
+    report = evaluate_extraction_benchmark([target], [_prediction("a", "0.18")])
+    outcome = report.outcomes[0]
+
+    with pytest.raises(ValueError, match="identity differs"):
+        build_extraction_benchmark_report_from_outcomes(
+            [target],
+            [replace(outcome, paper_id="different-paper")],
+        )
+    with pytest.raises(ValueError, match="accepted flag"):
+        build_extraction_benchmark_report_from_outcomes(
+            [target],
+            [replace(outcome, decision=ExtractionDecision.ABSTAIN)],
+        )
+    with pytest.raises(ValueError, match="source-correct"):
+        build_extraction_benchmark_report_from_outcomes(
+            [target],
+            [replace(outcome, row_correct=False)],
+        )
+
+
+def test_report_validator_binds_confidence_used_for_family_risk_bound():
+    gold = [_gold("a", "fam-a", "0.18"), _gold("b", "fam-b", "0.25")]
+    report = evaluate_extraction_benchmark(
+        gold,
+        [_prediction("a", "0.81"), _prediction("b", "0.25")],
+        confidence=0.95,
+    )
+    with pytest.raises(ValueError, match="aggregates differ"):
+        validate_extraction_benchmark_report(report, gold, confidence=0.90)
 
 
 def test_selectivity_curve_keeps_each_threshold_as_an_explicit_operating_point():
