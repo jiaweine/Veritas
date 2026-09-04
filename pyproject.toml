@@ -20,6 +20,9 @@ pdf = [
   "PyMuPDF==1.28.2",
   "pdfplumber==0.11.10",
 ]
+attestation = [
+  "cryptography>=46,<51",
+]
 dev = [
   "pytest>=8.0",
   "ruff>=0.6",
