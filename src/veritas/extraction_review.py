@@ -231,6 +231,49 @@ class ExtractionGoldManifest:
         )
 
 
+def build_extraction_gold_manifest(
+    review_records: tuple[ExtractionReviewRecord, ...] | list[ExtractionReviewRecord],
+    *,
+    split_salt: str,
+    source_seed_manifest_sha256: str,
+    review_protocol_version: str = "independent-double-review-v1",
+) -> ExtractionGoldManifest:
+    records = tuple(review_records)
+    if not records:
+        raise ValueError("locked gold requires at least one review record")
+    targets = tuple(record.to_gold_target() for record in records)
+    return ExtractionGoldManifest(
+        targets=targets,
+        split_salt=split_salt,
+        source_seed_manifest_sha256=source_seed_manifest_sha256,
+        review_protocol_version=review_protocol_version,
+    )
+
+
+def validate_extraction_gold_review_records(
+    gold_manifest: ExtractionGoldManifest,
+    review_records: tuple[ExtractionReviewRecord, ...] | list[ExtractionReviewRecord],
+) -> None:
+    records = tuple(review_records)
+    if not records:
+        raise ValueError("locked gold validation requires review records")
+    record_by_id = {record.target.target_id: record for record in records}
+    if len(record_by_id) != len(records):
+        raise ValueError("review records must use unique target ids")
+    gold_by_id = {target.target_id: target for target in gold_manifest.targets}
+    if set(record_by_id) != set(gold_by_id):
+        missing = tuple(sorted(set(gold_by_id) - set(record_by_id)))
+        extra = tuple(sorted(set(record_by_id) - set(gold_by_id)))
+        raise ValueError(
+            "gold/review-record target membership differs: "
+            f"missing_records={missing!r}, extra_records={extra!r}"
+        )
+    for target_id in sorted(gold_by_id):
+        derived = record_by_id[target_id].to_gold_target()
+        if _gold_target_payload(derived) != _gold_target_payload(gold_by_id[target_id]):
+            raise ValueError(f"gold target differs from bound review record: {target_id!r}")
+
+
 def resolve_extraction_reviews(
     target: ExtractionReviewTarget,
     submissions: tuple[ExtractionReviewSubmission, ...] | list[ExtractionReviewSubmission],
