@@ -11,7 +11,7 @@ from typing import Any
 from .benchmark import BenchmarkSplit
 from .corpus import AccessTier, ArticleFamilySplitLock, CorpusPaper
 from .extraction_benchmark import ExtractionSelectivityCurve
-from .extraction_calibration import FrozenExtractionThreshold, ExtractionTestEvaluationLock
+from .extraction_calibration import ExtractionTestEvaluationLock, FrozenExtractionThreshold
 from .extraction_review import ExtractionGoldManifest
 from .extraction_test_seal import ExtractionTestSetSeal
 
@@ -48,7 +48,10 @@ class ExtractionSamplingFrame:
             "schema_version": self.schema_version,
             "status": self.status,
             "source_manifest_sha256": self.source_manifest_sha256,
-            "papers": [_corpus_paper_payload(paper) for paper in sorted(self.papers, key=lambda p: p.paper_id)],
+            "papers": [
+                _corpus_paper_payload(paper)
+                for paper in sorted(self.papers, key=lambda item: item.paper_id)
+            ],
         }
         return _stable_sha256(payload)
 
@@ -109,10 +112,11 @@ class ExtractionThresholdGrid:
 
 @dataclass(frozen=True)
 class ExtractionEvidencePlan:
-    """Pre-TEST commitment for sampling, review, split, and threshold-grid policy."""
+    """Pre-TEST commitment for sampling, seed, review, split, and threshold policy."""
 
     sampling_frame_sha256: str
     sampling_frame_source_manifest_sha256: str
+    source_seed_manifest_sha256: str
     review_protocol_version: str
     split_salt: str
     threshold_grid_sha256: str
@@ -121,7 +125,11 @@ class ExtractionEvidencePlan:
     def __post_init__(self) -> None:
         for label, value in (
             ("sampling_frame_sha256", self.sampling_frame_sha256),
-            ("sampling_frame_source_manifest_sha256", self.sampling_frame_source_manifest_sha256),
+            (
+                "sampling_frame_source_manifest_sha256",
+                self.sampling_frame_source_manifest_sha256,
+            ),
+            ("source_seed_manifest_sha256", self.source_seed_manifest_sha256),
             ("threshold_grid_sha256", self.threshold_grid_sha256),
         ):
             _require_sha256(value, label=label)
@@ -172,6 +180,13 @@ class ExtractionEvidenceReleaseReceipt:
         return _stable_sha256(asdict(self))
 
 
+def file_sha256(path: str | Path) -> str:
+    source_path = Path(path)
+    if not source_path.is_file():
+        raise ValueError("evidence-workflow manifest path must point to a file")
+    return sha256(source_path.read_bytes()).hexdigest()
+
+
 def load_extraction_sampling_frame(path: str | Path) -> ExtractionSamplingFrame:
     source_path = Path(path)
     raw = source_path.read_bytes()
@@ -202,12 +217,15 @@ def build_extraction_evidence_plan(
     sampling_frame: ExtractionSamplingFrame,
     threshold_grid: ExtractionThresholdGrid,
     *,
+    source_seed_manifest_sha256: str,
     review_protocol_version: str = "independent-double-review-v1",
     split_salt: str,
 ) -> ExtractionEvidencePlan:
+    _require_sha256(source_seed_manifest_sha256, label="source_seed_manifest_sha256")
     return ExtractionEvidencePlan(
         sampling_frame_sha256=sampling_frame.sha256(),
         sampling_frame_source_manifest_sha256=sampling_frame.source_manifest_sha256,
+        source_seed_manifest_sha256=source_seed_manifest_sha256,
         review_protocol_version=review_protocol_version,
         split_salt=split_salt,
         threshold_grid_sha256=threshold_grid.sha256(),
@@ -239,6 +257,8 @@ def build_extraction_evidence_release_receipt(
         raise ValueError("sampling-frame source bytes do not match the precommitted evidence plan")
     if threshold_grid.sha256() != plan.threshold_grid_sha256:
         raise ValueError("threshold grid does not match the precommitted evidence plan")
+    if gold_manifest.source_seed_manifest_sha256 != plan.source_seed_manifest_sha256:
+        raise ValueError("gold seed manifest differs from the precommitted evidence plan")
     if gold_manifest.review_protocol_version != plan.review_protocol_version:
         raise ValueError("gold review protocol differs from the precommitted evidence plan")
     if gold_manifest.split_salt != plan.split_salt:
@@ -248,7 +268,10 @@ def build_extraction_evidence_release_receipt(
     for target in gold_manifest.targets:
         expected_family = family_by_paper.get(target.paper_id)
         if expected_family is None:
-            raise ValueError(f"gold target paper is outside the precommitted sampling frame: {target.paper_id!r}")
+            raise ValueError(
+                "gold target paper is outside the precommitted sampling frame: "
+                f"{target.paper_id!r}"
+            )
         if expected_family != target.article_family_id:
             raise ValueError(f"gold target article-family identity drifted: {target.target_id!r}")
 
@@ -272,7 +295,12 @@ def build_extraction_evidence_release_receipt(
         selected_threshold = threshold_grid.threshold_for_id(frozen_threshold.threshold_id)
     except KeyError as exc:
         raise ValueError("selected threshold id is not in the precommitted threshold grid") from exc
-    if not math.isclose(selected_threshold, frozen_threshold.threshold, rel_tol=0.0, abs_tol=0.0):
+    if not math.isclose(
+        selected_threshold,
+        frozen_threshold.threshold,
+        rel_tol=0.0,
+        abs_tol=0.0,
+    ):
         raise ValueError("selected threshold value differs from the precommitted threshold grid")
     if frozen_threshold.development_manifest_sha256 != development_manifest_sha256:
         raise ValueError("frozen threshold is bound to a different DEVELOPMENT manifest")
@@ -325,7 +353,9 @@ def _require_curve_thresholds(
 ) -> None:
     actual = tuple(float(point.threshold) for point in curve.points)
     if actual != expected:
-        raise ValueError(f"{label} selectivity curve does not match the precommitted threshold grid")
+        raise ValueError(
+            f"{label} selectivity curve does not match the precommitted threshold grid"
+        )
 
 
 def _curve_sha256(curve: ExtractionSelectivityCurve) -> str:
@@ -434,5 +464,10 @@ def _require_sha256(value: str, *, label: str) -> None:
 
 
 def _stable_sha256(value: object) -> str:
-    raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    raw = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
     return sha256(raw).hexdigest()
