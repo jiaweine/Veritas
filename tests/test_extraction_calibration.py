@@ -1,3 +1,5 @@
+import pytest
+
 from veritas.benchmark import BenchmarkSplit
 from veritas.extraction import (
     ConformalCalibration,
@@ -10,10 +12,12 @@ from veritas.extraction_benchmark import (
     evaluate_extraction_benchmark,
 )
 from veritas.extraction_calibration import (
+    ExtractionSelectivityEvidence,
     ExtractionThresholdObservation,
     ExtractionThresholdPolicy,
     lock_test_evaluation,
     select_development_threshold,
+    threshold_observations_sha256,
 )
 from veritas.ingestion import EvidenceKind
 from veritas.models import SourceLocation
@@ -58,44 +62,68 @@ def _report(*, accepted: int, total: int = 4):
     return evaluate_extraction_benchmark(gold, predictions)
 
 
+def _observation(
+    threshold_id: str,
+    threshold: float,
+    *,
+    accepted: int,
+    split: BenchmarkSplit = BenchmarkSplit.DEVELOPMENT,
+    manifest_sha256: str = _MANIFEST_SHA,
+) -> ExtractionThresholdObservation:
+    return ExtractionThresholdObservation(
+        threshold_id=threshold_id,
+        threshold=threshold,
+        split=split,
+        report=_report(accepted=accepted),
+        manifest_sha256=manifest_sha256,
+    )
+
+
 def test_threshold_selection_rejects_test_observations():
-    observation = ExtractionThresholdObservation(
-        threshold_id="t-01",
-        threshold=0.01,
+    observation = _observation(
+        "t-01",
+        0.01,
+        accepted=4,
         split=BenchmarkSplit.TEST,
-        report=_report(accepted=4),
+        manifest_sha256=_TEST_SHA,
     )
     policy = ExtractionThresholdPolicy(
         min_selective_coverage=0.0,
         min_accepted_full_accuracy=0.0,
         max_critical_family_wrong_accept_upper_bound=1.0,
     )
-    try:
+    with pytest.raises(ValueError, match="DEVELOPMENT observations only"):
         select_development_threshold(
             [observation],
             policy=policy,
             development_manifest_sha256=_MANIFEST_SHA,
         )
-    except ValueError as exc:
-        assert "DEVELOPMENT observations only" in str(exc)
-    else:
-        raise AssertionError("TEST observations must never participate in threshold selection")
+
+
+def test_threshold_selection_rejects_manifest_mismatch():
+    observation = _observation(
+        "t-01",
+        0.01,
+        accepted=4,
+        manifest_sha256=_TEST_SHA,
+    )
+    policy = ExtractionThresholdPolicy(
+        min_selective_coverage=0.0,
+        min_accepted_full_accuracy=0.0,
+        max_critical_family_wrong_accept_upper_bound=1.0,
+    )
+    with pytest.raises(ValueError, match="different DEVELOPMENT manifest"):
+        select_development_threshold(
+            [observation],
+            policy=policy,
+            development_manifest_sha256=_MANIFEST_SHA,
+        )
 
 
 def test_threshold_selection_prefers_more_coverage_when_risk_policy_is_met():
     observations = [
-        ExtractionThresholdObservation(
-            threshold_id="strict",
-            threshold=0.01,
-            split=BenchmarkSplit.DEVELOPMENT,
-            report=_report(accepted=2),
-        ),
-        ExtractionThresholdObservation(
-            threshold_id="broader",
-            threshold=0.02,
-            split=BenchmarkSplit.DEVELOPMENT,
-            report=_report(accepted=4),
-        ),
+        _observation("strict", 0.01, accepted=2),
+        _observation("broader", 0.02, accepted=4),
     ]
     policy = ExtractionThresholdPolicy(
         min_selective_coverage=0.25,
@@ -110,15 +138,48 @@ def test_threshold_selection_prefers_more_coverage_when_risk_policy_is_met():
     assert frozen.threshold_id == "broader"
     assert frozen.threshold == 0.02
     assert frozen.candidate_threshold_ids == ("broader", "strict")
+    assert frozen.development_observation_set_sha256 == threshold_observations_sha256(observations)
+
+
+def test_frozen_threshold_hash_changes_when_development_reports_change():
+    policy = ExtractionThresholdPolicy(
+        min_selective_coverage=0.0,
+        min_accepted_full_accuracy=0.0,
+        max_critical_family_wrong_accept_upper_bound=1.0,
+    )
+    first_observations = [_observation("t-01", 0.01, accepted=2)]
+    second_observations = [_observation("t-01", 0.01, accepted=4)]
+
+    first = select_development_threshold(
+        first_observations,
+        policy=policy,
+        development_manifest_sha256=_MANIFEST_SHA,
+    )
+    second = select_development_threshold(
+        second_observations,
+        policy=policy,
+        development_manifest_sha256=_MANIFEST_SHA,
+    )
+
+    assert first.development_observation_set_sha256 != second.development_observation_set_sha256
+    assert first.sha256() != second.sha256()
+
+
+def test_selectivity_evidence_rejects_mixed_manifest_observations():
+    observations = (
+        _observation("t-01", 0.01, accepted=2),
+        _observation("t-02", 0.02, accepted=4, manifest_sha256=_TEST_SHA),
+    )
+    with pytest.raises(ValueError, match="declared manifest"):
+        ExtractionSelectivityEvidence(
+            split=BenchmarkSplit.DEVELOPMENT,
+            manifest_sha256=_MANIFEST_SHA,
+            observations=observations,
+        )
 
 
 def test_test_evaluation_lock_binds_frozen_threshold_without_retuning_api():
-    observation = ExtractionThresholdObservation(
-        threshold_id="dev-selected",
-        threshold=0.02,
-        split=BenchmarkSplit.DEVELOPMENT,
-        report=_report(accepted=4),
-    )
+    observation = _observation("dev-selected", 0.02, accepted=4)
     policy = ExtractionThresholdPolicy(
         min_selective_coverage=0.0,
         min_accepted_full_accuracy=1.0,
