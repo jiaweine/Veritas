@@ -7,12 +7,13 @@ import pytest
 
 from veritas.benchmark import BenchmarkSplit
 from veritas.corpus import AccessTier, CorpusPaper
-from veritas.extraction import ExtractionDecision
+from veritas.extraction import ExtractionCandidate, ExtractionDecision, ExtractionResolution
 from veritas.extraction_benchmark import (
     ExtractionBenchmarkReport,
-    ExtractionTargetOutcome,
+    ExtractionPrediction,
     build_extraction_benchmark_report_from_outcomes,
     build_extraction_selectivity_curve,
+    evaluate_extraction_benchmark,
 )
 from veritas.extraction_calibration import (
     ExtractionThresholdObservation,
@@ -172,50 +173,65 @@ def _gold_subset(gold, target_ids):
     return tuple(target for target in gold.targets if target.target_id in target_ids)
 
 
-def _bound_report(gold, accepted_count: int, *, confidence: float = 0.95):
-    outcomes = []
+def _prediction_set(gold, accepted_count: int, *, threshold: float):
+    predictions = []
     for index, target in enumerate(gold):
-        accepted = index < accepted_count
-        outcomes.append(
-            ExtractionTargetOutcome(
-                target_id=target.target_id,
-                paper_id=target.paper_id,
-                article_family_id=target.article_family_id,
-                kind=target.kind,
-                critical_for_hard_audit=target.critical_for_hard_audit,
-                decision=(ExtractionDecision.ACCEPT if accepted else ExtractionDecision.ABSTAIN),
-                accepted=accepted,
-                value_correct=True if accepted else None,
-                source_correct=True if accepted else None,
-                page_correct=True if accepted else None,
-                display_item_correct=True if accepted else None,
-                row_correct=True if accepted else None,
-                column_correct=True if accepted else None,
+        if index >= accepted_count:
+            continue
+        value = target.accepted_normalized_values[0]
+        candidates = tuple(
+            ExtractionCandidate(
+                parser_id=parser_id,
+                parser_family=parser_family,
+                raw=value,
+                normalized_value=value,
+                nonconformity_score=0.0,
+                source=target.source,
+            )
+            for parser_id, parser_family in (
+                ("native", "native_pdf"),
+                ("vision", "vision_language"),
             )
         )
-    return build_extraction_benchmark_report_from_outcomes(
-        gold,
-        outcomes,
-        confidence=confidence,
-    )
+        predictions.append(
+            ExtractionPrediction(
+                target_id=target.target_id,
+                resolution=ExtractionResolution(
+                    decision=ExtractionDecision.ACCEPT,
+                    normalized_value=value,
+                    accepted_candidates=candidates,
+                    calibration_threshold=threshold,
+                    reason="synthetic evidence-workflow fixture",
+                ),
+            )
+        )
+    return tuple(predictions)
 
 
 def _observation_set(gold, *, split: BenchmarkSplit, confidence: float = 0.95):
     count = len(gold)
     accepted_counts = (count, max(count - 1, 0), max(count - 2, 0))
-    return tuple(
-        ExtractionThresholdObservation(
-            threshold_id,
-            threshold,
-            split,
-            _bound_report(gold, accepted_count, confidence=confidence),
+    observations = []
+    for (threshold_id, threshold), accepted_count in zip(
+        (("t-080", 0.80), ("t-090", 0.90), ("t-095", 0.95)),
+        accepted_counts,
+        strict=True,
+    ):
+        predictions = _prediction_set(gold, accepted_count, threshold=threshold)
+        observations.append(
+            ExtractionThresholdObservation(
+                threshold_id=threshold_id,
+                threshold=threshold,
+                split=split,
+                report=evaluate_extraction_benchmark(
+                    gold,
+                    predictions,
+                    confidence=confidence,
+                ),
+                predictions=predictions,
+            )
         )
-        for (threshold_id, threshold), accepted_count in zip(
-            (("t-080", 0.80), ("t-090", 0.90), ("t-095", 0.95)),
-            accepted_counts,
-            strict=True,
-        )
-    )
+    return tuple(observations)
 
 
 def _workflow_fixture():
@@ -417,7 +433,7 @@ def test_release_rejects_report_membership_or_aggregate_forgery() -> None:
         fixture["observations"][0],
         report=fixture["test_observations"][0].report,
     )
-    with pytest.raises(ValueError, match="outcome membership differs"):
+    with pytest.raises(ValueError, match="bound predictions/resolutions"):
         _release(observations=(wrong_membership, *fixture["observations"][1:]))
 
     forged_report = replace(
@@ -425,7 +441,28 @@ def test_release_rejects_report_membership_or_aggregate_forgery() -> None:
         accepted=fixture["observations"][0].report.accepted + 1,
     )
     forged_observation = replace(fixture["observations"][0], report=forged_report)
-    with pytest.raises(ValueError, match="aggregates differ"):
+    with pytest.raises(ValueError, match="bound predictions/resolutions"):
+        _release(observations=(forged_observation, *fixture["observations"][1:]))
+
+
+def test_release_requires_prediction_provenance_and_rejects_correctness_forgery() -> None:
+    fixture = _workflow_fixture()
+    observation = fixture["observations"][0]
+
+    missing_predictions = replace(observation, predictions=None)
+    with pytest.raises(ValueError, match="exact prediction provenance"):
+        _release(observations=(missing_predictions, *fixture["observations"][1:]))
+
+    outcomes = list(observation.report.outcomes)
+    accepted_index = next(index for index, outcome in enumerate(outcomes) if outcome.accepted)
+    outcomes[accepted_index] = replace(outcomes[accepted_index], value_correct=False)
+    internally_consistent_forgery = build_extraction_benchmark_report_from_outcomes(
+        fixture["development_gold"],
+        tuple(outcomes),
+        confidence=fixture["plan"].benchmark_confidence,
+    )
+    forged_observation = replace(observation, report=internally_consistent_forgery)
+    with pytest.raises(ValueError, match="bound predictions/resolutions"):
         _release(observations=(forged_observation, *fixture["observations"][1:]))
 
 
