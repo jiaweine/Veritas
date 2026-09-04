@@ -17,7 +17,6 @@ from .extraction_calibration import (
 )
 from .extraction_evidence_workflow import (
     ExtractionEvidencePlan,
-    ExtractionEvidenceReleaseReceipt,
     ExtractionSamplingFrame,
     ExtractionSeedManifest,
     ExtractionThresholdGrid,
@@ -52,13 +51,17 @@ class ExtractionExecutionPlan:
             ("execution_command_sha256", self.execution_command_sha256),
         ):
             _require_sha256(value, label=label)
-        if type(self.network_disabled) is not bool or not self.network_disabled:
+        _require_bool(self.network_disabled, label="network_disabled")
+        _require_bool(self.source_mount_read_only, label="source_mount_read_only")
+        _require_bool(self.credentials_mounted, label="credentials_mounted")
+        _require_bool(self.production_authorized, label="production_authorized")
+        if not self.network_disabled:
             raise ValueError("extraction evidence execution must disable network access")
-        if type(self.source_mount_read_only) is not bool or not self.source_mount_read_only:
+        if not self.source_mount_read_only:
             raise ValueError("extraction evidence source mount must be read-only")
-        if type(self.credentials_mounted) is not bool or self.credentials_mounted:
+        if self.credentials_mounted:
             raise ValueError("extraction evidence execution must not mount credentials")
-        if type(self.production_authorized) is not bool or self.production_authorized:
+        if self.production_authorized:
             raise ValueError("extraction execution plans are non-production only")
         _require_schema_version(self.schema_version, label="extraction execution plan")
 
@@ -93,6 +96,8 @@ class ExtractionExecutionAttestation:
             ("prediction_semantics_sha256", self.prediction_semantics_sha256),
         ):
             _require_sha256(value, label=label)
+        if not isinstance(self.split, BenchmarkSplit):
+            raise TypeError("execution attestation split must be a BenchmarkSplit")
         if self.split not in {BenchmarkSplit.DEVELOPMENT, BenchmarkSplit.TEST}:
             raise ValueError("execution attestation split must be DEVELOPMENT or TEST")
         _require_finite_nonnegative_number(self.threshold, label="threshold")
@@ -100,13 +105,17 @@ class ExtractionExecutionAttestation:
             raise TypeError("execution attestation exit_code must be an integer")
         if self.exit_code != 0:
             raise ValueError("extraction evidence execution must exit successfully")
-        if type(self.network_disabled) is not bool or not self.network_disabled:
+        _require_bool(self.network_disabled, label="network_disabled")
+        _require_bool(self.source_mount_read_only, label="source_mount_read_only")
+        _require_bool(self.credentials_mounted, label="credentials_mounted")
+        _require_bool(self.production_authorized, label="production_authorized")
+        if not self.network_disabled:
             raise ValueError("extraction evidence execution must attest disabled network")
-        if type(self.source_mount_read_only) is not bool or not self.source_mount_read_only:
+        if not self.source_mount_read_only:
             raise ValueError("extraction evidence execution must attest a read-only source mount")
-        if type(self.credentials_mounted) is not bool or self.credentials_mounted:
+        if self.credentials_mounted:
             raise ValueError("extraction evidence execution must attest no mounted credentials")
-        if type(self.production_authorized) is not bool or self.production_authorized:
+        if self.production_authorized:
             raise ValueError("extraction execution attestations are non-production only")
         _require_schema_version(self.schema_version, label="extraction execution attestation")
 
@@ -126,7 +135,8 @@ class ExtractionExecutionEvidence:
             raise TypeError("attestation must be an ExtractionExecutionAttestation")
         if not isinstance(self.prediction_artifact, bytes):
             raise TypeError("prediction_artifact must contain exact bytes")
-        if sha256(self.prediction_artifact).hexdigest() != self.attestation.prediction_artifact_sha256:
+        artifact_sha256 = sha256(self.prediction_artifact).hexdigest()
+        if artifact_sha256 != self.attestation.prediction_artifact_sha256:
             raise ValueError("prediction artifact bytes do not match execution attestation")
 
     def sha256(self) -> str:
@@ -155,7 +165,8 @@ class AttestedExtractionEvidenceReleaseReceipt:
             ("test_execution_set_sha256", self.test_execution_set_sha256),
         ):
             _require_sha256(value, label=label)
-        if type(self.production_authorized) is not bool or self.production_authorized:
+        _require_bool(self.production_authorized, label="production_authorized")
+        if self.production_authorized:
             raise ValueError("attested extraction release receipts are non-production only")
         _require_schema_version(
             self.schema_version,
@@ -331,7 +342,9 @@ def _validate_execution_evidence_set(
     by_threshold = {item.attestation.threshold_id: item for item in evidence}
     if len(by_threshold) != len(evidence):
         raise ValueError(f"{label} execution evidence threshold ids must be unique")
-    observation_by_threshold = {observation.threshold_id: observation for observation in observations}
+    observation_by_threshold = {
+        observation.threshold_id: observation for observation in observations
+    }
     if set(by_threshold) != set(observation_by_threshold):
         raise ValueError(f"{label} execution evidence differs from threshold observation membership")
 
@@ -408,6 +421,11 @@ def _require_finite_nonnegative_number(value: object, *, label: str) -> None:
 def _require_sha256(value: object, *, label: str) -> None:
     if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
         raise ValueError(f"{label} must be a lowercase SHA-256 digest")
+
+
+def _require_bool(value: object, *, label: str) -> None:
+    if type(value) is not bool:
+        raise TypeError(f"{label} must be boolean")
 
 
 def _require_schema_version(value: object, *, label: str) -> None:
