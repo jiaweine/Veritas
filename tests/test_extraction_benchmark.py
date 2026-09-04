@@ -235,7 +235,7 @@ def test_gold_target_rejects_nonboolean_authority_flags():
     target = _gold("typed", "fam-a", "0.18")
     with pytest.raises(TypeError, match="critical_for_hard_audit"):
         replace(target, critical_for_hard_audit=1)
-    with pytest.raises(ValueError, match="requires adjudication"):
+    with pytest.raises(ValueError, match="require adjudication"):
         replace(target, adjudicated=1)
 
 
