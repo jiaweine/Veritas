@@ -103,6 +103,47 @@ class ExtractionSeedManifest:
 
 
 @dataclass(frozen=True)
+class ExtractionSplitTargetManifest:
+    split: BenchmarkSplit
+    gold_manifest_sha256: str
+    split_lock_sha256: str
+    article_family_ids: tuple[str, ...]
+    target_ids: tuple[str, ...]
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        if self.split not in {BenchmarkSplit.DEVELOPMENT, BenchmarkSplit.TEST}:
+            raise ValueError("extraction split target manifests are DEVELOPMENT or TEST only")
+        _require_sha256(self.gold_manifest_sha256, label="split-target gold manifest")
+        _require_sha256(self.split_lock_sha256, label="split-target split lock")
+        if tuple(sorted(set(self.article_family_ids))) != self.article_family_ids:
+            raise ValueError("split-target article_family_ids must be unique and sorted")
+        if tuple(sorted(set(self.target_ids))) != self.target_ids:
+            raise ValueError("split-target target_ids must be unique and sorted")
+        if not self.article_family_ids or not self.target_ids:
+            raise ValueError("split-target manifest requires non-empty family and target membership")
+        if any(not value.strip() for value in self.article_family_ids):
+            raise ValueError("split-target article_family_ids cannot be empty")
+        if any(not value.strip() for value in self.target_ids):
+            raise ValueError("split-target target_ids cannot be empty")
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("extraction split target manifest schema_version must be 1")
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "split": self.split.value,
+            "gold_manifest_sha256": self.gold_manifest_sha256,
+            "split_lock_sha256": self.split_lock_sha256,
+            "article_family_ids": list(self.article_family_ids),
+            "target_ids": list(self.target_ids),
+        }
+
+    def sha256(self) -> str:
+        return _stable_sha256(self.to_payload())
+
+
+@dataclass(frozen=True)
 class ExtractionThresholdGrid:
     points: tuple[tuple[str, float], ...]
     schema_version: int = 1
@@ -194,6 +235,8 @@ class ExtractionEvidenceReleaseReceipt:
     plan_sha256: str
     gold_manifest_sha256: str
     split_lock_sha256: str
+    development_manifest_sha256: str
+    test_manifest_sha256: str
     frozen_threshold_sha256: str
     test_seal_sha256: str
     test_evaluation_lock_sha256: str
@@ -207,6 +250,8 @@ class ExtractionEvidenceReleaseReceipt:
             ("plan_sha256", self.plan_sha256),
             ("gold_manifest_sha256", self.gold_manifest_sha256),
             ("split_lock_sha256", self.split_lock_sha256),
+            ("development_manifest_sha256", self.development_manifest_sha256),
+            ("test_manifest_sha256", self.test_manifest_sha256),
             ("frozen_threshold_sha256", self.frozen_threshold_sha256),
             ("test_seal_sha256", self.test_seal_sha256),
             ("test_evaluation_lock_sha256", self.test_evaluation_lock_sha256),
@@ -300,6 +345,45 @@ def build_extraction_evidence_plan(
     )
 
 
+def build_extraction_split_target_manifest(
+    gold_manifest: ExtractionGoldManifest,
+    split_lock: ArticleFamilySplitLock,
+    *,
+    split: BenchmarkSplit,
+) -> ExtractionSplitTargetManifest:
+    if split not in {BenchmarkSplit.DEVELOPMENT, BenchmarkSplit.TEST}:
+        raise ValueError("extraction evidence split manifest must be DEVELOPMENT or TEST")
+    expected_split_lock = gold_manifest.build_split_lock(
+        train_fraction=split_lock.train_fraction,
+        development_fraction=split_lock.development_fraction,
+    )
+    if expected_split_lock.sha256() != split_lock.sha256():
+        raise ValueError("split lock is not the deterministic lock for the reviewed gold manifest")
+    if split_lock.manifest_sha256 != gold_manifest.sha256():
+        raise ValueError("split lock is not bound to the supplied extraction gold manifest")
+
+    family_ids = tuple(
+        sorted(family_id for family_id, assigned in split_lock.assignments if assigned is split)
+    )
+    family_set = set(family_ids)
+    target_ids = tuple(
+        sorted(
+            target.target_id
+            for target in gold_manifest.targets
+            if target.article_family_id in family_set
+        )
+    )
+    if not family_ids or not target_ids:
+        raise ValueError(f"{split.value} split target manifest cannot be empty")
+    return ExtractionSplitTargetManifest(
+        split=split,
+        gold_manifest_sha256=gold_manifest.sha256(),
+        split_lock_sha256=split_lock.sha256(),
+        article_family_ids=family_ids,
+        target_ids=target_ids,
+    )
+
+
 def build_extraction_evidence_release_receipt(
     *,
     plan: ExtractionEvidencePlan,
@@ -309,15 +393,11 @@ def build_extraction_evidence_release_receipt(
     gold_manifest: ExtractionGoldManifest,
     split_lock: ArticleFamilySplitLock,
     frozen_threshold: FrozenExtractionThreshold,
-    development_manifest_sha256: str,
     test_seal: ExtractionTestSetSeal,
     test_evaluation_lock: ExtractionTestEvaluationLock,
-    test_manifest_sha256: str,
     development_curve: ExtractionSelectivityCurve,
     test_curve: ExtractionSelectivityCurve,
 ) -> ExtractionEvidenceReleaseReceipt:
-    _require_sha256(development_manifest_sha256, label="development_manifest_sha256")
-    _require_sha256(test_manifest_sha256, label="test_manifest_sha256")
     if sampling_frame.sha256() != plan.sampling_frame_sha256:
         raise ValueError("sampling frame does not match the precommitted evidence plan")
     if sampling_frame.source_manifest_sha256 != plan.sampling_frame_source_manifest_sha256:
@@ -398,6 +478,19 @@ def build_extraction_evidence_release_receipt(
     if BenchmarkSplit.TEST not in split_values:
         raise ValueError("release workflow requires at least one TEST article family")
 
+    development_manifest = build_extraction_split_target_manifest(
+        gold_manifest,
+        split_lock,
+        split=BenchmarkSplit.DEVELOPMENT,
+    )
+    test_manifest = build_extraction_split_target_manifest(
+        gold_manifest,
+        split_lock,
+        split=BenchmarkSplit.TEST,
+    )
+    development_manifest_sha256 = development_manifest.sha256()
+    test_manifest_sha256 = test_manifest.sha256()
+
     if tuple(sorted(frozen_threshold.candidate_threshold_ids)) != threshold_grid.threshold_ids:
         raise ValueError("frozen threshold candidate ids differ from the precommitted threshold grid")
     try:
@@ -422,6 +515,8 @@ def build_extraction_evidence_release_receipt(
         plan_sha256=plan.sha256(),
         gold_manifest_sha256=gold_manifest.sha256(),
         split_lock_sha256=split_lock.sha256(),
+        development_manifest_sha256=development_manifest_sha256,
+        test_manifest_sha256=test_manifest_sha256,
         frozen_threshold_sha256=frozen_threshold.sha256(),
         test_seal_sha256=test_seal.sha256(),
         test_evaluation_lock_sha256=test_evaluation_lock.sha256(),
