@@ -11,7 +11,11 @@ from typing import Any
 from .benchmark import BenchmarkSplit
 from .corpus import AccessTier, ArticleFamilySplitLock, CorpusPaper
 from .extraction_benchmark import ExtractionSelectivityCurve
-from .extraction_calibration import ExtractionTestEvaluationLock, FrozenExtractionThreshold
+from .extraction_calibration import (
+    ExtractionSelectivityEvidence,
+    ExtractionTestEvaluationLock,
+    FrozenExtractionThreshold,
+)
 from .extraction_review import ExtractionGoldManifest
 from .extraction_review_packet import (
     ExtractionReviewPacketTarget,
@@ -199,6 +203,8 @@ class ExtractionEvidenceReleaseReceipt:
     test_evaluation_lock_sha256: str
     development_curve_sha256: str
     test_curve_sha256: str
+    development_curve_evidence_sha256: str
+    test_curve_evidence_sha256: str
     production_authorized: bool = False
     schema_version: int = 1
 
@@ -212,6 +218,8 @@ class ExtractionEvidenceReleaseReceipt:
             ("test_evaluation_lock_sha256", self.test_evaluation_lock_sha256),
             ("development_curve_sha256", self.development_curve_sha256),
             ("test_curve_sha256", self.test_curve_sha256),
+            ("development_curve_evidence_sha256", self.development_curve_evidence_sha256),
+            ("test_curve_evidence_sha256", self.test_curve_evidence_sha256),
         ):
             _require_sha256(value, label=label)
         if type(self.production_authorized) is not bool or self.production_authorized:
@@ -313,8 +321,8 @@ def build_extraction_evidence_release_receipt(
     test_seal: ExtractionTestSetSeal,
     test_evaluation_lock: ExtractionTestEvaluationLock,
     test_manifest_sha256: str,
-    development_curve: ExtractionSelectivityCurve,
-    test_curve: ExtractionSelectivityCurve,
+    development_curve_evidence: ExtractionSelectivityEvidence,
+    test_curve_evidence: ExtractionSelectivityEvidence,
 ) -> ExtractionEvidenceReleaseReceipt:
     _require_sha256(development_manifest_sha256, label="development_manifest_sha256")
     _require_sha256(test_manifest_sha256, label="test_manifest_sha256")
@@ -409,15 +417,40 @@ def build_extraction_evidence_release_receipt(
     if frozen_threshold.development_manifest_sha256 != development_manifest_sha256:
         raise ValueError("frozen threshold is bound to a different DEVELOPMENT manifest")
 
+    if development_curve_evidence.split is not BenchmarkSplit.DEVELOPMENT:
+        raise ValueError("DEVELOPMENT selectivity evidence must use the DEVELOPMENT split")
+    if test_curve_evidence.split is not BenchmarkSplit.TEST:
+        raise ValueError("TEST selectivity evidence must use the TEST split")
+    if development_curve_evidence.manifest_sha256 != development_manifest_sha256:
+        raise ValueError("DEVELOPMENT selectivity evidence is bound to a different manifest")
+    if test_curve_evidence.manifest_sha256 != test_manifest_sha256:
+        raise ValueError("TEST selectivity evidence is bound to a different manifest")
+    if (
+        frozen_threshold.development_observation_set_sha256
+        != development_curve_evidence.observation_set_sha256()
+    ):
+        raise ValueError(
+            "frozen threshold was selected from a different DEVELOPMENT observation set"
+        )
+    _require_selectivity_evidence_grid(
+        development_curve_evidence,
+        threshold_grid,
+        label="DEVELOPMENT",
+    )
+    _require_selectivity_evidence_grid(
+        test_curve_evidence,
+        threshold_grid,
+        label="TEST",
+    )
+
     test_seal.validate(gold_manifest, split_lock)
     if test_evaluation_lock.frozen_threshold_sha256 != frozen_threshold.sha256():
         raise ValueError("TEST evaluation lock is not bound to the frozen DEVELOPMENT threshold")
     if test_evaluation_lock.test_manifest_sha256 != test_manifest_sha256:
         raise ValueError("TEST evaluation lock is bound to a different TEST manifest")
 
-    expected_thresholds = threshold_grid.thresholds
-    _require_curve_thresholds(development_curve, expected_thresholds, label="DEVELOPMENT")
-    _require_curve_thresholds(test_curve, expected_thresholds, label="TEST")
+    development_curve = development_curve_evidence.curve()
+    test_curve = test_curve_evidence.curve()
     return ExtractionEvidenceReleaseReceipt(
         plan_sha256=plan.sha256(),
         gold_manifest_sha256=gold_manifest.sha256(),
@@ -427,6 +460,8 @@ def build_extraction_evidence_release_receipt(
         test_evaluation_lock_sha256=test_evaluation_lock.sha256(),
         development_curve_sha256=_curve_sha256(development_curve),
         test_curve_sha256=_curve_sha256(test_curve),
+        development_curve_evidence_sha256=development_curve_evidence.sha256(),
+        test_curve_evidence_sha256=test_curve_evidence.sha256(),
     )
 
 
@@ -446,6 +481,27 @@ def extraction_evidence_plan_payload(
         "plan_sha256": plan.sha256(),
         "production_authorized": False,
     }
+
+
+def _require_selectivity_evidence_grid(
+    evidence: ExtractionSelectivityEvidence,
+    threshold_grid: ExtractionThresholdGrid,
+    *,
+    label: str,
+) -> None:
+    expected = tuple(
+        sorted((threshold_id, float(threshold)) for threshold_id, threshold in threshold_grid.points)
+    )
+    actual = tuple(
+        sorted(
+            (observation.threshold_id, float(observation.threshold))
+            for observation in evidence.observations
+        )
+    )
+    if actual != expected:
+        raise ValueError(
+            f"{label} selectivity evidence does not match the precommitted threshold grid"
+        )
 
 
 def _require_curve_thresholds(
