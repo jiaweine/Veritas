@@ -8,8 +8,8 @@ from veritas.extraction_evidence_workflow import (
     ExtractionThresholdGrid,
     build_extraction_evidence_plan,
     extraction_evidence_plan_payload,
-    file_sha256,
     load_extraction_sampling_frame,
+    load_extraction_seed_manifest,
 )
 
 
@@ -54,11 +54,12 @@ def main() -> int:
     args = parser.parse_args()
 
     sampling_frame = load_extraction_sampling_frame(args.sampling_frame)
+    seed_manifest = load_extraction_seed_manifest(args.seed_manifest)
     threshold_grid = ExtractionThresholdGrid(points=tuple(args.threshold))
     plan = build_extraction_evidence_plan(
         sampling_frame,
         threshold_grid,
-        source_seed_manifest_sha256=file_sha256(args.seed_manifest),
+        source_seed_manifest_sha256=seed_manifest.source_manifest_sha256,
         review_protocol_version=args.review_protocol_version,
         split_salt=args.split_salt,
     )
