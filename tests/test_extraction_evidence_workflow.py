@@ -160,8 +160,8 @@ def _workflow_fixture():
 
     plan = build_extraction_evidence_plan(
         frame,
+        seed,
         grid,
-        source_seed_manifest_sha256=_SEED_SHA,
         split_salt=split_salt,
     )
     development_manifest_sha256 = "c" * 64
@@ -256,6 +256,7 @@ def test_repository_seed_manifest_loads_exact_bytes_and_review_target_universe()
     assert seed.status == "seed_corpus_not_locked_gold"
     assert seed.production_hard_finding_authorized is False
     assert len(seed.source_manifest_sha256) == 64
+    assert len(seed.sha256()) == 64
     assert len(seed.targets) == 20
     assert "plosone-0318226-table2-age:beta" in seed.target_map()
     assert "frontiers-1520668-table2-f01:p_value" in seed.target_map()
@@ -293,6 +294,14 @@ def test_sampling_frame_threshold_grid_or_seed_manifest_drift_fails_closed() -> 
     with pytest.raises(ValueError, match="seed manifest"):
         _release(seed=wrong_seed)
 
+    changed_seed_target = replace(fixture["seed"].targets[0], key="se")
+    changed_seed = replace(
+        fixture["seed"],
+        targets=(changed_seed_target, *fixture["seed"].targets[1:]),
+    )
+    with pytest.raises(ValueError, match="seed target universe"):
+        _release(seed=changed_seed)
+
     wrong_seed_gold = replace(fixture["gold"], source_seed_manifest_sha256="8" * 64)
     with pytest.raises(ValueError, match="seed manifest"):
         _release(gold=wrong_seed_gold)
@@ -315,6 +324,17 @@ def test_gold_targets_must_belong_to_exact_precommitted_seed_universe() -> None:
     )
     with pytest.raises(ValueError, match="identity drifted from seed manifest"):
         _release(gold=drifted_gold)
+
+    drifted_source = replace(
+        fixture["gold"].targets[0],
+        source=replace(fixture["gold"].targets[0].source, row="different-row"),
+    )
+    drifted_source_gold = replace(
+        fixture["gold"],
+        targets=(drifted_source, *fixture["gold"].targets[1:]),
+    )
+    with pytest.raises(ValueError, match="source locator drifted from seed manifest"):
+        _release(gold=drifted_source_gold)
 
 
 def test_review_protocol_and_gold_sampling_universe_are_precommitted() -> None:
@@ -385,34 +405,43 @@ def test_both_published_curves_must_use_precommitted_threshold_grid() -> None:
 
 def test_plan_hash_binds_split_salt_seed_and_exact_sampling_source_bytes() -> None:
     frame = _sampling_frame()
+    seed = _seed_manifest(frame)
     grid = ExtractionThresholdGrid((("t-1", 0.9),))
     base = build_extraction_evidence_plan(
         frame,
+        seed,
         grid,
-        source_seed_manifest_sha256=_SEED_SHA,
         split_salt="salt-a",
     )
     changed_salt = build_extraction_evidence_plan(
         frame,
+        seed,
         grid,
-        source_seed_manifest_sha256=_SEED_SHA,
         split_salt="salt-b",
     )
     changed_seed = build_extraction_evidence_plan(
         frame,
+        replace(seed, source_manifest_sha256="7" * 64),
         grid,
-        source_seed_manifest_sha256="7" * 64,
+        split_salt="salt-a",
+    )
+    changed_target = replace(seed.targets[0], row_label="different-row")
+    changed_seed_universe = build_extraction_evidence_plan(
+        frame,
+        replace(seed, targets=(changed_target, *seed.targets[1:])),
+        grid,
         split_salt="salt-a",
     )
     changed_bytes = build_extraction_evidence_plan(
         replace(frame, source_manifest_sha256="9" * 64),
+        seed,
         grid,
-        source_seed_manifest_sha256=_SEED_SHA,
         split_salt="salt-a",
     )
 
     assert base.sha256() != changed_salt.sha256()
     assert base.sha256() != changed_seed.sha256()
+    assert base.sha256() != changed_seed_universe.sha256()
     assert base.sha256() != changed_bytes.sha256()
 
 
@@ -437,7 +466,8 @@ def test_evidence_plan_dataclass_rejects_non_hash_commitments() -> None:
             sampling_frame_sha256="not-a-hash",
             sampling_frame_source_manifest_sha256="a" * 64,
             source_seed_manifest_sha256="b" * 64,
+            seed_target_universe_sha256="c" * 64,
             review_protocol_version="independent-double-review-v1",
             split_salt="salt",
-            threshold_grid_sha256="c" * 64,
+            threshold_grid_sha256="d" * 64,
         )
