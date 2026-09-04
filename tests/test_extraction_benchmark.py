@@ -212,7 +212,7 @@ def test_selectivity_curve_rejects_boolean_or_nonfinite_thresholds(threshold):
 
 @pytest.mark.parametrize("value", [True, float("nan"), float("inf"), -0.01, 1.01])
 def test_selectivity_point_rejects_invalid_probability_metrics(value):
-    with pytest.raises(ValueError, match="finite number in \[0, 1\]"):
+    with pytest.raises(ValueError, match=r"finite number in \[0, 1\]"):
         _point(selective_coverage=value)
 
 
