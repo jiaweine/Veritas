@@ -83,8 +83,10 @@ from .extraction_benchmark import (
     ExtractionSelectivityCurve,
     ExtractionSelectivityPoint,
     ExtractionTargetOutcome,
+    build_extraction_benchmark_report_from_outcomes,
     build_extraction_selectivity_curve,
     evaluate_extraction_benchmark,
+    validate_extraction_benchmark_report,
 )
 from .extraction_calibration import (
     ExtractionTestEvaluationLock,
@@ -380,6 +382,7 @@ __all__ = [
     "build_claim_estimate_alignment",
     "build_e5_data_provenance_check",
     "build_environment_snapshot",
+    "build_extraction_benchmark_report_from_outcomes",
     "build_extraction_evidence_plan",
     "build_extraction_evidence_release_receipt",
     "build_extraction_gold_manifest",
@@ -421,6 +424,7 @@ __all__ = [
     "select_development_threshold",
     "summarize_specification_robustness",
     "tree_sha256",
+    "validate_extraction_benchmark_report",
     "validate_extraction_gold_review_records",
 ]
 
