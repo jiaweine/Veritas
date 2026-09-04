@@ -11,8 +11,10 @@ from typing import Any
 from .benchmark import BenchmarkSplit
 from .extraction_benchmark import (
     ExtractionBenchmarkReport,
+    ExtractionPrediction,
     ExtractionSelectivityCurve,
     build_extraction_selectivity_curve,
+    evaluate_extraction_benchmark,
 )
 from .extraction_split_manifest import ExtractionSplitManifest
 
@@ -23,8 +25,9 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 class ExtractionThresholdObservation:
     threshold_id: str
     threshold: float
-    report: ExtractionBenchmarkReport
+    predictions: tuple[ExtractionPrediction, ...]
     manifest: ExtractionSplitManifest
+    confidence: float = 0.95
 
     def __post_init__(self) -> None:
         if not isinstance(self.threshold_id, str) or not self.threshold_id.strip():
@@ -36,11 +39,15 @@ class ExtractionThresholdObservation:
             or float(self.threshold) < 0.0
         ):
             raise ValueError("threshold must be a finite non-negative number")
-        if not isinstance(self.report, ExtractionBenchmarkReport):
-            raise TypeError("report must be an ExtractionBenchmarkReport")
         if not isinstance(self.manifest, ExtractionSplitManifest):
             raise TypeError("manifest must be an ExtractionSplitManifest")
-        self.manifest.validate_report_membership(self.report)
+        if not 0.0 < self.confidence < 1.0 or not math.isfinite(self.confidence):
+            raise ValueError("confidence must be a finite value in (0, 1)")
+        if any(not isinstance(prediction, ExtractionPrediction) for prediction in self.predictions):
+            raise TypeError("predictions must contain ExtractionPrediction values")
+        # Force validation now so duplicate/unknown target ids fail at construction rather than later.
+        self.report
+        self.prediction_set_sha256()
 
     @property
     def split(self) -> BenchmarkSplit:
@@ -50,10 +57,25 @@ class ExtractionThresholdObservation:
     def manifest_sha256(self) -> str:
         return self.manifest.sha256()
 
+    @property
+    def report(self) -> ExtractionBenchmarkReport:
+        return evaluate_extraction_benchmark(
+            self.manifest.targets,
+            self.predictions,
+            confidence=self.confidence,
+        )
+
+    def prediction_set_sha256(self) -> str:
+        payload = [
+            _jsonable(asdict(prediction))
+            for prediction in sorted(self.predictions, key=lambda item: item.target_id)
+        ]
+        return _stable_sha256(payload)
+
 
 @dataclass(frozen=True)
 class ExtractionSelectivityEvidence:
-    """Canonical split manifest plus all threshold observations used for a selectivity curve."""
+    """Canonical split manifest plus prediction-derived observations for one selectivity curve."""
 
     manifest: ExtractionSplitManifest
     observations: tuple[ExtractionThresholdObservation, ...]
@@ -230,6 +252,8 @@ def threshold_observations_sha256(
             "threshold": float(observation.threshold),
             "split": observation.split.value,
             "manifest_sha256": observation.manifest_sha256,
+            "confidence": observation.confidence,
+            "prediction_set_sha256": observation.prediction_set_sha256(),
             "report": _report_payload(observation.report),
         }
         for observation in sorted(observations, key=lambda item: item.threshold_id)
