@@ -10,8 +10,14 @@ from typing import Any
 
 from .benchmark import BenchmarkSplit
 from .corpus import AccessTier, ArticleFamilySplitLock, CorpusPaper
-from .extraction_benchmark import ExtractionSelectivityCurve
-from .extraction_calibration import ExtractionTestEvaluationLock, FrozenExtractionThreshold
+from .extraction_benchmark import ExtractionSelectivityCurve, build_extraction_selectivity_curve
+from .extraction_calibration import (
+    ExtractionTestEvaluationLock,
+    ExtractionThresholdObservation,
+    ExtractionThresholdPolicy,
+    FrozenExtractionThreshold,
+    select_development_threshold,
+)
 from .extraction_review import (
     ExtractionGoldManifest,
     ExtractionReviewRecord,
@@ -397,6 +403,9 @@ def build_extraction_evidence_release_receipt(
     gold_manifest: ExtractionGoldManifest,
     review_records: tuple[ExtractionReviewRecord, ...] | list[ExtractionReviewRecord],
     split_lock: ArticleFamilySplitLock,
+    threshold_policy: ExtractionThresholdPolicy,
+    development_observations: tuple[ExtractionThresholdObservation, ...]
+    | list[ExtractionThresholdObservation],
     frozen_threshold: FrozenExtractionThreshold,
     test_seal: ExtractionTestSetSeal,
     test_evaluation_lock: ExtractionTestEvaluationLock,
@@ -498,16 +507,26 @@ def build_extraction_evidence_release_receipt(
     development_manifest_sha256 = development_manifest.sha256()
     test_manifest_sha256 = test_manifest.sha256()
 
-    if tuple(sorted(frozen_threshold.candidate_threshold_ids)) != threshold_grid.threshold_ids:
-        raise ValueError("frozen threshold candidate ids differ from the precommitted threshold grid")
-    try:
-        selected_threshold = threshold_grid.threshold_for_id(frozen_threshold.threshold_id)
-    except KeyError as exc:
-        raise ValueError("selected threshold id is not in the precommitted threshold grid") from exc
-    if selected_threshold != frozen_threshold.threshold:
-        raise ValueError("selected threshold value differs from the precommitted threshold grid")
-    if frozen_threshold.development_manifest_sha256 != development_manifest_sha256:
-        raise ValueError("frozen threshold is bound to a different DEVELOPMENT manifest")
+    observations = _validate_development_observations_against_grid(
+        development_observations,
+        threshold_grid,
+    )
+    expected_frozen_threshold = select_development_threshold(
+        observations,
+        policy=threshold_policy,
+        development_manifest_sha256=development_manifest_sha256,
+    )
+    if expected_frozen_threshold.sha256() != frozen_threshold.sha256():
+        raise ValueError(
+            "frozen threshold differs from deterministic DEVELOPMENT selection "
+            "under the supplied policy and observations"
+        )
+
+    expected_development_curve = build_extraction_selectivity_curve(
+        tuple((observation.threshold, observation.report) for observation in observations)
+    )
+    if _curve_sha256(expected_development_curve) != _curve_sha256(development_curve):
+        raise ValueError("DEVELOPMENT selectivity curve differs from bound DEVELOPMENT observations")
 
     test_seal.validate(gold_manifest, split_lock)
     if test_evaluation_lock.frozen_threshold_sha256 != frozen_threshold.sha256():
@@ -548,6 +567,33 @@ def extraction_evidence_plan_payload(
         "plan_sha256": plan.sha256(),
         "production_authorized": False,
     }
+
+
+def _validate_development_observations_against_grid(
+    observations: tuple[ExtractionThresholdObservation, ...]
+    | list[ExtractionThresholdObservation],
+    threshold_grid: ExtractionThresholdGrid,
+) -> tuple[ExtractionThresholdObservation, ...]:
+    observations = tuple(observations)
+    if not observations:
+        raise ValueError("release workflow requires DEVELOPMENT threshold observations")
+    if any(not isinstance(observation, ExtractionThresholdObservation) for observation in observations):
+        raise TypeError("development_observations must contain ExtractionThresholdObservation values")
+    observation_ids = tuple(sorted(observation.threshold_id for observation in observations))
+    if observation_ids != threshold_grid.threshold_ids:
+        raise ValueError("DEVELOPMENT observation ids differ from the precommitted threshold grid")
+    for observation in observations:
+        if observation.split is not BenchmarkSplit.DEVELOPMENT:
+            raise ValueError("release DEVELOPMENT observations must use the DEVELOPMENT split")
+        try:
+            expected_threshold = threshold_grid.threshold_for_id(observation.threshold_id)
+        except KeyError as exc:
+            raise ValueError("DEVELOPMENT observation id is not in the precommitted threshold grid") from exc
+        if float(observation.threshold) != expected_threshold:
+            raise ValueError(
+                "DEVELOPMENT observation threshold value differs from the precommitted threshold grid"
+            )
+    return observations
 
 
 def _require_curve_thresholds(
