@@ -75,7 +75,7 @@ class ExtractionReviewerPacket:
         if type(self.blinded_to_other_reviews) is not bool or not self.blinded_to_other_reviews:
             raise ValueError("locked review packets must remain blinded to other reviews")
         if isinstance(self.schema_version, bool) or not isinstance(self.schema_version, int):
-            raise ValueError("reviewer packet schema_version must be integer 1")
+            raise TypeError("reviewer packet schema_version must be integer 1")
         if self.schema_version != 1:
             raise ValueError("reviewer packet schema_version must be integer 1")
 
