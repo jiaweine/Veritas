@@ -15,6 +15,8 @@ def test_extraction_evidence_plan_cli_writes_nonproduction_pretest_commitment(tm
             str(root / "scripts/build_extraction_evidence_plan.py"),
             "--sampling-frame",
             str(root / "benchmark/corpus/candidates.json"),
+            "--seed-manifest",
+            str(root / "benchmark/extraction/seed_cases_v0.11.json"),
             "--split-salt",
             "locked-real-paper-v1",
             "--threshold",
@@ -46,3 +48,28 @@ def test_extraction_evidence_plan_cli_writes_nonproduction_pretest_commitment(tm
     ]
     assert "labels" not in payload
     assert "accepted_normalized_values" not in output.read_text(encoding="utf-8")
+
+
+def test_extraction_evidence_plan_cli_requires_explicit_seed_manifest(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    output = tmp_path / "evidence-plan.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(root / "scripts/build_extraction_evidence_plan.py"),
+            "--split-salt",
+            "locked-real-paper-v1",
+            "--threshold",
+            "t-090=0.90",
+            "--output",
+            str(output),
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "--seed-manifest" in result.stderr
+    assert not output.exists()
