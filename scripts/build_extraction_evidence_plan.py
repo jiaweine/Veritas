@@ -35,6 +35,16 @@ def _confidence(value: str) -> float:
     return numeric
 
 
+def _fraction(value: str) -> float:
+    try:
+        numeric = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("split fraction must be numeric") from exc
+    if not math.isfinite(numeric) or numeric <= 0.0 or numeric >= 1.0:
+        raise argparse.ArgumentTypeError("split fraction must be finite and in (0, 1)")
+    return numeric
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Build a pre-TEST extraction evidence workflow commitment."
@@ -51,6 +61,18 @@ def main() -> int:
         help="Exact reviewed-target seed manifest to precommit; never inferred from a legacy default.",
     )
     parser.add_argument("--split-salt", required=True)
+    parser.add_argument(
+        "--train-fraction",
+        type=_fraction,
+        default=0.60,
+        help="Article-family TRAIN fraction to precommit before reviewed split assignment.",
+    )
+    parser.add_argument(
+        "--development-fraction",
+        type=_fraction,
+        default=0.20,
+        help="Article-family DEVELOPMENT fraction to precommit before reviewed split assignment.",
+    )
     parser.add_argument(
         "--review-protocol-version",
         default="independent-double-review-v1",
@@ -71,6 +93,9 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
+    if args.train_fraction + args.development_fraction >= 1.0:
+        parser.error("train and development fractions must leave positive mass for TEST")
+
     sampling_frame = load_extraction_sampling_frame(args.sampling_frame)
     seed_manifest = load_extraction_seed_manifest(args.seed_manifest)
     threshold_grid = ExtractionThresholdGrid(points=tuple(args.threshold))
@@ -80,6 +105,8 @@ def main() -> int:
         threshold_grid,
         review_protocol_version=args.review_protocol_version,
         split_salt=args.split_salt,
+        train_fraction=args.train_fraction,
+        development_fraction=args.development_fraction,
         benchmark_confidence=args.benchmark_confidence,
     )
     payload = extraction_evidence_plan_payload(plan, threshold_grid)
