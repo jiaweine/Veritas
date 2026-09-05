@@ -53,9 +53,11 @@ In a real deployment, archive the trust root and trust policy in a protected con
 - execution-command SHA-256;
 - exact trust-root SHA-256.
 
+The attested receipt itself contains the exact `ExtractionEvidencePlan` SHA-256 copied from the rebuilt base release receipt. Because the external statement signs the entire attested-receipt hash, the signature transitively commits the exact evidence plan without relying on a separate unsigned plan parameter.
+
 The statement is encoded as canonical UTF-8 JSON with sorted object keys and compact separators before signing.
 
-Changing the run id, commit, release receipt, execution plan, split execution set, input artifacts, source tree, parser registry, runtime, command, issuer, runner, repository, workflow, or trust root invalidates the signature or subject binding.
+Changing the run id, commit, release receipt, evidence plan, execution plan, split execution set, input artifacts, source tree, parser registry, runtime, command, issuer, runner, repository, workflow, or trust root invalidates the signed subject or its precommitted policy binding.
 
 ## Verification layers
 
@@ -80,13 +82,14 @@ This prevents a historical but otherwise valid signed statement from being silen
 For the strongest path, use `verify_precommitted_external_extraction_provenance_for_run()`. In addition to run-context and Ed25519 checks, it requires:
 
 - the supplied evidence-plan SHA-256 to equal the precommitted trust policy;
+- the same evidence-plan SHA-256 to equal the plan hash carried inside the signed attested release receipt;
 - the supplied trust-root SHA-256 to equal the precommitted trust policy;
 - issuer/runner/repository/workflow identity to equal the policy;
 - the complete context-bound run verification to succeed.
 
-The resulting `PrecommittedExternalExtractionRunReceipt` commits the trust-policy, evidence-plan, trust-root, and verified-run receipt hashes. Changing the evidence plan, replacing the signing key/root, or changing trusted runner identity after the policy was frozen fails closed.
+The resulting `PrecommittedExternalExtractionRunReceipt` commits the trust-policy, evidence-plan, trust-root, and verified-run receipt hashes. Changing the evidence plan, replacing the signing key/root, or changing trusted runner identity after the policy was frozen fails closed. A policy hash and a release subject can no longer merely carry unrelated but individually valid plan digests.
 
-Ed25519 verification is an optional runtime capability. Install `veritas-audit[attestation]` to provide the `cryptography` implementation. CI installs this extra and exercises valid signatures, wrong keys, modified run ids, subject drift, execution-plan drift, expected-run/attempt/commit drift, trust-policy/root drift, and malformed signatures.
+Ed25519 verification is an optional runtime capability. Install `veritas-audit[attestation]` to provide the `cryptography` implementation. CI installs this extra and exercises valid signatures, wrong keys, modified run ids, subject drift, execution-plan drift, expected-run/attempt/commit drift, trust-policy/root drift, signed-release evidence-plan drift, and malformed signatures.
 
 ## Strict JSON ingress
 
@@ -104,10 +107,11 @@ The stable public import surface for execution evidence, signed provenance, trus
 
 With a genuinely independently archived pre-TEST trust policy, a pretrusted public key, and independently selected expected run context, successful precommitted run verification proves that:
 
-1. the evidence plan was associated with the exact pinned trust root in the supplied trust policy;
-2. the holder of the corresponding Ed25519 private key signed the exact execution/release subject;
-3. that subject is for the independently expected run id, attempt, and commit;
-4. Veritas independently reconstructed the same release/execution subject.
+1. the exact evidence plan carried by the signed attested release matches the plan committed by the pre-TEST trust policy;
+2. that policy selected the exact pinned trust root and runner/repository/workflow identity;
+3. the holder of the corresponding Ed25519 private key signed the exact execution/release subject;
+4. that subject is for the independently expected run id, attempt, and commit;
+5. Veritas independently reconstructed the same release/execution subject.
 
 That can support a real external-run provenance claim when the private key is genuinely controlled by the claimed trusted runner or signing service and the policy was actually archived before TEST.
 
