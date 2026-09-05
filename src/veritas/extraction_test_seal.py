@@ -20,12 +20,23 @@ class ExtractionTestSetSeal:
     schema_version: int = 1
 
     def __post_init__(self) -> None:
-        if not _SHA256_RE.fullmatch(self.gold_manifest_sha256):
+        if isinstance(self.schema_version, bool) or not isinstance(self.schema_version, int) or self.schema_version != 1:
+            raise ValueError("TEST seal schema_version must be integer 1")
+        if not isinstance(self.gold_manifest_sha256, str) or not _SHA256_RE.fullmatch(
+            self.gold_manifest_sha256
+        ):
             raise ValueError("gold_manifest_sha256 must be a lowercase SHA-256 digest")
-        if not _SHA256_RE.fullmatch(self.split_lock_sha256):
+        if not isinstance(self.split_lock_sha256, str) or not _SHA256_RE.fullmatch(
+            self.split_lock_sha256
+        ):
             raise ValueError("split_lock_sha256 must be a lowercase SHA-256 digest")
-        if not self.test_article_family_ids:
-            raise ValueError("TEST seal requires at least one article family")
+        if not isinstance(self.test_article_family_ids, tuple) or not self.test_article_family_ids:
+            raise ValueError("TEST seal requires a non-empty tuple of article families")
+        if any(
+            not isinstance(family_id, str) or not family_id.strip()
+            for family_id in self.test_article_family_ids
+        ):
+            raise ValueError("test_article_family_ids must contain non-empty strings")
         if tuple(sorted(set(self.test_article_family_ids))) != self.test_article_family_ids:
             raise ValueError("test_article_family_ids must be unique and sorted")
 
@@ -68,6 +79,10 @@ def seal_extraction_test_set(
     gold_manifest: ExtractionGoldManifest,
     split_lock: ArticleFamilySplitLock,
 ) -> ExtractionTestSetSeal:
+    if not isinstance(gold_manifest, ExtractionGoldManifest):
+        raise TypeError("gold_manifest must be an ExtractionGoldManifest")
+    if not isinstance(split_lock, ArticleFamilySplitLock):
+        raise TypeError("split_lock must be an ArticleFamilySplitLock")
     if split_lock.manifest_sha256 != gold_manifest.sha256():
         raise ValueError("split lock must be bound to the exact extraction gold manifest")
     test_families = tuple(

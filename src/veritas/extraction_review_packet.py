@@ -24,23 +24,28 @@ class ExtractionReviewPacketTarget:
     critical_for_hard_audit: bool = True
 
     def __post_init__(self) -> None:
-        required = (
-            self.target_id,
-            self.case_id,
-            self.paper_id,
-            self.article_family_id,
-            self.pdf_url,
-            self.object_type,
-            self.key,
-            self.table_label,
-            self.row_label,
-        )
-        if any(not value.strip() for value in required):
-            raise ValueError("review packet target identity fields cannot be empty")
+        for label, value in (
+            ("target_id", self.target_id),
+            ("case_id", self.case_id),
+            ("paper_id", self.paper_id),
+            ("article_family_id", self.article_family_id),
+            ("pdf_url", self.pdf_url),
+            ("object_type", self.object_type),
+            ("key", self.key),
+            ("table_label", self.table_label),
+            ("row_label", self.row_label),
+        ):
+            _require_nonempty_string(value, label=label)
+        if self.doi is not None and (not isinstance(self.doi, str) or not self.doi.strip()):
+            raise ValueError("doi must be a non-empty string or None")
         if not self.pdf_url.startswith("https://"):
             raise ValueError("review packet pdf_url must use HTTPS")
+        if isinstance(self.expected_page, bool) or not isinstance(self.expected_page, int):
+            raise TypeError("expected_page must be an integer")
         if self.expected_page <= 0:
             raise ValueError("expected_page must be positive")
+        if type(self.critical_for_hard_audit) is not bool:
+            raise TypeError("critical_for_hard_audit must be boolean")
 
 
 @dataclass(frozen=True)
@@ -53,22 +58,34 @@ class ExtractionReviewerPacket:
     schema_version: int = 1
 
     def __post_init__(self) -> None:
-        if not self.reviewer_slot.strip():
-            raise ValueError("reviewer_slot is required")
-        if not _SHA256_RE.fullmatch(self.seed_manifest_sha256):
+        _require_nonempty_string(self.reviewer_slot, label="reviewer_slot")
+        if not isinstance(self.seed_manifest_sha256, str) or not _SHA256_RE.fullmatch(
+            self.seed_manifest_sha256
+        ):
             raise ValueError("seed_manifest_sha256 must be a lowercase SHA-256 digest")
-        if not self.targets:
-            raise ValueError("reviewer packet requires at least one target")
+        if not isinstance(self.targets, tuple) or not self.targets:
+            raise ValueError("reviewer packet requires a non-empty tuple of targets")
+        if any(not isinstance(target, ExtractionReviewPacketTarget) for target in self.targets):
+            raise TypeError("reviewer packet targets must be ExtractionReviewPacketTarget values")
         target_ids = [target.target_id for target in self.targets]
         if len(set(target_ids)) != len(target_ids):
             raise ValueError("review packet target_id values must be unique")
-        if not self.blinded_to_legacy_values or not self.blinded_to_other_reviews:
-            raise ValueError("locked review packets must remain blinded")
+        if type(self.blinded_to_legacy_values) is not bool or not self.blinded_to_legacy_values:
+            raise ValueError("locked review packets must remain blinded to legacy values")
+        if type(self.blinded_to_other_reviews) is not bool or not self.blinded_to_other_reviews:
+            raise ValueError("locked review packets must remain blinded to other reviews")
+        if isinstance(self.schema_version, bool) or not isinstance(self.schema_version, int):
+            raise TypeError("reviewer packet schema_version must be integer 1")
+        if self.schema_version != 1:
+            raise ValueError("reviewer packet schema_version must be integer 1")
 
     def sha256(self) -> str:
-        raw = json.dumps(self.to_payload(), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
-            "utf-8"
-        )
+        raw = json.dumps(
+            self.to_payload(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
         return sha256(raw).hexdigest()
 
     def to_payload(self) -> dict[str, object]:
@@ -109,12 +126,20 @@ def build_blinded_seed_review_packets(
     seed_manifest_sha256: str,
     reviewer_slots: tuple[str, ...] = ("reviewer-a", "reviewer-b"),
 ) -> tuple[ExtractionReviewerPacket, ...]:
+    if not isinstance(seed_manifest, dict):
+        raise TypeError("seed manifest must be an object")
     if seed_manifest.get("status") != "seed_corpus_not_locked_gold":
         raise ValueError("review packets may only be built from an explicit seed corpus")
     if seed_manifest.get("production_hard_finding_authorized") is not False:
         raise ValueError("seed corpus must not carry production hard-finding authority")
+    if not isinstance(reviewer_slots, tuple) or any(
+        not isinstance(slot, str) or not slot.strip() for slot in reviewer_slots
+    ):
+        raise TypeError("reviewer_slots must be a tuple of non-empty strings")
     if len(set(reviewer_slots)) < 2:
         raise ValueError("at least two distinct reviewer slots are required")
+    if not isinstance(seed_manifest_sha256, str) or not _SHA256_RE.fullmatch(seed_manifest_sha256):
+        raise ValueError("seed_manifest_sha256 must be a lowercase SHA-256 digest")
 
     packet_targets: list[ExtractionReviewPacketTarget] = []
     cases = seed_manifest.get("cases")
@@ -125,24 +150,45 @@ def build_blinded_seed_review_packets(
             raise TypeError("seed cases must be objects")
         if case.get("split") is not None:
             raise ValueError("seed cases must remain unsplit before independent review")
+        case_id = _required_mapping_string(case, "case_id")
+        paper_id = _required_mapping_string(case, "paper_id")
+        article_family_id = _required_mapping_string(case, "article_family_id")
+        pdf_url = _required_mapping_string(case, "pdf_url")
+        object_type = _required_mapping_string(case, "object_type")
+        doi = case.get("doi")
+        if doi is not None and (not isinstance(doi, str) or not doi.strip()):
+            raise ValueError("seed case doi must be a non-empty string or null")
+
         locator = case.get("locator")
         fields = case.get("expected_fields")
         if not isinstance(locator, dict) or not isinstance(fields, dict) or not fields:
             raise ValueError("seed cases require locator and expected_fields metadata")
+        if set(locator) != {"expected_page", "table_label", "row_label"}:
+            raise ValueError("seed case locator must contain exactly expected_page/table_label/row_label")
+        expected_page = locator["expected_page"]
+        if isinstance(expected_page, bool) or not isinstance(expected_page, int):
+            raise TypeError("seed case expected_page must be an integer")
+        if expected_page <= 0:
+            raise ValueError("seed case expected_page must be positive")
+        table_label = _required_mapping_string(locator, "table_label", prefix="seed case locator")
+        row_label = _required_mapping_string(locator, "row_label", prefix="seed case locator")
+        if any(not isinstance(key, str) or not key.strip() for key in fields):
+            raise ValueError("seed expected_fields keys must be non-empty strings")
+
         for key in sorted(fields):
             packet_targets.append(
                 ExtractionReviewPacketTarget(
-                    target_id=f"{case['case_id']}:{key}",
-                    case_id=str(case["case_id"]),
-                    paper_id=str(case["paper_id"]),
-                    article_family_id=str(case["article_family_id"]),
-                    doi=str(case["doi"]) if case.get("doi") is not None else None,
-                    pdf_url=str(case["pdf_url"]),
-                    object_type=str(case["object_type"]),
-                    key=str(key),
-                    expected_page=int(locator["expected_page"]),
-                    table_label=str(locator["table_label"]),
-                    row_label=str(locator["row_label"]),
+                    target_id=f"{case_id}:{key}",
+                    case_id=case_id,
+                    paper_id=paper_id,
+                    article_family_id=article_family_id,
+                    doi=doi,
+                    pdf_url=pdf_url,
+                    object_type=object_type,
+                    key=key,
+                    expected_page=expected_page,
+                    table_label=table_label,
+                    row_label=row_label,
                 )
             )
 
@@ -155,3 +201,20 @@ def build_blinded_seed_review_packets(
         )
         for slot in reviewer_slots
     )
+
+
+def _require_nonempty_string(value: object, *, label: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be a non-empty string")
+
+
+def _required_mapping_string(
+    mapping: dict[str, object],
+    key: str,
+    *,
+    prefix: str = "seed case",
+) -> str:
+    value = mapping.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{prefix} {key} must be a non-empty string")
+    return value

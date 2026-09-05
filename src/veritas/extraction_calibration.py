@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass
 from hashlib import sha256
 
 from .benchmark import BenchmarkSplit
-from .extraction_benchmark import ExtractionBenchmarkReport
+from .extraction_benchmark import ExtractionBenchmarkReport, ExtractionPrediction
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -17,12 +18,23 @@ class ExtractionThresholdObservation:
     threshold: float
     split: BenchmarkSplit
     report: ExtractionBenchmarkReport
+    predictions: tuple[ExtractionPrediction, ...] | None = None
 
     def __post_init__(self) -> None:
-        if not self.threshold_id.strip():
-            raise ValueError("threshold_id is required")
-        if self.threshold < 0:
-            raise ValueError("threshold must be non-negative")
+        _require_nonempty_string(self.threshold_id, label="threshold_id")
+        _require_finite_nonnegative_number(self.threshold, label="threshold")
+        if not isinstance(self.split, BenchmarkSplit):
+            raise TypeError("split must be a BenchmarkSplit")
+        if not isinstance(self.report, ExtractionBenchmarkReport):
+            raise TypeError("report must be an ExtractionBenchmarkReport")
+        if self.predictions is not None:
+            if not isinstance(self.predictions, tuple):
+                raise TypeError("predictions must be a tuple of ExtractionPrediction values or None")
+            if any(not isinstance(prediction, ExtractionPrediction) for prediction in self.predictions):
+                raise TypeError("predictions must contain ExtractionPrediction values")
+            target_ids = [prediction.target_id for prediction in self.predictions]
+            if len(set(target_ids)) != len(target_ids):
+                raise ValueError("prediction target_id values must be unique within an observation")
 
 
 @dataclass(frozen=True)
@@ -41,8 +53,8 @@ class ExtractionThresholdPolicy:
                 self.max_critical_family_wrong_accept_upper_bound,
             ),
         ):
-            if not 0.0 <= value <= 1.0:
-                raise ValueError(f"{name} must be in [0, 1]")
+            _require_probability(value, label=name)
+        _require_schema_version(self.schema_version, label="extraction threshold policy")
 
     def sha256(self) -> str:
         payload = {
@@ -67,16 +79,19 @@ class FrozenExtractionThreshold:
     schema_version: int = 1
 
     def __post_init__(self) -> None:
-        if not self.threshold_id.strip():
-            raise ValueError("threshold_id is required")
-        if self.threshold < 0:
-            raise ValueError("threshold must be non-negative")
-        if not _SHA256_RE.fullmatch(self.development_manifest_sha256):
-            raise ValueError("development_manifest_sha256 must be a lowercase SHA-256 digest")
-        if not _SHA256_RE.fullmatch(self.policy_sha256):
-            raise ValueError("policy_sha256 must be a lowercase SHA-256 digest")
-        if not self.candidate_threshold_ids:
-            raise ValueError("candidate_threshold_ids cannot be empty")
+        _require_nonempty_string(self.threshold_id, label="threshold_id")
+        _require_finite_nonnegative_number(self.threshold, label="threshold")
+        _require_sha256(self.development_manifest_sha256, label="development_manifest_sha256")
+        _require_sha256(self.policy_sha256, label="policy_sha256")
+        if not isinstance(self.candidate_threshold_ids, tuple) or not self.candidate_threshold_ids:
+            raise ValueError("candidate_threshold_ids must be a non-empty tuple")
+        for threshold_id in self.candidate_threshold_ids:
+            _require_nonempty_string(threshold_id, label="candidate threshold id")
+        if len(set(self.candidate_threshold_ids)) != len(self.candidate_threshold_ids):
+            raise ValueError("candidate_threshold_ids must be unique")
+        if self.threshold_id not in self.candidate_threshold_ids:
+            raise ValueError("selected threshold_id must be present in candidate_threshold_ids")
+        _require_schema_version(self.schema_version, label="frozen extraction threshold")
 
     def sha256(self) -> str:
         payload = {
@@ -98,10 +113,9 @@ class ExtractionTestEvaluationLock:
     schema_version: int = 1
 
     def __post_init__(self) -> None:
-        if not _SHA256_RE.fullmatch(self.frozen_threshold_sha256):
-            raise ValueError("frozen_threshold_sha256 must be a lowercase SHA-256 digest")
-        if not _SHA256_RE.fullmatch(self.test_manifest_sha256):
-            raise ValueError("test_manifest_sha256 must be a lowercase SHA-256 digest")
+        _require_sha256(self.frozen_threshold_sha256, label="frozen_threshold_sha256")
+        _require_sha256(self.test_manifest_sha256, label="test_manifest_sha256")
+        _require_schema_version(self.schema_version, label="extraction TEST evaluation lock")
 
     def sha256(self) -> str:
         raw = json.dumps(
@@ -125,8 +139,11 @@ def select_development_threshold(
     observations = tuple(observations)
     if not observations:
         raise ValueError("at least one threshold observation is required")
-    if not _SHA256_RE.fullmatch(development_manifest_sha256):
-        raise ValueError("development_manifest_sha256 must be a lowercase SHA-256 digest")
+    if not isinstance(policy, ExtractionThresholdPolicy):
+        raise TypeError("policy must be an ExtractionThresholdPolicy")
+    _require_sha256(development_manifest_sha256, label="development_manifest_sha256")
+    if any(not isinstance(observation, ExtractionThresholdObservation) for observation in observations):
+        raise TypeError("observations must contain ExtractionThresholdObservation values")
     non_development = [
         observation.threshold_id
         for observation in observations
@@ -182,7 +199,45 @@ def lock_test_evaluation(
     selection logic. TEST results may evaluate a frozen threshold but may not influence it.
     """
 
+    if not isinstance(frozen_threshold, FrozenExtractionThreshold):
+        raise TypeError("frozen_threshold must be a FrozenExtractionThreshold")
+    _require_sha256(test_manifest_sha256, label="test_manifest_sha256")
     return ExtractionTestEvaluationLock(
         frozen_threshold_sha256=frozen_threshold.sha256(),
         test_manifest_sha256=test_manifest_sha256,
     )
+
+
+def _require_nonempty_string(value: object, *, label: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be a non-empty string")
+
+
+def _require_finite_nonnegative_number(value: object, *, label: str) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or float(value) < 0.0
+    ):
+        raise ValueError(f"{label} must be a finite non-negative number")
+
+
+def _require_probability(value: object, *, label: str) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or not 0.0 <= float(value) <= 1.0
+    ):
+        raise ValueError(f"{label} must be a finite number in [0, 1]")
+
+
+def _require_sha256(value: object, *, label: str) -> None:
+    if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
+        raise ValueError(f"{label} must be a lowercase SHA-256 digest")
+
+
+def _require_schema_version(value: object, *, label: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value != 1:
+        raise ValueError(f"{label} schema_version must be 1")

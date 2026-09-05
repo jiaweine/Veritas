@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from veritas.extraction_review import (
@@ -5,7 +7,9 @@ from veritas.extraction_review import (
     ExtractionGoldManifest,
     ExtractionReviewSubmission,
     ExtractionReviewTarget,
+    build_extraction_gold_manifest,
     resolve_extraction_reviews,
+    validate_extraction_gold_review_records,
 )
 from veritas.ingestion import EvidenceKind
 from veritas.models import SourceLocation
@@ -48,7 +52,34 @@ def _submission(
     )
 
 
-def test_two_agreeing_reviewers_create_review_bound_gold():
+def _adjudication(
+    *,
+    target_id: str = "t1",
+    adjudicator: str = "reviewer-c",
+    value: str = "0.18",
+    row: str = "Treatment",
+) -> ExtractionAdjudication:
+    return ExtractionAdjudication(
+        target_id=target_id,
+        adjudicator_id=adjudicator,
+        accepted_normalized_values=(value,),
+        source=_source(row=row),
+        note="independently checked the publication source",
+    )
+
+
+def _record(target_id: str = "t1", family: str = "family-1"):
+    return resolve_extraction_reviews(
+        _target(target_id, family),
+        (
+            _submission("reviewer-a", target_id=target_id),
+            _submission("reviewer-b", target_id=target_id),
+        ),
+        adjudication=_adjudication(target_id=target_id),
+    )
+
+
+def test_two_agreeing_reviewers_create_review_record_but_not_locked_gold():
     record = resolve_extraction_reviews(
         _target(),
         (_submission("reviewer-a"), _submission("reviewer-b")),
@@ -56,6 +87,14 @@ def test_two_agreeing_reviewers_create_review_bound_gold():
     assert record.adjudicated is False
     assert record.accepted_normalized_values == ("0.18",)
     assert len(record.sha256()) == 64
+
+    with pytest.raises(ValueError, match="requires independent adjudication"):
+        record.to_gold_target()
+
+
+def test_agreeing_reviewers_can_be_independently_adjudicated_for_locked_gold():
+    record = _record()
+    assert record.adjudicated is True
 
     gold = record.to_gold_target()
     assert gold.review_record_sha256 == record.sha256()
@@ -84,36 +123,22 @@ def test_disagreement_requires_independent_adjudication():
 
 
 def test_adjudicator_must_not_be_one_of_the_original_reviewers():
-    adjudication = ExtractionAdjudication(
-        target_id="t1",
-        adjudicator_id="reviewer-a",
-        accepted_normalized_values=("0.18",),
-        source=_source(),
-        note="resolved against PDF",
-    )
     with pytest.raises(ValueError, match="adjudicator must be independent"):
         resolve_extraction_reviews(
             _target(),
             (_submission("reviewer-a", value="0.18"), _submission("reviewer-b", value="0.81")),
-            adjudication=adjudication,
+            adjudication=_adjudication(adjudicator="reviewer-a"),
         )
 
 
 def test_value_or_row_disagreement_can_be_adjudicated_by_third_reviewer():
-    adjudication = ExtractionAdjudication(
-        target_id="t1",
-        adjudicator_id="reviewer-c",
-        accepted_normalized_values=("0.18",),
-        source=_source(),
-        note="checked the publication table and selected the treatment row",
-    )
     record = resolve_extraction_reviews(
         _target(),
         (
             _submission("reviewer-a", value="0.18"),
             _submission("reviewer-b", value="0.18", row="Control"),
         ),
-        adjudication=adjudication,
+        adjudication=_adjudication(),
     )
     assert record.adjudicated is True
     assert record.source.row == "Treatment"
@@ -128,36 +153,40 @@ def test_duplicate_reviewer_identity_is_rejected():
         )
 
 
-def test_locked_gold_manifest_requires_review_provenance_and_binds_split_lock():
-    first = resolve_extraction_reviews(
-        _target("t1", "family-1"),
-        (
-            _submission("reviewer-a", target_id="t1"),
-            _submission("reviewer-b", target_id="t1"),
-        ),
-    ).to_gold_target()
-    second = resolve_extraction_reviews(
-        _target("t2", "family-2"),
-        (
-            _submission("reviewer-a", target_id="t2"),
-            _submission("reviewer-b", target_id="t2"),
-        ),
-    ).to_gold_target()
-    manifest = ExtractionGoldManifest(
-        targets=(first, second),
+def test_locked_gold_manifest_is_built_and_verified_from_review_records():
+    first = _record("t1", "family-1")
+    second = _record("t2", "family-2")
+    records = (first, second)
+    manifest = build_extraction_gold_manifest(
+        records,
         split_salt="v0.11-extraction-lock",
         source_seed_manifest_sha256="a" * 64,
     )
+    validate_extraction_gold_review_records(manifest, records)
+
     lock = manifest.build_split_lock()
     assert lock.manifest_sha256 == manifest.sha256()
     assert {family for family, _ in lock.assignments} == {"family-1", "family-2"}
 
 
-def test_locked_gold_manifest_rejects_legacy_gold_without_review_hash():
-    record = resolve_extraction_reviews(
-        _target(),
-        (_submission("reviewer-a"), _submission("reviewer-b")),
+def test_gold_review_validation_rejects_forged_hash_or_missing_record():
+    record = _record()
+    manifest = build_extraction_gold_manifest(
+        (record,),
+        split_salt="v0.11-extraction-lock",
+        source_seed_manifest_sha256="a" * 64,
     )
+    forged_target = replace(manifest.targets[0], review_record_sha256="f" * 64)
+    forged_manifest = replace(manifest, targets=(forged_target,))
+
+    with pytest.raises(ValueError, match="differs from bound review record"):
+        validate_extraction_gold_review_records(forged_manifest, (record,))
+    with pytest.raises(ValueError, match="requires review records"):
+        validate_extraction_gold_review_records(manifest, ())
+
+
+def test_locked_gold_manifest_rejects_legacy_gold_without_review_hash():
+    record = _record()
     legacy = record.to_gold_target()
     object.__setattr__(legacy, "review_record_sha256", None)
     with pytest.raises(ValueError, match="review_record_sha256"):
@@ -166,3 +195,28 @@ def test_locked_gold_manifest_rejects_legacy_gold_without_review_hash():
             split_salt="v0.11-extraction-lock",
             source_seed_manifest_sha256="a" * 64,
         )
+
+
+def test_review_and_gold_schema_versions_fail_closed():
+    record = _record()
+    with pytest.raises(ValueError, match="review record schema_version"):
+        replace(record, schema_version=True)
+    with pytest.raises(ValueError, match="review record schema_version"):
+        replace(record, schema_version=2)
+
+    manifest = build_extraction_gold_manifest(
+        (record,),
+        split_salt="v0.11-extraction-lock",
+        source_seed_manifest_sha256="a" * 64,
+    )
+    with pytest.raises(ValueError, match="gold manifest schema_version"):
+        replace(manifest, schema_version=False)
+
+
+def test_review_objects_reject_ambiguous_types_before_hashing():
+    with pytest.raises(TypeError, match="critical_for_hard_audit"):
+        replace(_target(), critical_for_hard_audit=1)
+    with pytest.raises(TypeError, match="non-empty tuple"):
+        replace(_submission("reviewer-a"), accepted_normalized_values=["0.18"])
+    with pytest.raises(TypeError, match="submissions"):
+        replace(_record(), submissions=list(_record().submissions))

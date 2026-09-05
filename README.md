@@ -21,7 +21,7 @@ Many empirical papers do not publish raw data or replication code. Veritas treat
 7. **Protocol locking.** Artifact identities, calibration, parser versions, object schemas, detector versions, promotion policies, and numerical runtime identities are locked for an audit run.
 8. **Detector readiness is not production authority.** Benchmark and research calibrations may exercise the full detector pipeline without being allowed to publish a production-authorized hard finding.
 
-## Current core
+## Current software milestone: v0.14
 
 - statistical object and empirical claim schemas
 - evidence grade, materiality, coverage, and review-priority models
@@ -31,9 +31,14 @@ Many empirical papers do not publish raw data or replication code. Veritas treat
 - correlation, discrete-summary, algebraic, ANOVA/group-summary, meta-analysis, SEM, standardized-regression, DID/IV/RDD experimental detectors
 - native dual-parser PDF extraction with geometry fallback and precise source provenance
 - conformal extraction gates with `PROMOTE` / `REVIEW` / `UNVERIFIABLE` behavior
+- end-to-end `Claim -> Estimate -> Sample -> Data -> Code -> Assumption` identity graphs with fail-closed cross-location E3 binding
+- isolated R/Python reproduction-runner contracts, environment capture, publication-object matching, provenance DAGs, and attested E4 reproduction findings
+- preregistration/PAP/registry comparison, raw-to-analysis sample lineage, survey-integrity review signals, and direct provenance/randomization E5 checks
 - benchmark, research, and production calibration scopes
 - held-out paper-level production-certification infrastructure
-- source-tree, detector-registry, numerical-backend, parser, schema, and promotion-spec identity locking
+- source-tree, detector-registry, numerical-backend, parser, schema, promotion-spec, and artifact identity locking
+- precommitted real-paper extraction evidence workflow binding sampling frame, seed manifest, review protocol, split policy, threshold grid, reviewed gold, DEVELOPMENT calibration, TEST seal, prediction-bound reports, execution attestations, and coverage-selectivity release receipts
+- optional Ed25519 external-provenance verification binding trusted runner/repository/workflow identity to the exact attested release and execution-plan subject, with strict JSON ingress for archived trust-root and signed-provenance files
 
 ## Detector promotion vs production authority
 
@@ -57,6 +62,8 @@ The certificate is an auditable hash-bound provenance artifact, **not** a crypto
 
 The current open-access PDF smoke, fail-closed, and selective-promotion benchmarks are **not production certification**. They run under benchmark scope to validate extraction and detector-promotion behavior. Production hard-authority coverage is intentionally expected to remain zero until a sufficiently large locked held-out corpus passes the strict paper-level certification policy for the exact deployed pipeline.
 
+The extraction evidence workflow can now verify an Ed25519-signed external provenance statement when a public key is genuinely pretrusted. That verifies possession of the matching private key over the exact run/release subject; it does **not** turn a caller-generated self-signed key into GitHub, institutional, or production trust. Real external-run claims still require the trusted key to be pinned by an independent policy channel before TEST.
+
 ## Minimal example
 
 ```python
@@ -79,10 +86,12 @@ print(summary.findings)
 
 ## Roadmap
 
-Next layers include broader claim-graph extraction, preregistration comparison, isolated replication runners, raw-data/provenance forensics, larger real-paper extraction benchmarks, and a locked held-out certification corpus for production hard findings.
+The remaining milestone is **external evidence work**, not another unchecked software layer: expand the real open-access extraction corpus, add real adversarial layouts, complete genuinely independent double review and adjudication, calibrate only on locked DEVELOPMENT families, freeze an untouched TEST set, execute under a genuinely pretrusted signing/runner policy, publish the resulting prediction/execution provenance and coverage-selectivity curves, and only then attempt production certification for the exact deployed pipeline.
 
-See [`docs/METHODS.md`](docs/METHODS.md), [`docs/DETECTOR_CARDS.md`](docs/DETECTOR_CARDS.md), [`docs/ROADMAP.md`](docs/ROADMAP.md), and [`docs/methods/pdf_ingestion_promotion.md`](docs/methods/pdf_ingestion_promotion.md).
+The repository includes fail-closed review, split, calibration, TEST-sealing, execution-evidence, signed-provenance, and release-readiness machinery. It deliberately cannot manufacture reviewer independence, real-paper gold labels, preexisting trust in a signing key, held-out results, or production authority.
+
+See [`docs/METHODS.md`](docs/METHODS.md), [`docs/DETECTOR_CARDS.md`](docs/DETECTOR_CARDS.md), [`docs/ROADMAP.md`](docs/ROADMAP.md), [`docs/CLAIM_GRAPH_IDENTITY.md`](docs/CLAIM_GRAPH_IDENTITY.md), [`docs/REPRODUCIBILITY_ARTIFACTS.md`](docs/REPRODUCIBILITY_ARTIFACTS.md), [`docs/DATA_PREREGISTRATION_INTEGRITY.md`](docs/DATA_PREREGISTRATION_INTEGRITY.md), [`docs/EXTRACTION_EXECUTION_EVIDENCE.md`](docs/EXTRACTION_EXECUTION_EVIDENCE.md), [`docs/EXTRACTION_EXTERNAL_PROVENANCE.md`](docs/EXTRACTION_EXTERNAL_PROVENANCE.md), and [`docs/methods/pdf_ingestion_promotion.md`](docs/methods/pdf_ingestion_promotion.md).
 
 ## Status
 
-Early research prototype. Findings are intended to support expert review, not to constitute a determination of research misconduct. The repository contains production-authority infrastructure, but the current real-PDF benchmark calibration is explicitly **not production-certified**.
+v0.14 is an early research prototype with implemented claim-identity, reproducibility-artifact, data/provenance-integrity, extraction-evidence orchestration, and signed external-provenance verification substrates. Findings are intended to support expert review, not to constitute a determination of research misconduct. The repository contains production-authority infrastructure, but the current real-PDF benchmark calibration is explicitly **not production-certified**.

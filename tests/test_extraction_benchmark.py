@@ -1,15 +1,23 @@
+from dataclasses import replace
+
 import pytest
 
 from veritas.extraction import (
     ConformalCalibration,
     ConformalExtractionGate,
     ExtractionCandidate,
+    ExtractionDecision,
 )
 from veritas.extraction_benchmark import (
     ExtractionGoldTarget,
     ExtractionPrediction,
+    ExtractionSelectivityCurve,
+    ExtractionSelectivityPoint,
+    ExtractionTargetOutcome,
+    build_extraction_benchmark_report_from_outcomes,
     build_extraction_selectivity_curve,
     evaluate_extraction_benchmark,
+    validate_extraction_benchmark_report,
 )
 from veritas.ingestion import EvidenceKind
 from veritas.models import SourceLocation
@@ -57,6 +65,21 @@ def _prediction(target_id: str, value: str, *, source: SourceLocation | None = N
         ]
     )
     return ExtractionPrediction(target_id=target_id, resolution=resolution)
+
+
+def _point(**overrides) -> ExtractionSelectivityPoint:
+    values = {
+        "threshold": 0.5,
+        "selective_coverage": 0.8,
+        "accepted_full_accuracy": 1.0,
+        "accepted_field_value_accuracy": 1.0,
+        "accepted_table_row_identity_accuracy": 1.0,
+        "accepted_semantic_gate_accuracy": 1.0,
+        "wrong_accept_rate": 0.0,
+        "critical_family_wrong_accept_upper_bound": 0.05,
+    }
+    values.update(overrides)
+    return ExtractionSelectivityPoint(**values)
 
 
 def test_correct_accept_requires_both_value_and_source_identity():
@@ -163,6 +186,54 @@ def test_noncritical_wrong_accept_does_not_contaminate_critical_family_metric():
     assert report.critical_family_wrong_accept_rate == 0.0
 
 
+def test_report_validator_recomputes_aggregates_from_exact_outcomes():
+    gold = [_gold("a", "fam-a", "0.18"), _gold("b", "fam-b", "0.25")]
+    report = evaluate_extraction_benchmark(gold, [_prediction("a", "0.18")])
+    assert isinstance(report.outcomes[0], ExtractionTargetOutcome)
+    validate_extraction_benchmark_report(report, gold)
+
+    with pytest.raises(ValueError, match="aggregates differ"):
+        validate_extraction_benchmark_report(replace(report, accepted=2), gold)
+    with pytest.raises(ValueError, match="outcome membership differs"):
+        validate_extraction_benchmark_report(
+            replace(report, outcomes=report.outcomes[:-1]),
+            gold,
+        )
+
+
+def test_report_validator_rejects_outcome_identity_and_decision_inconsistency():
+    target = _gold("a", "fam-a", "0.18")
+    report = evaluate_extraction_benchmark([target], [_prediction("a", "0.18")])
+    outcome = report.outcomes[0]
+
+    with pytest.raises(ValueError, match="identity differs"):
+        build_extraction_benchmark_report_from_outcomes(
+            [target],
+            [replace(outcome, paper_id="different-paper")],
+        )
+    with pytest.raises(ValueError, match="accepted flag"):
+        build_extraction_benchmark_report_from_outcomes(
+            [target],
+            [replace(outcome, decision=ExtractionDecision.ABSTAIN)],
+        )
+    with pytest.raises(ValueError, match="source-correct"):
+        build_extraction_benchmark_report_from_outcomes(
+            [target],
+            [replace(outcome, row_correct=False)],
+        )
+
+
+def test_report_validator_binds_confidence_used_for_family_risk_bound():
+    gold = [_gold("a", "fam-a", "0.18"), _gold("b", "fam-b", "0.25")]
+    report = evaluate_extraction_benchmark(
+        gold,
+        [_prediction("a", "0.81"), _prediction("b", "0.25")],
+        confidence=0.95,
+    )
+    with pytest.raises(ValueError, match="aggregates differ"):
+        validate_extraction_benchmark_report(report, gold, confidence=0.90)
+
+
 def test_selectivity_curve_keeps_each_threshold_as_an_explicit_operating_point():
     gold = [_gold("a", "fam-a", "0.18"), _gold("b", "fam-b", "0.25")]
     strict = evaluate_extraction_benchmark(gold, [_prediction("a", "0.18")])
@@ -182,3 +253,49 @@ def test_selectivity_curve_rejects_duplicate_thresholds():
     report = evaluate_extraction_benchmark([_gold("a", "fam-a", "0.18")], [])
     with pytest.raises(ValueError, match="thresholds must be unique"):
         build_extraction_selectivity_curve([(0.5, report), (0.5, report)])
+
+
+@pytest.mark.parametrize("threshold", [True, float("nan"), float("inf"), -float("inf")])
+def test_selectivity_curve_rejects_boolean_or_nonfinite_thresholds(threshold):
+    report = evaluate_extraction_benchmark([_gold("a", "fam-a", "0.18")], [])
+    with pytest.raises(ValueError, match="finite non-negative"):
+        build_extraction_selectivity_curve([(threshold, report)])
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf"), -0.01, 1.01])
+def test_selectivity_point_rejects_invalid_probability_metrics(value):
+    with pytest.raises(ValueError, match=r"finite number in \[0, 1\]"):
+        _point(selective_coverage=value)
+
+
+def test_selectivity_curve_rejects_empty_or_malformed_points():
+    with pytest.raises(ValueError, match="non-empty tuple"):
+        ExtractionSelectivityCurve(points=())
+    with pytest.raises(TypeError, match="ExtractionSelectivityPoint"):
+        ExtractionSelectivityCurve(points=("not-a-point",))
+
+
+def test_selectivity_curve_rejects_nonfinite_report_metrics_before_release_hashing():
+    report = evaluate_extraction_benchmark([_gold("a", "fam-a", "0.18")], [])
+    with pytest.raises(ValueError, match="selective_coverage"):
+        build_extraction_selectivity_curve(
+            [(0.5, replace(report, selective_coverage=float("nan")))]
+        )
+
+
+def test_gold_target_rejects_nonboolean_authority_flags():
+    target = _gold("typed", "fam-a", "0.18")
+    with pytest.raises(TypeError, match="critical_for_hard_audit"):
+        replace(target, critical_for_hard_audit=1)
+    with pytest.raises(ValueError, match="require adjudication"):
+        replace(target, adjudicated=1)
+
+
+def test_gold_target_rejects_malformed_identity_values_and_reviewers():
+    target = _gold("typed", "fam-a", "0.18")
+    with pytest.raises(ValueError, match="object_type"):
+        replace(target, object_type="")
+    with pytest.raises(TypeError, match="non-empty tuple"):
+        replace(target, accepted_normalized_values=["0.18"])
+    with pytest.raises(TypeError, match="reviewers"):
+        replace(target, reviewers=("reviewer-a", 1))

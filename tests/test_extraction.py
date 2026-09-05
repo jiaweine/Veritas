@@ -1,8 +1,13 @@
+from dataclasses import replace
+
+import pytest
+
 from veritas.extraction import (
     ConformalCalibration,
     ConformalExtractionGate,
     ExtractionCandidate,
     ExtractionDecision,
+    ExtractionResolution,
 )
 from veritas.models import SourceLocation
 
@@ -65,3 +70,75 @@ def test_shift_gate_abstains_on_extreme_input():
     assert result.decision is ExtractionDecision.DOMAIN_SHIFT
     assert result.shift_p_value is not None
     assert result.shift_p_value < 0.01
+
+
+@pytest.mark.parametrize("score", [True, float("nan"), float("inf"), -float("inf"), -0.01])
+def test_candidate_rejects_boolean_nonfinite_or_negative_scores(score):
+    with pytest.raises(ValueError, match="nonconformity_score"):
+        _candidate("native", "native_pdf", "0.183", score)
+
+
+def test_candidate_identity_and_source_are_strictly_typed():
+    candidate = _candidate("native", "native_pdf", "0.183", 0.02)
+    with pytest.raises(ValueError, match="parser_id"):
+        replace(candidate, parser_id="")
+    with pytest.raises(ValueError, match="normalized_value"):
+        replace(candidate, normalized_value="")
+    with pytest.raises(TypeError, match="SourceLocation"):
+        replace(candidate, source="Table 2")
+
+
+@pytest.mark.parametrize("score", [True, float("nan"), float("inf"), -0.01])
+def test_calibration_rejects_invalid_nonconformity_scores(score):
+    with pytest.raises(ValueError, match="calibration nonconformity score"):
+        ConformalCalibration((0.01, score, 0.03))
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf"), 0.0, 1.0])
+def test_calibration_rejects_invalid_alpha(value):
+    with pytest.raises(ValueError, match="alpha"):
+        ConformalCalibration((0.01, 0.02), alpha=value)
+
+
+def test_resolution_rejects_internally_inconsistent_accept_and_conflict_states():
+    first = _candidate("native", "native_pdf", "0.183", 0.02)
+    second = _candidate("vlm", "vision_language", "0.138", 0.02)
+
+    with pytest.raises(ValueError, match="requires accepted candidates"):
+        ExtractionResolution(
+            decision=ExtractionDecision.ACCEPT,
+            normalized_value="0.183",
+            accepted_candidates=(),
+            calibration_threshold=0.05,
+        )
+    with pytest.raises(ValueError, match="agree with normalized_value"):
+        ExtractionResolution(
+            decision=ExtractionDecision.ACCEPT,
+            normalized_value="0.183",
+            accepted_candidates=(second,),
+            calibration_threshold=0.05,
+        )
+    with pytest.raises(ValueError, match="at least two candidate values"):
+        ExtractionResolution(
+            decision=ExtractionDecision.CONFLICT,
+            normalized_value=None,
+            accepted_candidates=(first,),
+            calibration_threshold=0.05,
+        )
+    with pytest.raises(ValueError, match="DOMAIN_SHIFT"):
+        ExtractionResolution(
+            decision=ExtractionDecision.DOMAIN_SHIFT,
+            normalized_value=None,
+            accepted_candidates=(first, second),
+            calibration_threshold=0.05,
+        )
+
+
+def test_gate_rejects_boolean_family_count_and_nonfinite_shift_score():
+    calibration = ConformalCalibration((0.01, 0.02, 0.03))
+    with pytest.raises(TypeError, match="min_independent_families"):
+        ConformalExtractionGate(calibration, min_independent_families=True)
+
+    gate = ConformalExtractionGate(calibration)
+    with pytest.raises(ValueError, match="shift_score"):
+        gate.resolve([_candidate("native", "native_pdf", "0.183", 0.01)], shift_score=float("nan"))

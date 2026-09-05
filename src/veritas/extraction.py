@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from math import ceil
+from math import ceil, isfinite
 
 from .models import SourceLocation
 
@@ -24,8 +24,17 @@ class ExtractionCandidate:
     source: SourceLocation
 
     def __post_init__(self) -> None:
-        if self.nonconformity_score < 0:
-            raise ValueError("nonconformity_score must be non-negative")
+        _require_nonempty_string(self.parser_id, label="parser_id")
+        _require_nonempty_string(self.parser_family, label="parser_family")
+        if not isinstance(self.raw, str):
+            raise TypeError("raw extraction value must be a string")
+        _require_nonempty_string(self.normalized_value, label="normalized_value")
+        _require_finite_nonnegative_number(
+            self.nonconformity_score,
+            label="nonconformity_score",
+        )
+        if not isinstance(self.source, SourceLocation):
+            raise TypeError("extraction candidate source must be a SourceLocation")
 
 
 @dataclass(frozen=True)
@@ -38,10 +47,12 @@ class ConformalCalibration:
     def __post_init__(self) -> None:
         if not self.nonconformity_scores:
             raise ValueError("at least one calibration score is required")
-        if not 0.0 < self.alpha < 1.0:
-            raise ValueError("alpha must be in (0, 1)")
-        if not 0.0 < self.shift_alpha < 1.0:
-            raise ValueError("shift_alpha must be in (0, 1)")
+        for score in self.nonconformity_scores:
+            _require_finite_nonnegative_number(score, label="calibration nonconformity score")
+        _require_open_probability(self.alpha, label="alpha")
+        for score in self.shift_scores:
+            _require_finite_number(score, label="calibration shift score")
+        _require_open_probability(self.shift_alpha, label="shift_alpha")
 
     @property
     def threshold(self) -> float:
@@ -54,6 +65,7 @@ class ConformalCalibration:
 
     def shift_p_value(self, shift_score: float) -> float | None:
         """One-sided conformal-style tail p-value for distribution-shift screening."""
+        _require_finite_number(shift_score, label="shift_score")
         if not self.shift_scores:
             return None
         exceedances = sum(score >= shift_score for score in self.shift_scores)
@@ -68,6 +80,41 @@ class ExtractionResolution:
     calibration_threshold: float
     shift_p_value: float | None = None
     reason: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.decision, ExtractionDecision):
+            raise TypeError("extraction resolution decision must be an ExtractionDecision")
+        if not isinstance(self.accepted_candidates, tuple):
+            raise TypeError("accepted_candidates must be a tuple of ExtractionCandidate values")
+        if any(not isinstance(candidate, ExtractionCandidate) for candidate in self.accepted_candidates):
+            raise TypeError("accepted_candidates must contain ExtractionCandidate values")
+        _require_finite_nonnegative_number(
+            self.calibration_threshold,
+            label="calibration_threshold",
+        )
+        if self.shift_p_value is not None:
+            _require_closed_probability(self.shift_p_value, label="shift_p_value")
+        if not isinstance(self.reason, str):
+            raise TypeError("extraction resolution reason must be a string")
+
+        if self.decision is ExtractionDecision.ACCEPT:
+            _require_nonempty_string(self.normalized_value, label="accepted normalized_value")
+            if not self.accepted_candidates:
+                raise ValueError("ACCEPT resolution requires accepted candidates")
+            if any(
+                candidate.normalized_value != self.normalized_value
+                for candidate in self.accepted_candidates
+            ):
+                raise ValueError("ACCEPT candidates must agree with normalized_value")
+        else:
+            if self.normalized_value is not None:
+                raise ValueError("non-ACCEPT resolution must not carry normalized_value")
+            if self.decision is ExtractionDecision.CONFLICT:
+                values = {candidate.normalized_value for candidate in self.accepted_candidates}
+                if len(values) < 2:
+                    raise ValueError("CONFLICT resolution requires at least two candidate values")
+            if self.decision is ExtractionDecision.DOMAIN_SHIFT and self.accepted_candidates:
+                raise ValueError("DOMAIN_SHIFT resolution must not carry accepted candidates")
 
 
 class ConformalExtractionGate:
@@ -84,6 +131,12 @@ class ConformalExtractionGate:
     """
 
     def __init__(self, calibration: ConformalCalibration, *, min_independent_families: int = 2) -> None:
+        if not isinstance(calibration, ConformalCalibration):
+            raise TypeError("calibration must be a ConformalCalibration")
+        if isinstance(min_independent_families, bool) or not isinstance(
+            min_independent_families, int
+        ):
+            raise TypeError("min_independent_families must be an integer")
         if min_independent_families < 1:
             raise ValueError("min_independent_families must be positive")
         self.calibration = calibration
@@ -95,9 +148,13 @@ class ConformalExtractionGate:
         *,
         shift_score: float | None = None,
     ) -> ExtractionResolution:
+        candidates = tuple(candidates)
+        if any(not isinstance(candidate, ExtractionCandidate) for candidate in candidates):
+            raise TypeError("candidates must contain ExtractionCandidate values")
         threshold = self.calibration.threshold
         shift_p = None
         if shift_score is not None:
+            _require_finite_number(shift_score, label="shift_score")
             shift_p = self.calibration.shift_p_value(shift_score)
             if shift_p is not None and shift_p < self.calibration.shift_alpha:
                 return ExtractionResolution(
@@ -154,3 +211,35 @@ class ConformalExtractionGate:
             shift_p_value=shift_p,
             reason="Calibrated candidates from independent parser families agree.",
         )
+
+
+def _require_nonempty_string(value: object, *, label: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} must be a non-empty string")
+
+
+def _require_finite_number(value: object, *, label: str) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not isfinite(float(value))
+    ):
+        raise ValueError(f"{label} must be a finite number")
+
+
+def _require_finite_nonnegative_number(value: object, *, label: str) -> None:
+    _require_finite_number(value, label=label)
+    if float(value) < 0.0:
+        raise ValueError(f"{label} must be non-negative")
+
+
+def _require_open_probability(value: object, *, label: str) -> None:
+    _require_finite_number(value, label=label)
+    if not 0.0 < float(value) < 1.0:
+        raise ValueError(f"{label} must be in (0, 1)")
+
+
+def _require_closed_probability(value: object, *, label: str) -> None:
+    _require_finite_number(value, label=label)
+    if not 0.0 <= float(value) <= 1.0:
+        raise ValueError(f"{label} must be in [0, 1]")
