@@ -151,6 +151,7 @@ class ExtractionExecutionEvidence:
 @dataclass(frozen=True)
 class AttestedExtractionEvidenceReleaseReceipt:
     base_release_receipt_sha256: str
+    evidence_plan_sha256: str
     execution_plan_sha256: str
     development_execution_set_sha256: str
     test_execution_set_sha256: str
@@ -160,6 +161,7 @@ class AttestedExtractionEvidenceReleaseReceipt:
     def __post_init__(self) -> None:
         for label, value in (
             ("base_release_receipt_sha256", self.base_release_receipt_sha256),
+            ("evidence_plan_sha256", self.evidence_plan_sha256),
             ("execution_plan_sha256", self.execution_plan_sha256),
             ("development_execution_set_sha256", self.development_execution_set_sha256),
             ("test_execution_set_sha256", self.test_execution_set_sha256),
@@ -316,6 +318,7 @@ def build_attested_extraction_evidence_release_receipt(
     )
     return AttestedExtractionEvidenceReleaseReceipt(
         base_release_receipt_sha256=base_receipt.sha256(),
+        evidence_plan_sha256=base_receipt.plan_sha256,
         execution_plan_sha256=execution_plan.sha256(),
         development_execution_set_sha256=_execution_evidence_set_sha256(
             development_execution_evidence
