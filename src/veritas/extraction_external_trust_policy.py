@@ -120,10 +120,16 @@ def verify_precommitted_external_extraction_provenance_for_run(
         raise TypeError("trust_policy must be an ExtractionExternalTrustPolicy")
     if not isinstance(trust_root, ExtractionExternalTrustRoot):
         raise TypeError("trust_root must be an ExtractionExternalTrustRoot")
+    if not isinstance(attested_release_receipt, AttestedExtractionEvidenceReleaseReceipt):
+        raise TypeError(
+            "attested_release_receipt must be an AttestedExtractionEvidenceReleaseReceipt"
+        )
     _require_sha256(evidence_plan_sha256, label="evidence_plan_sha256")
 
     if trust_policy.evidence_plan_sha256 != evidence_plan_sha256:
         raise ValueError("external trust policy is bound to a different evidence plan")
+    if attested_release_receipt.evidence_plan_sha256 != evidence_plan_sha256:
+        raise ValueError("signed attested release is bound to a different evidence plan")
     if trust_policy.trust_root_sha256 != trust_root.sha256():
         raise ValueError("external trust policy is bound to a different trust root")
     expected_identity = (
