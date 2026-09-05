@@ -64,11 +64,14 @@ The attested release rejects missing or duplicate threshold evidence, changed ex
 `build_attested_extraction_evidence_release_receipt()` first rebuilds the ordinary `ExtractionEvidenceReleaseReceipt`. It then validates all DEVELOPMENT and TEST execution evidence against the exact observations and deterministically derived target manifests. The final receipt commits:
 
 - base release-receipt SHA-256;
+- exact evidence-plan SHA-256 copied from the rebuilt base release receipt;
 - execution-plan SHA-256;
 - DEVELOPMENT execution-evidence-set SHA-256;
 - TEST execution-evidence-set SHA-256.
 
-Changing any underlying prediction artifact, execution identity, threshold, target manifest, or execution-plan commitment changes or invalidates the attested receipt.
+The explicit evidence-plan field closes the release-to-precommit link for signed provenance. External provenance signs the SHA-256 of the entire attested receipt, so the signed subject transitively commits the exact evidence plan that produced the rebuilt base release receipt. A precommitted external trust policy can therefore require its frozen plan hash to equal the plan hash inside the signed attested release rather than merely comparing two caller-supplied digests.
+
+Changing any underlying evidence plan, prediction artifact, execution identity, threshold, target manifest, or execution-plan commitment changes or invalidates the attested receipt.
 
 ## Signed external trust root
 
@@ -80,7 +83,9 @@ For a stronger real-run provenance claim, Veritas now provides:
 - `verify_external_extraction_provenance()`;
 - strict UTF-8 JSON loaders for archived trust-root and signed-provenance manifests.
 
-The signed statement covers the exact attested-release receipt, execution plan, DEV/TEST execution sets, git commit, run id/attempt, input-artifact manifest, source tree, parser registry, numerical runtime, execution command, repository/workflow/runner identity, and trust-root SHA-256. Ed25519 verification is available through the optional `veritas-audit[attestation]` dependency.
+The signed statement covers the exact attested-release receipt, execution plan, DEV/TEST execution sets, git commit, run id/attempt, input-artifact manifest, source tree, parser registry, numerical runtime, execution command, repository/workflow/runner identity, and trust-root SHA-256. Because the attested receipt itself includes the exact evidence-plan SHA-256, the signature also commits that plan binding without adding a second independently supplied plan field to the external statement.
+
+Ed25519 verification is available through the optional `veritas-audit[attestation]` dependency.
 
 This only becomes an **external** trust root when the public key itself was pinned independently before TEST. A caller-generated key pair and self-signed statement are cryptographically valid but are not third-party or institutional provenance. See `docs/EXTRACTION_EXTERNAL_PROVENANCE.md`.
 
