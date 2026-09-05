@@ -90,6 +90,7 @@ def test_attested_release_binds_base_release_and_execution_sets() -> None:
 
     assert first.production_authorized is False
     assert len(first.base_release_receipt_sha256) == 64
+    assert first.evidence_plan_sha256 == _workflow_fixture()["plan"].sha256()
     assert len(first.execution_plan_sha256) == 64
     assert len(first.development_execution_set_sha256) == 64
     assert len(first.test_execution_set_sha256) == 64
