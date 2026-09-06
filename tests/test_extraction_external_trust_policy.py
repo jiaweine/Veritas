@@ -18,6 +18,7 @@ def _policy_fixture():
         policy_id="real-extraction-run-v1",
         evidence_plan_sha256=evidence_plan_sha256,
         execution_plan=execution_plan,
+        source_commit_sha=signed.statement.commit_sha,
         trust_root=trust_root,
     )
     return (
@@ -30,7 +31,7 @@ def _policy_fixture():
     )
 
 
-def test_precommitted_policy_binds_plans_root_and_verified_run() -> None:
+def test_precommitted_policy_binds_plans_commit_root_and_verified_run() -> None:
     policy, evidence_plan_sha256, trust_root, execution_plan, attested_release, signed = (
         _policy_fixture()
     )
@@ -50,8 +51,10 @@ def test_precommitted_policy_binds_plans_root_and_verified_run() -> None:
     assert receipt.trust_policy_sha256 == policy.sha256()
     assert receipt.evidence_plan_sha256 == evidence_plan_sha256
     assert receipt.execution_plan_sha256 == execution_plan.sha256()
+    assert receipt.source_commit_sha == signed.statement.commit_sha
     assert receipt.trust_root_sha256 == trust_root.sha256()
     assert policy.execution_plan_sha256 == execution_plan.sha256()
+    assert policy.source_commit_sha == signed.statement.commit_sha
     assert len(receipt.verified_run_receipt_sha256) == 64
     assert len(receipt.sha256()) == 64
 
@@ -126,6 +129,46 @@ def test_policy_rejects_posthoc_execution_plan_drift() -> None:
             signed_provenance=signed,
             attested_release_receipt=attested_release,
             execution_plan=drifted_execution_plan,
+            expected_run_id=signed.statement.run_id,
+            expected_run_attempt=signed.statement.run_attempt,
+            expected_commit_sha=signed.statement.commit_sha,
+        )
+
+
+def test_policy_rejects_posthoc_expected_commit_drift() -> None:
+    policy, evidence_plan_sha256, trust_root, execution_plan, attested_release, signed = (
+        _policy_fixture()
+    )
+    with pytest.raises(ValueError, match="different source commit"):
+        verify_precommitted_external_extraction_provenance_for_run(
+            trust_policy=policy,
+            evidence_plan_sha256=evidence_plan_sha256,
+            trust_root=trust_root,
+            signed_provenance=signed,
+            attested_release_receipt=attested_release,
+            execution_plan=execution_plan,
+            expected_run_id=signed.statement.run_id,
+            expected_run_attempt=signed.statement.run_attempt,
+            expected_commit_sha="b" * 40,
+        )
+
+
+def test_policy_rejects_signed_commit_different_from_precommit() -> None:
+    policy, evidence_plan_sha256, trust_root, execution_plan, attested_release, signed = (
+        _policy_fixture()
+    )
+    drifted_signed = replace(
+        signed,
+        statement=replace(signed.statement, commit_sha="b" * 40),
+    )
+    with pytest.raises(ValueError, match="signed external provenance uses a different source commit"):
+        verify_precommitted_external_extraction_provenance_for_run(
+            trust_policy=policy,
+            evidence_plan_sha256=evidence_plan_sha256,
+            trust_root=trust_root,
+            signed_provenance=drifted_signed,
+            attested_release_receipt=attested_release,
+            execution_plan=execution_plan,
             expected_run_id=signed.statement.run_id,
             expected_run_attempt=signed.statement.run_attempt,
             expected_commit_sha=signed.statement.commit_sha,
