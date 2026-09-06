@@ -6,9 +6,13 @@ from veritas.extraction_provenance import (
     ExtractionExternalTrustPolicy,
     ExtractionExternalTrustRoot,
     PrecommittedExternalExtractionRunReceipt,
+    attested_extraction_evidence_release_receipt_json_payload,
     build_attested_extraction_evidence_release_receipt,
     build_extraction_external_provenance_statement,
     build_extraction_external_trust_policy,
+    extraction_execution_plan_json_payload,
+    load_attested_extraction_evidence_release_receipt,
+    load_extraction_execution_plan,
     load_extraction_external_trust_policy,
     load_extraction_external_trust_root,
     load_extraction_signed_external_provenance,
@@ -26,9 +30,13 @@ def test_extraction_provenance_facade_exports_stable_public_symbols() -> None:
     assert ExternallyVerifiedExtractionEvidenceReceipt.__name__.startswith("ExternallyVerified")
     assert ExternallyVerifiedExtractionRunReceipt.__name__.startswith("ExternallyVerified")
     assert PrecommittedExternalExtractionRunReceipt.__name__.startswith("PrecommittedExternal")
+    assert callable(attested_extraction_evidence_release_receipt_json_payload)
     assert callable(build_attested_extraction_evidence_release_receipt)
     assert callable(build_extraction_external_provenance_statement)
     assert callable(build_extraction_external_trust_policy)
+    assert callable(extraction_execution_plan_json_payload)
+    assert callable(load_attested_extraction_evidence_release_receipt)
+    assert callable(load_extraction_execution_plan)
     assert callable(load_extraction_external_trust_policy)
     assert callable(load_extraction_external_trust_root)
     assert callable(load_extraction_signed_external_provenance)
