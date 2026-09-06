@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from test_extraction_execution_evidence import _attested_release, _execution_plan
 
+from veritas.extraction_execution_evidence import ExtractionExecutionPlan
 from veritas.extraction_external_provenance import (
     ExtractionExternalTrustRoot,
     ExtractionSignedExternalProvenance,
@@ -37,10 +38,10 @@ def _trust_root(public_key_hex: str) -> ExtractionExternalTrustRoot:
     )
 
 
-def _signed_fixture():
+def _signed_fixture(execution_plan: ExtractionExecutionPlan | None = None):
     private_key, public_key_hex = _keypair()
     trust_root = _trust_root(public_key_hex)
-    execution_plan = _execution_plan()
+    execution_plan = execution_plan or _execution_plan()
     attested_release = _attested_release(execution_plan=execution_plan)
     statement = build_extraction_external_provenance_statement(
         trust_root=trust_root,
