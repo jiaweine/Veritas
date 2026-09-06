@@ -74,6 +74,10 @@ from .extraction_release_archive import (
 from .extraction_release_source_binding import (
     verify_extraction_release_source_artifacts,
 )
+from .extraction_review_record_json import (
+    extraction_review_record_json_payload,
+    load_extraction_review_record,
+)
 
 __all__ = [
     "AttestedExtractionEvidenceReleaseReceipt",
@@ -109,6 +113,7 @@ __all__ = [
     "extraction_prediction_artifact_bytes",
     "extraction_prediction_semantics_sha256",
     "extraction_release_evidence_bundle_payload",
+    "extraction_review_record_json_payload",
     "extraction_signed_external_provenance_payload",
     "load_attested_extraction_evidence_release_receipt",
     "load_extraction_evidence_plan",
@@ -118,6 +123,7 @@ __all__ = [
     "load_extraction_input_artifact_manifest",
     "load_extraction_prediction_artifact",
     "load_extraction_release_evidence_bundle",
+    "load_extraction_review_record",
     "load_extraction_signed_external_provenance",
     "rebuild_attested_extraction_evidence_release_receipt_from_archive",
     "verify_external_extraction_provenance",
