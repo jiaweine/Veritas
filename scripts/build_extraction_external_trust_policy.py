@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from veritas.extraction_evidence_plan_json import load_extraction_evidence_plan
+from veritas.extraction_execution_evidence_json import load_extraction_execution_plan
 from veritas.extraction_external_provenance_json import load_extraction_external_trust_root
 from veritas.extraction_external_trust_policy import build_extraction_external_trust_policy
 from veritas.extraction_external_trust_policy_json import (
@@ -27,6 +28,15 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--execution-plan",
+        required=True,
+        type=Path,
+        help=(
+            "Strict JSON ExtractionExecutionPlan archive frozen before TEST. "
+            "Its SHA-256 is recomputed and committed by the trust policy."
+        ),
+    )
+    parser.add_argument(
         "--trust-root",
         required=True,
         type=Path,
@@ -36,10 +46,12 @@ def main() -> int:
     args = parser.parse_args()
 
     evidence_plan, _ = load_extraction_evidence_plan(args.evidence_plan)
+    execution_plan = load_extraction_execution_plan(args.execution_plan)
     trust_root = load_extraction_external_trust_root(args.trust_root)
     policy = build_extraction_external_trust_policy(
         policy_id=args.policy_id,
         evidence_plan_sha256=evidence_plan.sha256(),
+        execution_plan=execution_plan,
         trust_root=trust_root,
     )
     payload = extraction_external_trust_policy_json_payload(policy)
