@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 from veritas.extraction_evidence_plan_json import load_extraction_evidence_plan
@@ -12,6 +13,16 @@ from veritas.extraction_external_trust_policy import build_extraction_external_t
 from veritas.extraction_external_trust_policy_json import (
     extraction_external_trust_policy_json_payload,
 )
+
+_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _source_commit(value: str) -> str:
+    if not _GIT_SHA_RE.fullmatch(value):
+        raise argparse.ArgumentTypeError(
+            "source commit SHA must be 40 lowercase hexadecimal characters"
+        )
+    return value
 
 
 def _add_execution_artifact_args(parser: argparse.ArgumentParser) -> None:
@@ -28,6 +39,12 @@ def main() -> int:
         description="Build a pre-TEST trust policy for signed extraction provenance."
     )
     parser.add_argument("--policy-id", required=True)
+    parser.add_argument(
+        "--source-commit-sha",
+        type=_source_commit,
+        required=True,
+        help="Exact source commit identity to freeze before held-out TEST evaluation.",
+    )
     parser.add_argument(
         "--evidence-plan",
         required=True,
@@ -72,6 +89,7 @@ def main() -> int:
         policy_id=args.policy_id,
         evidence_plan_sha256=evidence_plan.sha256(),
         execution_plan=execution_plan,
+        source_commit_sha=args.source_commit_sha,
         trust_root=trust_root,
     )
     payload = extraction_external_trust_policy_json_payload(policy)
