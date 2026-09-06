@@ -4,14 +4,27 @@
   "distributed_to_human_reviewers": false,
   "generator": "scripts/build_extraction_review_packets.py",
   "packet_bytes_archived_in_repository": false,
+  "packet_bytes_archived_in_actions_artifact": true,
+  "packet_archive": {
+    "workflow_run_id": 34055818804,
+    "run_attempt": 1,
+    "source_commit_sha": "f8ca5c62c7116a5ef6c266e4ccbaa66318552d9d",
+    "artifact_id": 9995918459,
+    "artifact_name": "v015-publication-inputs-and-review-packets-f8ca5c62c7116a5ef6c266e4ccbaa66318552d9d",
+    "artifact_digest": "sha256:877375c126ac4e39537f9581c4311625f11c771560385e69c4b7094586bbda78",
+    "artifact_expires_at": "2026-12-05T19:44:12Z",
+    "durable_independent_external_archive": false
+  },
   "production_authorized": false,
   "reviewer_packets": [
     {
+      "packet_file_sha256": "1753c024b057d085ddc4af33e3d9a235f7481ebf996cd8271bdc760a1e513447",
       "packet_sha256": "d5dbb4118d376915f4b5c4c089a1677c362fa7d3ef1f7cedd481b49cf171a8bb",
       "reviewer_slot": "reviewer-a",
       "target_count": 18
     },
     {
+      "packet_file_sha256": "113762ea38c1710d70217c743fc96ea3bcfa59bcf956cfbc6b80bfdf7bc95997",
       "packet_sha256": "0d86b9254baa61217f2802db820c3a7c8d12904ba79d37afd99c251072203ace",
       "reviewer_slot": "reviewer-b",
       "target_count": 18
@@ -19,6 +32,6 @@
   ],
   "schema_version": 1,
   "seed_manifest_sha256": "e58ce1ba2aec3c5b9a0210a2b6ccc8a8550571f693ac5f796fd951ab2411974f",
-  "status": "blinded_review_packet_hashes_precommitted_not_distributed",
-  "note": "The deterministic blinded packet hashes are precommitted before human review. Generic reviewer slots are not human identities. Packet distribution and completed submissions remain blocked until exact publication/input artifact IDs are available from the verified input-artifact manifest."
+  "status": "blinded_review_packet_bytes_archived_not_distributed",
+  "note": "The deterministic blinded packet bytes were generated from the frozen strict seed and archived together with the verified publication input bytes in the named retention-limited GitHub Actions artifact before human review. Generic reviewer slots are not human identities. No packet has been distributed to a human reviewer, no reviewer identity has been assigned, no completed submission exists, and this Actions artifact is not a durable independent external historical archive."
 }
