@@ -14,6 +14,7 @@ _POLICY_KEYS = frozenset(
         "schema_version",
         "policy_id",
         "evidence_plan_sha256",
+        "execution_plan_sha256",
         "trust_root_sha256",
         "issuer",
         "runner_identity",
@@ -52,6 +53,7 @@ def load_extraction_external_trust_policy(path: str | Path) -> ExtractionExterna
     return ExtractionExternalTrustPolicy(
         policy_id=payload["policy_id"],
         evidence_plan_sha256=payload["evidence_plan_sha256"],
+        execution_plan_sha256=payload["execution_plan_sha256"],
         trust_root_sha256=payload["trust_root_sha256"],
         issuer=payload["issuer"],
         runner_identity=payload["runner_identity"],
