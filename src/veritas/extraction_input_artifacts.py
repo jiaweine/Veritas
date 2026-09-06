@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _MANIFEST_KEYS = frozenset({"schema_version", "artifacts", "production_authorized"})
