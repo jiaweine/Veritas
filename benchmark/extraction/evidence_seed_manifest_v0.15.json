@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "status": "seed_corpus_not_locked_gold",
+  "scope": "v0.15_real_open_access_evidence_seed_not_production_certification",
+  "rule": "These values are seed/parser-development metadata only. They are not locked gold, do not establish reviewer independence, and must not be represented as untouched TEST evidence merely because they are later reviewed.",
+  "as_of": "2026-09-07",
+  "production_hard_finding_authorized": false,
+  "cases": [
+    {
+      "case_id": "frontiers-fendo-1692917-table2-numbness",
+      "paper_id": "doi:10.3389/fendo.2025.1692917",
+      "article_family_id": "doi:10.3389/fendo.2025.1692917",
+      "doi": "10.3389/fendo.2025.1692917",
+      "pdf_url": "https://www.frontiersin.org/journals/endocrinology/articles/10.3389/fendo.2025.1692917/pdf",
+      "license_note": "CC BY",
+      "object_type": "RegressionResult",
+      "locator": {
+        "expected_page": 5,
+        "table_label": "Table 2",
+        "row_label": "Numbness in extremities"
+      },
+      "expected_fields": {
+        "beta": "1.34",
+        "odds_ratio": "3.82",
+        "ci_lower": "2.68",
+        "ci_upper": "5.49",
+        "p_value": "<0.01"
+      },
+      "promotion_expectation": {
+        "detector_ready_under_geometry_probe": false,
+        "reason": "The display reports coefficient, OR, CI, and p-value but no explicit SE/test statistic required by the current regression-consistency detector."
+      },
+      "review_status": "unreviewed_real_seed_pending_two_independent_reviewers_and_adjudication",
+      "split": null
+    },
+    {
+      "case_id": "frontiers-fpsyg-1473953-table3-feedback",
+      "paper_id": "doi:10.3389/fpsyg.2024.1473953",
+      "article_family_id": "doi:10.3389/fpsyg.2024.1473953",
+      "doi": "10.3389/fpsyg.2024.1473953",
+      "pdf_url": "https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2024.1473953/pdf",
+      "license_note": "CC BY",
+      "object_type": "RegressionResult",
+      "locator": {
+        "expected_page": 7,
+        "table_label": "Table 3",
+        "row_label": "Feedback"
+      },
+      "expected_fields": {
+        "beta": "-0.38",
+        "se": "0.13",
+        "z_stat": "-3.09",
+        "ci_lower": "-0.65",
+        "ci_upper": "-0.15",
+        "p_value": ".006"
+      },
+      "promotion_expectation": {
+        "detector_ready_under_geometry_probe": true,
+        "reason": "The display item reports beta, SE, z, CI, and p-value explicitly; later promotion still requires independent review/adjudication and detector applicability checks."
+      },
+      "review_status": "unreviewed_real_seed_pending_two_independent_reviewers_and_adjudication",
+      "split": null
+    },
+    {
+      "case_id": "frontiers-fpos-1500403-table2-seat-share-model1",
+      "paper_id": "doi:10.3389/fpos.2025.1500403",
+      "article_family_id": "doi:10.3389/fpos.2025.1500403",
+      "doi": "10.3389/fpos.2025.1500403",
+      "pdf_url": "https://www.frontiersin.org/journals/political-science/articles/10.3389/fpos.2025.1500403/pdf",
+      "license_note": "CC BY",
+      "object_type": "RegressionResult",
+      "locator": {
+        "expected_page": 10,
+        "table_label": "Table 2",
+        "row_label": "Seat share"
+      },
+      "expected_fields": {
+        "model_1_beta": "0.677",
+        "model_1_se": "0.075",
+        "model_1_significance_marker": "***"
+      },
+      "promotion_expectation": {
+        "detector_ready_under_geometry_probe": false,
+        "reason": "The publication uses grouped regional/model columns, alternating coefficient/SE rows, and significance stars rather than an explicit test statistic/p-value for the selected cell."
+      },
+      "review_status": "unreviewed_real_seed_pending_two_independent_reviewers_and_adjudication",
+      "split": null
+    },
+    {
+      "case_id": "plosone-0321641-table2-women-prs",
+      "paper_id": "doi:10.1371/journal.pone.0321641",
+      "article_family_id": "doi:10.1371/journal.pone.0321641",
+      "doi": "10.1371/journal.pone.0321641",
+      "pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0321641&type=printable",
+      "license_note": "CC BY",
+      "object_type": "RegressionResult",
+      "locator": {
+        "expected_page": 7,
+        "table_label": "Table 2",
+        "row_label": "Women - new multivariable model / 140-SNP PRS (standardised)"
+      },
+      "expected_fields": {
+        "hazard_ratio": "1.515",
+        "ci_lower": "1.434",
+        "ci_upper": "1.601",
+        "p_value": "<0.001"
+      },
+      "promotion_expectation": {
+        "detector_ready_under_geometry_probe": false,
+        "reason": "The display reports HR, CI, and p-value but not the underlying coefficient/SE/test-statistic tuple required by the current regression-consistency detector."
+      },
+      "review_status": "unreviewed_real_seed_pending_two_independent_reviewers_and_adjudication",
+      "split": null
+    }
+  ]
+}
