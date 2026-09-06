@@ -95,29 +95,33 @@ Ed25519 verification is an optional runtime capability. Install `veritas-audit[a
 
 Real evidence should enter Veritas through strict file loaders:
 
+- `load_extraction_evidence_plan()`;
 - `load_extraction_external_trust_root()`;
 - `load_extraction_external_trust_policy()`;
 - `load_extraction_signed_external_provenance()`;
 - `load_extraction_execution_plan()`;
 - `load_attested_extraction_evidence_release_receipt()`.
 
-The two execution-subject loaders close the cold-verification gap: a verifier no longer needs to recreate `ExtractionExecutionPlan` or `AttestedExtractionEvidenceReleaseReceipt` manually from Python objects before checking a signed archive.
+The evidence-plan loader reads the exact JSON emitted by `scripts/build_extraction_evidence_plan.py`, reconstructs the `ExtractionEvidencePlan` and complete threshold grid, recomputes `plan_sha256`, and requires the grid commitment to match. Plan-content or threshold-grid drift therefore fails before trust-policy or signature verification begins.
 
-All five loaders require UTF-8 JSON, exact schema keys, supported schema versions, and reject duplicate object keys and non-standard `NaN` / `Infinity` numeric constants. Unknown fields are rejected rather than ignored.
+The execution-subject loaders close the remaining cold-verification gap: a verifier no longer needs to recreate `ExtractionExecutionPlan` or `AttestedExtractionEvidenceReleaseReceipt` manually from Python objects before checking a signed archive.
+
+All six loaders require UTF-8 JSON, exact schema keys, supported schema versions, and reject duplicate object keys and non-standard `NaN` / `Infinity` numeric constants. Unknown fields are rejected rather than ignored.
 
 The stable public import surface for execution evidence, signed provenance, trust-policy precommitment, strict JSON ingress, and context-bound verification is `veritas.extraction_provenance`.
 
 ### File-driven verification
 
-`scripts/verify_extraction_external_provenance.py` provides the strongest archived-evidence verification path without custom Python glue. It requires five strict JSON artifacts:
+`scripts/verify_extraction_external_provenance.py` provides the strongest archived-evidence verification path without custom Python glue. It requires six strict JSON artifacts:
 
-1. the pretrusted `ExtractionExternalTrustRoot`;
-2. the pre-TEST `ExtractionExternalTrustPolicy`;
-3. the Ed25519-signed external provenance envelope;
-4. the exact `ExtractionExecutionPlan`;
-5. the exact `AttestedExtractionEvidenceReleaseReceipt`.
+1. the exact pre-TEST evidence-plan JSON emitted by `build_extraction_evidence_plan.py`;
+2. the pretrusted `ExtractionExternalTrustRoot`;
+3. the pre-TEST `ExtractionExternalTrustPolicy`;
+4. the Ed25519-signed external provenance envelope;
+5. the exact `ExtractionExecutionPlan`;
+6. the exact `AttestedExtractionEvidenceReleaseReceipt`.
 
-The caller must separately supply the expected evidence-plan SHA-256, run id, run attempt, and git commit SHA. Those values are not inferred from the untrusted signed envelope. On success the CLI writes a `PrecommittedExternalExtractionRunReceipt` payload plus its SHA-256; on any schema, policy, subject, run-context, or signature mismatch it exits non-zero.
+The verifier reconstructs the evidence plan from file and uses its recomputed SHA-256 rather than accepting a manually typed plan digest. The caller separately supplies only the expected run id, run attempt, and git commit SHA; those values are not inferred from the untrusted signed envelope. On success the CLI writes a `PrecommittedExternalExtractionRunReceipt` payload plus its SHA-256; on any plan, grid, schema, policy, subject, run-context, or signature mismatch it exits non-zero.
 
 This makes a cold-machine audit possible from archived files while preserving the same non-production authority boundary as the Python API.
 
