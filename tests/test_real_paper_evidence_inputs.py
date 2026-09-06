@@ -27,7 +27,8 @@ def test_v015_real_paper_sampling_frame_and_seed_manifest_load_strictly() -> Non
 
     family_by_paper = frame.paper_family_map()
     seed_paper_ids = {target.paper_id for target in seed.targets}
-    assert seed_paper_ids == set(family_by_paper)
+    assert len(seed_paper_ids) == 4
+    assert seed_paper_ids <= set(family_by_paper)
     assert all(
         family_by_paper[target.paper_id] == target.article_family_id
         for target in seed.targets
@@ -35,7 +36,7 @@ def test_v015_real_paper_sampling_frame_and_seed_manifest_load_strictly() -> Non
 
     raw_frame = json.loads(frame_path.read_text(encoding="utf-8"))
     assert raw_frame["as_of"] == "2026-09-07"
-    assert len(raw_frame["papers"]) == 4
+    assert len(raw_frame["papers"]) == 5
     assert all(paper["artifact_urls"] for paper in raw_frame["papers"])
     assert all(paper["license_note"] for paper in raw_frame["papers"])
     assert all(paper["extraction_layout_note"] for paper in raw_frame["papers"])
@@ -43,6 +44,18 @@ def test_v015_real_paper_sampling_frame_and_seed_manifest_load_strictly() -> Non
         paper["source_metadata_verified_on"] == "2026-09-07"
         for paper in raw_frame["papers"]
     )
+    ocr_like = [
+        paper
+        for paper in raw_frame["papers"]
+        if paper.get("ocr_like_adverse_status")
+        == "pmc_full_text_tables_are_raster_graphic_assets"
+    ]
+    assert [paper["paper_id"] for paper in ocr_like] == [
+        "doi:10.4103/picr.PICR_87_17"
+    ]
+    assert "does not assert that a linked PDF lacks a text layer" in ocr_like[0][
+        "extraction_layout_note"
+    ]
 
 
 def test_v015_evidence_seed_does_not_relabel_legacy_parser_development_papers() -> None:
