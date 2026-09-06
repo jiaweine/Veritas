@@ -29,7 +29,7 @@ For the strongest software-enforced path, build an `ExtractionExternalTrustPolic
 - repository identity;
 - workflow identity.
 
-`scripts/build_extraction_external_trust_policy.py` takes an evidence-plan SHA-256 plus a strict trust-root JSON file and emits an immutable, non-production trust-policy JSON artifact and its SHA-256. Archive that policy through the independent channel used to establish trust.
+`scripts/build_extraction_external_trust_policy.py` takes the strict evidence-plan JSON emitted by `build_extraction_evidence_plan.py` plus a strict trust-root JSON file. It reconstructs and rehashes the archived plan and complete threshold grid, then emits an immutable, non-production trust-policy JSON artifact and its SHA-256. There is no manual evidence-plan digest input on this CLI path. Archive that policy through the independent channel used to establish trust.
 
 The trust policy has its own strict UTF-8 JSON loader. Duplicate keys, unknown fields, unsupported versions, non-standard numeric constants, malformed hashes, and production-authority attempts fail closed.
 
