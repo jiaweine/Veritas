@@ -55,6 +55,14 @@ from .extraction_external_trust_policy_json import (
     extraction_external_trust_policy_json_payload,
     load_extraction_external_trust_policy,
 )
+from .extraction_input_artifacts import (
+    ExtractionInputArtifact,
+    ExtractionInputArtifactManifest,
+    build_extraction_input_artifact_manifest,
+    extraction_input_artifact_manifest_payload,
+    load_extraction_input_artifact_manifest,
+    verify_extraction_input_artifact_manifest,
+)
 
 __all__ = [
     "AttestedExtractionEvidenceReleaseReceipt",
@@ -66,6 +74,8 @@ __all__ = [
     "ExtractionExternalProvenanceStatement",
     "ExtractionExternalTrustPolicy",
     "ExtractionExternalTrustRoot",
+    "ExtractionInputArtifact",
+    "ExtractionInputArtifactManifest",
     "ExtractionSignedExternalProvenance",
     "PrecommittedExternalExtractionRunReceipt",
     "attested_extraction_evidence_release_receipt_json_payload",
@@ -74,6 +84,7 @@ __all__ = [
     "build_extraction_execution_plan_from_artifacts",
     "build_extraction_external_provenance_statement",
     "build_extraction_external_trust_policy",
+    "build_extraction_input_artifact_manifest",
     "extraction_evidence_plan_json_payload",
     "extraction_execution_artifact_sha256",
     "extraction_execution_plan_json_payload",
@@ -81,6 +92,7 @@ __all__ = [
     "extraction_external_trust_policy_json_payload",
     "extraction_external_trust_policy_payload",
     "extraction_external_trust_root_payload",
+    "extraction_input_artifact_manifest_payload",
     "extraction_prediction_artifact_bytes",
     "extraction_prediction_semantics_sha256",
     "extraction_signed_external_provenance_payload",
@@ -89,9 +101,11 @@ __all__ = [
     "load_extraction_execution_plan",
     "load_extraction_external_trust_policy",
     "load_extraction_external_trust_root",
+    "load_extraction_input_artifact_manifest",
     "load_extraction_signed_external_provenance",
     "verify_external_extraction_provenance",
     "verify_external_extraction_provenance_for_run",
     "verify_extraction_execution_plan_artifacts",
+    "verify_extraction_input_artifact_manifest",
     "verify_precommitted_external_extraction_provenance_for_run",
 ]
