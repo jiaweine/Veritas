@@ -35,6 +35,7 @@ from veritas.extraction_provenance import (
     verify_external_extraction_provenance_for_run,
     verify_extraction_execution_plan_artifacts,
     verify_extraction_input_artifact_manifest,
+    verify_extraction_release_source_artifacts,
     verify_precommitted_external_extraction_provenance_for_run,
 )
 
@@ -76,4 +77,5 @@ def test_extraction_provenance_facade_exports_stable_public_symbols() -> None:
     assert callable(verify_external_extraction_provenance_for_run)
     assert callable(verify_extraction_execution_plan_artifacts)
     assert callable(verify_extraction_input_artifact_manifest)
+    assert callable(verify_extraction_release_source_artifacts)
     assert callable(verify_precommitted_external_extraction_provenance_for_run)
