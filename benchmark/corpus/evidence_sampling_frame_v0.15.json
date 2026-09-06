@@ -80,6 +80,27 @@
       "extraction_layout_note": "The paper combines sex-stratified Cox-model tables with multi-panel calibration and cumulative-hazard figures. TABLE 7 continues across pages, while Figs 1, 2, 5, and 6 contain multiple labeled panels; figure-panel identity is part of the source locator rather than a cosmetic label.",
       "candidate_object_types": ["CoxRegressionResult", "CalibrationFigure", "MultiPanelFigure"],
       "source_metadata_verified_on": "2026-09-07"
+    },
+    {
+      "paper_id": "doi:10.4103/picr.PICR_87_17",
+      "article_family_id": "doi:10.4103/picr.PICR_87_17",
+      "doi": "10.4103/picr.PICR_87_17",
+      "pmcid": "PMC5543767",
+      "title": "Common pitfalls in statistical analysis: Logistic regression",
+      "discipline": "clinical_research_methods_biostatistics",
+      "year": 2017,
+      "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5543767/",
+      "access_tier": "paper_only",
+      "artifact_urls": [
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC5543767/",
+        "https://doaj.org/article/85da82976fde4c64b3bc95c1e8891a60"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "PMC states Creative Commons Attribution-NonCommercial-ShareAlike 3.0. This sampling frame links the article only and conservatively does not mark article artifacts redistributable.",
+      "extraction_layout_note": "PMC's canonical full-text rendition identifies Tables 1, 2, and 3 as JPEG graphic-file assets (PCR-8-148-g001.jpg, PCR-8-148-g002.jpg, and PCR-8-148-g003.jpg) rather than structured HTML table cells. This is a real OCR-like adverse table representation with regression content; it does not assert that a linked PDF lacks a text layer.",
+      "candidate_object_types": ["RegressionResult", "RasterTable"],
+      "ocr_like_adverse_status": "pmc_full_text_tables_are_raster_graphic_assets",
+      "source_metadata_verified_on": "2026-09-07"
     }
   ]
 }
