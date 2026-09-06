@@ -2,22 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from pathlib import Path
 
+from veritas.extraction_evidence_plan_json import load_extraction_evidence_plan
 from veritas.extraction_external_provenance_json import load_extraction_external_trust_root
 from veritas.extraction_external_trust_policy import build_extraction_external_trust_policy
 from veritas.extraction_external_trust_policy_json import (
     extraction_external_trust_policy_json_payload,
 )
-
-_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-
-
-def _sha256(value: str) -> str:
-    if not _SHA256_RE.fullmatch(value):
-        raise argparse.ArgumentTypeError("evidence plan SHA-256 must be 64 lowercase hex characters")
-    return value
 
 
 def main() -> int:
@@ -26,10 +18,13 @@ def main() -> int:
     )
     parser.add_argument("--policy-id", required=True)
     parser.add_argument(
-        "--evidence-plan-sha256",
+        "--evidence-plan",
         required=True,
-        type=_sha256,
-        help="SHA-256 of the already-frozen ExtractionEvidencePlan.",
+        type=Path,
+        help=(
+            "Strict JSON ExtractionEvidencePlan archive emitted by "
+            "build_extraction_evidence_plan.py. Its SHA-256 is recomputed, not supplied manually."
+        ),
     )
     parser.add_argument(
         "--trust-root",
@@ -40,10 +35,11 @@ def main() -> int:
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
+    evidence_plan, _ = load_extraction_evidence_plan(args.evidence_plan)
     trust_root = load_extraction_external_trust_root(args.trust_root)
     policy = build_extraction_external_trust_policy(
         policy_id=args.policy_id,
-        evidence_plan_sha256=args.evidence_plan_sha256,
+        evidence_plan_sha256=evidence_plan.sha256(),
         trust_root=trust_root,
     )
     payload = extraction_external_trust_policy_json_payload(policy)
