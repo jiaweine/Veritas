@@ -4,6 +4,11 @@ from .extraction_evidence_plan_json import (
     extraction_evidence_plan_json_payload,
     load_extraction_evidence_plan,
 )
+from .extraction_execution_artifacts import (
+    build_extraction_execution_plan_from_artifacts,
+    extraction_execution_artifact_sha256,
+    verify_extraction_execution_plan_artifacts,
+)
 from .extraction_execution_evidence import (
     AttestedExtractionEvidenceReleaseReceipt,
     ExtractionExecutionAttestation,
@@ -66,9 +71,11 @@ __all__ = [
     "attested_extraction_evidence_release_receipt_json_payload",
     "build_attested_extraction_evidence_release_receipt",
     "build_extraction_execution_evidence",
+    "build_extraction_execution_plan_from_artifacts",
     "build_extraction_external_provenance_statement",
     "build_extraction_external_trust_policy",
     "extraction_evidence_plan_json_payload",
+    "extraction_execution_artifact_sha256",
     "extraction_execution_plan_json_payload",
     "extraction_external_provenance_statement_bytes",
     "extraction_external_trust_policy_json_payload",
@@ -85,5 +92,6 @@ __all__ = [
     "load_extraction_signed_external_provenance",
     "verify_external_extraction_provenance",
     "verify_external_extraction_provenance_for_run",
+    "verify_extraction_execution_plan_artifacts",
     "verify_precommitted_external_extraction_provenance_for_run",
 ]
