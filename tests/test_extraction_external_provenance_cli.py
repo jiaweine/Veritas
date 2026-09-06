@@ -96,6 +96,7 @@ def _archived_fixture(
         policy_id="real-extraction-run-v1",
         evidence_plan_sha256=evidence_plan_sha256,
         execution_plan=execution_plan,
+        source_commit_sha=signed.statement.commit_sha,
         trust_root=trust_root,
     )
 
@@ -149,7 +150,7 @@ def _archived_fixture(
 
 
 def test_archived_provenance_cli_verifies_exact_precommitted_run(tmp_path: Path) -> None:
-    args, output_path, evidence_plan_sha256, _, _ = _archived_fixture(tmp_path)
+    args, output_path, evidence_plan_sha256, commit_sha, _ = _archived_fixture(tmp_path)
 
     result = subprocess.run(
         args,
@@ -162,6 +163,7 @@ def test_archived_provenance_cli_verifies_exact_precommitted_run(tmp_path: Path)
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 1
     assert payload["receipt"]["evidence_plan_sha256"] == evidence_plan_sha256
+    assert payload["receipt"]["source_commit_sha"] == commit_sha
     assert payload["receipt"]["production_authorized"] is False
     assert result.stdout.strip() == payload["receipt_sha256"]
 
@@ -173,7 +175,7 @@ def test_archived_provenance_cli_rejects_wrong_expected_commit(tmp_path: Path) -
 
     result = subprocess.run(args, cwd=_root(), check=False, capture_output=True, text=True)
     assert result.returncode != 0
-    assert "commit_sha differs from expected commit" in result.stderr
+    assert "external trust policy is bound to a different source commit" in result.stderr
 
 
 def test_archived_provenance_cli_rejects_execution_artifact_byte_drift(
