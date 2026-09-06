@@ -97,11 +97,29 @@ Real evidence should enter Veritas through strict file loaders:
 
 - `load_extraction_external_trust_root()`;
 - `load_extraction_external_trust_policy()`;
-- `load_extraction_signed_external_provenance()`.
+- `load_extraction_signed_external_provenance()`;
+- `load_extraction_execution_plan()`;
+- `load_attested_extraction_evidence_release_receipt()`.
 
-They require UTF-8 JSON, exact schema keys, supported schema versions, and reject duplicate object keys and non-standard `NaN` / `Infinity` numeric constants. Unknown fields are rejected rather than ignored.
+The two execution-subject loaders close the cold-verification gap: a verifier no longer needs to recreate `ExtractionExecutionPlan` or `AttestedExtractionEvidenceReleaseReceipt` manually from Python objects before checking a signed archive.
+
+All five loaders require UTF-8 JSON, exact schema keys, supported schema versions, and reject duplicate object keys and non-standard `NaN` / `Infinity` numeric constants. Unknown fields are rejected rather than ignored.
 
 The stable public import surface for execution evidence, signed provenance, trust-policy precommitment, strict JSON ingress, and context-bound verification is `veritas.extraction_provenance`.
+
+### File-driven verification
+
+`scripts/verify_extraction_external_provenance.py` provides the strongest archived-evidence verification path without custom Python glue. It requires five strict JSON artifacts:
+
+1. the pretrusted `ExtractionExternalTrustRoot`;
+2. the pre-TEST `ExtractionExternalTrustPolicy`;
+3. the Ed25519-signed external provenance envelope;
+4. the exact `ExtractionExecutionPlan`;
+5. the exact `AttestedExtractionEvidenceReleaseReceipt`.
+
+The caller must separately supply the expected evidence-plan SHA-256, run id, run attempt, and git commit SHA. Those values are not inferred from the untrusted signed envelope. On success the CLI writes a `PrecommittedExternalExtractionRunReceipt` payload plus its SHA-256; on any schema, policy, subject, run-context, or signature mismatch it exits non-zero.
+
+This makes a cold-machine audit possible from archived files while preserving the same non-production authority boundary as the Python API.
 
 ## What this proves
 
