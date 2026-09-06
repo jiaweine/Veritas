@@ -1,161 +1,107 @@
 # Signed external extraction provenance
 
-`AttestedExtractionEvidenceReleaseReceipt` proves that supplied execution objects and canonical prediction-artifact bytes are internally consistent. It does **not** prove that a remote runner actually executed them.
+`AttestedExtractionEvidenceReleaseReceipt` proves internal consistency of the supplied release/execution objects. The external-provenance layer adds a cryptographic trust root for a stronger real-run claim while remaining non-production.
 
-The external-provenance layer adds a cryptographic trust root for that stronger claim while remaining non-production.
+## Trust root and pre-TEST policy
 
-## Trust root
+`ExtractionExternalTrustRoot` pins issuer, runner, repository, workflow, a 32-byte Ed25519 public key, algorithm, and schema version. A key generated after seeing benchmark results is not an external trust root merely because its signature verifies.
 
-`ExtractionExternalTrustRoot` pins:
+For the strongest software-enforced path, build an `ExtractionExternalTrustPolicy` **before TEST**. It commits:
 
-- issuer identity;
-- runner identity;
-- repository identity;
-- workflow identity;
-- a 32-byte Ed25519 public key;
-- the `ed25519` algorithm and schema version.
+- exact `ExtractionEvidencePlan` SHA-256;
+- exact `ExtractionExecutionPlan` SHA-256;
+- exact trust-root SHA-256;
+- issuer/runner/repository/workflow identities.
 
-A key generated after seeing benchmark results and then used to self-sign a provenance statement is not an external trust root, even if the Ed25519 signature is mathematically valid.
+`scripts/build_extraction_external_trust_policy.py` does not accept manually typed plan digests. It strict-loads the evidence plan and execution plan, verifies the strict input-artifact manifest against the actual publication/input files under `--input-artifact-root`, rehashes the manifest plus source-tree/parser-registry/numerical-runtime/execution-command artifacts, loads the trust root, and only then emits the trust policy.
 
-## Pre-TEST trust policy
-
-For the strongest software-enforced path, build an `ExtractionExternalTrustPolicy` **before TEST**. It binds:
-
-- a policy id;
-- the already-frozen `ExtractionEvidencePlan` SHA-256;
-- the already-frozen `ExtractionExecutionPlan` SHA-256;
-- the exact `ExtractionExternalTrustRoot` SHA-256;
-- issuer identity;
-- runner identity;
-- repository identity;
-- workflow identity.
-
-`scripts/build_extraction_external_trust_policy.py` takes the strict evidence-plan JSON emitted by `build_extraction_evidence_plan.py`, the strict execution-plan JSON frozen for the run, the five concrete execution artifacts committed by that plan, and a strict trust-root JSON file. It reconstructs and rehashes both plan archives, independently rehashes the exact input-artifact-manifest/source-tree/parser-registry/numerical-runtime/execution-command bytes, and only then emits the non-production trust-policy JSON artifact and its SHA-256. There are no manual plan-digest inputs on this CLI path.
-
-The trust policy has its own strict UTF-8 JSON loader. Duplicate keys, unknown fields, unsupported versions, non-standard numeric constants, malformed hashes, and production-authority attempts fail closed.
-
-The policy does not create trust merely by existing. Its value is that an independent deployment/CI governance channel can pin one exact root to one exact evidence plan **and one exact execution plan** before TEST. Because policy construction also checks the concrete execution artifacts against that plan, a post-hoc change to those archived bytes cannot silently retain the same precommitment.
-
-In a real deployment, archive the evidence plan, execution plan, five execution artifacts, trust root, and trust policy in the protected configuration/artifact history used to establish pre-TEST timing.
+The policy therefore commits an execution plan whose artifact digests were mechanically checked against concrete archived bytes at policy-construction time. The external historical channel is still responsible for proving that this policy/root/archive actually existed before held-out TEST outcomes were inspected.
 
 ## Signed subject
 
-`ExtractionExternalProvenanceStatement` binds the trusted runner identity to:
+`ExtractionExternalProvenanceStatement` binds the trusted runner identity to run id/attempt, exact git commit SHA, attested release, execution plan, DEV/TEST execution sets, input-artifact manifest, source tree, parser registry, numerical runtime, execution command, repository/workflow identities, and trust root.
 
-- run id and run attempt;
-- exact git commit SHA;
-- exact `AttestedExtractionEvidenceReleaseReceipt` SHA-256;
-- exact `ExtractionExecutionPlan` SHA-256;
-- DEVELOPMENT and TEST execution-evidence-set SHA-256 values;
-- input-artifact-manifest SHA-256;
-- source-tree SHA-256;
-- parser-registry SHA-256;
-- numerical-runtime SHA-256;
-- execution-command SHA-256;
-- exact trust-root SHA-256.
-
-The attested receipt itself contains the exact `ExtractionEvidencePlan` SHA-256 copied from the rebuilt base release receipt. Because the external statement signs the entire attested-receipt hash, the signature transitively commits the exact evidence plan. The signed statement also directly commits the exact execution-plan SHA-256 and its five artifact digests.
-
-The statement is encoded as canonical UTF-8 JSON with sorted object keys and compact separators before signing.
-
-Changing the run id, commit, release receipt, evidence plan, execution plan, split execution set, input artifacts, source tree, parser registry, runtime, command, issuer, runner, repository, workflow, or trust root invalidates the signed subject or its precommitted policy binding.
+The attested receipt carries the exact evidence-plan SHA-256. The signed statement directly carries the execution-plan SHA-256 and its execution-artifact commitments. Changing the release, plans, run context, publication-manifest digest, source/runtime/command digests, runner identity, or trust root invalidates subject reconstruction or signature verification.
 
 ## Verification layers
 
-`verify_external_extraction_provenance()` is the low-level subject verifier. It reconstructs the expected statement from the supplied trusted root, attested release receipt, and execution plan, requires exact equality, then verifies the detached Ed25519 signature.
+`verify_external_extraction_provenance()` is the low-level subject/signature verifier.
 
-A successful low-level verification produces `ExternallyVerifiedExtractionEvidenceReceipt`. It remains `production_authorized = false`.
+`verify_external_extraction_provenance_for_run()` additionally requires independently supplied expected run id, run attempt, and commit SHA, preventing a historical valid signature from silently standing in for a different run.
 
-### Run-context verification
+`verify_precommitted_external_extraction_provenance_for_run()` adds the pre-TEST trust-policy checks: the policy must match the exact evidence plan, exact execution plan, trust root, and runner/repository/workflow identity before the context-bound signature is accepted. `PrecommittedExternalExtractionRunReceipt` records both plan hashes, policy/root identity, and the verified-run receipt commitment.
 
-A real external-run claim should at minimum use `verify_external_extraction_provenance_for_run()`. The caller must independently supply:
+The strongest CLI path performs another layer before these cryptographic checks: `verify_extraction_execution_plan_artifacts()` strict-loads the input-artifact manifest, verifies every referenced publication/input file by `size_bytes` and SHA-256, and then rehashes all five execution artifacts against the execution plan.
 
-- the expected run id;
-- the expected run attempt;
-- the expected git commit SHA.
+## Strict JSON ingress
 
-The function requires those values to match the signed statement exactly before performing full subject reconstruction and Ed25519 verification. Its `ExternallyVerifiedExtractionRunReceipt` preserves the verified run, commit, repository, workflow, runner, issuer, trust-root, and underlying verified-evidence receipt identity.
+The cold-verification archive has **seven strict JSON artifacts**:
 
-This prevents a historical but otherwise valid signed statement from being silently reused as proof for a different run, rerun attempt, or commit. Expected context must come from the deliberately selected orchestration/deployment run, not simply be copied from the untrusted signed envelope.
+1. `ExtractionEvidencePlan` archive;
+2. `ExtractionInputArtifactManifest` archive;
+3. `ExtractionExternalTrustRoot` archive;
+4. `ExtractionExternalTrustPolicy` archive;
+5. `ExtractionSignedExternalProvenance` archive;
+6. `ExtractionExecutionPlan` archive;
+7. `AttestedExtractionEvidenceReleaseReceipt` archive.
 
-### Precommitted run verification
-
-For the strongest path, use `verify_precommitted_external_extraction_provenance_for_run()`. In addition to run-context and Ed25519 checks, it requires:
-
-- the supplied evidence-plan SHA-256 to equal the precommitted trust policy;
-- the same evidence-plan SHA-256 to equal the plan hash carried inside the signed attested release receipt;
-- the supplied execution plan to hash to the exact execution-plan SHA-256 frozen in the precommitted trust policy;
-- the supplied trust-root SHA-256 to equal the precommitted trust policy;
-- issuer/runner/repository/workflow identity to equal the policy;
-- the complete context-bound run verification to succeed.
-
-The strongest CLI path additionally calls `verify_extraction_execution_plan_artifacts()` before this verifier, so all five execution-plan digests must match the exact archived files supplied to the cold audit.
-
-The resulting `PrecommittedExternalExtractionRunReceipt` explicitly commits the trust-policy, evidence-plan, execution-plan, trust-root, and verified-run receipt hashes. Changing the evidence plan, changing parser/source/runtime/command after the policy was frozen, replacing the signing key/root, or changing trusted runner identity fails closed.
-
-Ed25519 verification is an optional runtime capability. Install `veritas-audit[attestation]` to provide the `cryptography` implementation. CI installs this extra and exercises valid signatures, wrong keys, modified run ids, subject drift, execution-plan drift, archived-artifact byte drift, expected-run/attempt/commit drift, trust-policy/root drift, signed-release evidence-plan drift, and malformed signatures.
-
-## Strict JSON ingress and archived artifact bytes
-
-Real evidence should enter Veritas through strict file loaders:
+Relevant loaders are:
 
 - `load_extraction_evidence_plan()`;
+- `load_extraction_input_artifact_manifest()`;
 - `load_extraction_external_trust_root()`;
 - `load_extraction_external_trust_policy()`;
 - `load_extraction_signed_external_provenance()`;
 - `load_extraction_execution_plan()`;
 - `load_attested_extraction_evidence_release_receipt()`.
 
-The evidence-plan loader reconstructs the `ExtractionEvidencePlan` and complete threshold grid, recomputes `plan_sha256`, and requires the grid commitment to match. The execution-plan loader reconstructs the exact pre-TEST execution contract and enforces its isolation/security flags. All six loaders require UTF-8 JSON, exact schema keys, supported schema versions, and reject duplicate object keys and non-standard `NaN` / `Infinity` numeric constants.
+These paths require UTF-8 JSON, exact schema keys, supported schemas, and reject duplicate object keys and non-standard `NaN` / `Infinity` constants. The input-artifact manifest additionally enforces unique artifact IDs/paths, safe relative paths, exact file size/hash, regular-file roots, and no symbolic-link traversal.
 
-The five execution-plan commitments are not accepted as opaque hashes on the strongest CLI paths. `extraction_execution_artifact_sha256()` hashes exact files, `build_extraction_execution_plan_from_artifacts()` creates a plan from those files, and `verify_extraction_execution_plan_artifacts()` rehashes them against an existing plan. `scripts/build_extraction_execution_plan.py` is the preferred way to construct the pre-TEST execution-plan JSON.
+`scripts/build_extraction_input_artifact_manifest.py` is the intended builder for publication/input identity. `scripts/build_extraction_execution_plan.py` then verifies that manifest against the actual publication root before creating the execution plan.
 
-The stable public import surface for these execution-artifact, execution-evidence, signed-provenance, trust-policy, strict-JSON, and context-bound verification APIs is `veritas.extraction_provenance`.
+## File-driven cold verification
 
-### File-driven verification
+`scripts/verify_extraction_external_provenance.py` consumes the seven strict JSON artifacts above. It also requires:
 
-`scripts/verify_extraction_external_provenance.py` provides the strongest archived-evidence verification path without custom Python glue. It requires six strict JSON artifacts:
+- `--input-artifact-root`, containing the exact publication/input files referenced by the manifest;
+- exact source-tree artifact/archive;
+- exact parser-registry artifact;
+- exact numerical-runtime artifact;
+- exact execution-command artifact;
+- independently selected expected run id, run attempt, and git commit SHA.
 
-1. the exact pre-TEST evidence-plan JSON emitted by `build_extraction_evidence_plan.py`;
-2. the pretrusted `ExtractionExternalTrustRoot`;
-3. the pre-TEST `ExtractionExternalTrustPolicy`;
-4. the Ed25519-signed external provenance envelope;
-5. the exact `ExtractionExecutionPlan`;
-6. the exact `AttestedExtractionEvidenceReleaseReceipt`.
+The verifier performs this chain in order:
 
-It additionally requires the five concrete archived files named by the execution contract:
+1. strict-load the evidence plan and all trust/signed/execution receipts;
+2. strict-load the input-artifact manifest;
+3. verify every publication/input file's safe path, size, and SHA-256;
+4. rehash the input manifest and four other raw execution artifacts against the execution plan;
+5. require both plans and trust identity to match the pre-TEST trust policy;
+6. require the signed subject to reconstruct exactly;
+7. require expected run id/attempt/commit to match;
+8. verify the Ed25519 signature;
+9. emit a non-production `PrecommittedExternalExtractionRunReceipt` plus its SHA-256.
 
-1. input-artifact manifest;
-2. source-tree artifact/archive;
-3. parser-registry artifact;
-4. numerical-runtime artifact;
-5. execution-command artifact.
+A one-byte publication change therefore fails before the signature can be accepted, even if the archived manifest, execution plan, policy, and signed envelope were left untouched.
 
-The verifier reconstructs the evidence and execution plans, rehashes all five execution artifacts, and requires everything to match the precommitted trust policy and signed subject. The caller separately supplies only the expected run id, run attempt, and git commit SHA; those values are not inferred from the untrusted signed envelope. On success the CLI writes a `PrecommittedExternalExtractionRunReceipt` payload plus its SHA-256; on any artifact-byte, plan, grid, schema, policy, subject, run-context, or signature mismatch it exits non-zero.
+## What successful verification proves
 
-This makes a cold-machine audit possible from archived files while preserving the same non-production authority boundary as the Python API.
+With a genuinely pre-TEST archived policy/root/artifact set and independently selected run context, successful cold verification proves that:
 
-## What this proves
+1. every publication/input file supplied to the audit matches the strict input-artifact manifest by path, size, and SHA-256;
+2. the exact manifest and four other execution artifacts match the frozen execution plan;
+3. the execution plan and evidence plan match the pre-TEST trust policy;
+4. the policy selected the exact trust root and runner/repository/workflow identity;
+5. the holder of the corresponding Ed25519 private key signed the exact reconstructed release/execution subject;
+6. the subject matches the independently expected run id, attempt, and commit.
 
-With a genuinely independently archived pre-TEST trust policy, a pretrusted public key, the five archived execution artifacts, and independently selected expected run context, successful precommitted run verification proves that:
+It does **not** by itself prove:
 
-1. the exact evidence plan carried by the signed attested release matches the plan committed by the pre-TEST trust policy;
-2. the exact execution plan used by the signed subject matches the execution plan committed by the same pre-TEST policy;
-3. all five execution-plan artifact digests match the exact archived files supplied to the policy builder/cold verifier;
-4. that policy selected the exact pinned trust root and runner/repository/workflow identity;
-5. the holder of the corresponding Ed25519 private key signed the exact execution/release subject;
-6. that subject is for the independently expected run id, attempt, and commit;
-7. Veritas independently reconstructed the same release/execution subject.
-
-That can support a real external-run provenance claim when the private key is genuinely controlled by the claimed trusted runner or signing service and the plans/root/policy were actually archived before TEST.
-
-It does **not** prove by itself:
-
-- that the policy or artifact archive was historically fixed before TEST unless the external policy channel supplies that history;
-- that the key was genuinely controlled by GitHub Actions or any named provider;
+- that the archive/policy was historically fixed before TEST without an external history source;
+- that a named provider actually controlled the private key;
+- that a publication file came from the claimed publisher/URL or has the claimed license;
 - reviewer independence or adjudication;
-- untouched TEST status;
-- that the publication files referenced by the input-artifact manifest actually match the identities/hashes recorded inside that manifest;
+- untouched TEST history;
 - production hard-finding authority.
 
-Those claims require the corresponding governance or deeper artifact validation. Veritas must not convert a caller-selected self-signed key or caller-created post-hoc policy into institutional trust merely because identity strings contain familiar service names.
+Those remain external governance/evidence requirements. The stable public import surface for these APIs is `veritas.extraction_provenance`.
