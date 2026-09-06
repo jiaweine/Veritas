@@ -13,17 +13,21 @@ All receipts remain explicitly non-production.
 Before DEVELOPMENT/TEST execution evidence is accepted, archive an `ExtractionExecutionPlan` that commits:
 
 - exact input-artifact manifest SHA-256;
-- exact source-tree SHA-256;
-- parser-registry SHA-256;
-- numerical-runtime SHA-256;
-- execution-command SHA-256;
+- exact source-tree archive SHA-256;
+- parser-registry artifact SHA-256;
+- numerical-runtime artifact SHA-256;
+- execution-command artifact SHA-256;
 - network disabled;
 - source mount read-only;
 - no mounted credentials.
 
 The plan is fail-closed: unsafe isolation flags, malformed hashes, unsupported schema versions, or any production-authority flag are rejected.
 
-The input-artifact manifest is intentionally separate from the sampling-frame manifest. Sampling-frame URLs identify candidate papers; execution evidence must identify the exact bytes that were actually supplied to the parser run.
+Do not hand-author those five digests for the evidence run. `scripts/build_extraction_execution_plan.py` reads the exact archived bytes for the input-artifact manifest, source-tree artifact, parser-registry artifact, numerical-runtime artifact, and execution-command artifact, hashes each with SHA-256, and writes the strict execution-plan JSON. For a directory-like source tree, first archive it through the deployment's deterministic archival procedure and pass the exact archived file to the builder; the contract hashes bytes, not an ambient mutable directory.
+
+`verify_extraction_execution_plan_artifacts()` independently rehashes all five archived artifacts and requires them to equal the execution plan. Both `scripts/build_extraction_external_trust_policy.py` and `scripts/verify_extraction_external_provenance.py` invoke this check before policy construction or signed-run verification. Changing even formatting bytes in one of those artifacts therefore fails before the cryptographic provenance layer is accepted.
+
+The input-artifact manifest is intentionally separate from the sampling-frame manifest. Sampling-frame URLs identify candidate papers; execution evidence identifies the exact **manifest bytes** committed for the parser run. The manifest still needs to contain trustworthy identities/hashes for the publication files it references; merely hashing a wrong manifest cannot prove that the underlying publication bytes are correct.
 
 ## Canonical prediction artifact
 
@@ -71,7 +75,7 @@ The attested release rejects missing or duplicate threshold evidence, changed ex
 
 The explicit evidence-plan field closes the release-to-precommit link for signed provenance. External provenance signs the SHA-256 of the entire attested receipt, so the signed subject transitively commits the exact evidence plan that produced the rebuilt base release receipt. A precommitted external trust policy can therefore require its frozen plan hash to equal the plan hash inside the signed attested release rather than merely comparing two caller-supplied digests.
 
-Changing any underlying evidence plan, prediction artifact, execution identity, threshold, target manifest, or execution-plan commitment changes or invalidates the attested receipt.
+Changing any underlying evidence plan, prediction artifact, execution identity, threshold, target manifest, execution-plan commitment, or one of the five archived execution artifacts changes or invalidates the verified chain.
 
 ## Signed external trust root
 
@@ -91,8 +95,8 @@ This only becomes an **external** trust root when the public key itself was pinn
 
 ## Authority boundary
 
-The ordinary and attested contracts prove consistency of supplied execution evidence objects and exact persisted prediction bytes. The signed external-provenance layer can additionally prove that the holder of a genuinely pretrusted Ed25519 private key signed the exact reconstructed execution/release subject.
+The ordinary and attested contracts prove consistency of supplied execution evidence objects and exact persisted prediction bytes. The execution-artifact layer additionally proves that the five digests carried by the execution plan match five concrete archived files supplied to the builder/verifier. The signed external-provenance layer can then prove that the holder of a genuinely pretrusted Ed25519 private key signed the exact reconstructed execution/release subject.
 
 None of these layers, by themselves, prove that a familiar issuer name owns a caller-supplied key. Real deployments must establish the public-key trust anchor through an independent CI/deployment policy, protected configuration, transparency log, institutional key registry, or equivalent mechanism before TEST.
 
-Likewise, execution or signed provenance does not create reviewer independence, adjudication, untouched TEST status, correctness of the publication bytes in an input-artifact manifest, or production hard-finding authority. Those remain separate governance requirements.
+Likewise, execution or signed provenance does not create reviewer independence, adjudication, untouched TEST status, correctness of the publication bytes referenced by the input-artifact manifest, or production hard-finding authority. Those remain separate governance requirements.
