@@ -13,6 +13,10 @@ from veritas.extraction_execution_evidence_json import extraction_execution_plan
 from veritas.extraction_external_provenance import ExtractionExternalTrustRoot
 from veritas.extraction_external_provenance_json import extraction_external_trust_root_payload
 from veritas.extraction_external_trust_policy_json import load_extraction_external_trust_policy
+from veritas.extraction_input_artifacts import (
+    build_extraction_input_artifact_manifest,
+    extraction_input_artifact_manifest_payload,
+)
 
 
 def _root() -> Path:
@@ -47,14 +51,25 @@ def _evidence_plan_file(tmp_path: Path) -> tuple[Path, str]:
 
 
 def _execution_artifacts(tmp_path: Path) -> dict[str, Path]:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    (input_root / "paper.pdf").write_bytes(b"publication-bytes")
+    manifest = build_extraction_input_artifact_manifest(input_root, (("paper", "paper.pdf"),))
+    manifest_path = tmp_path / "input-artifact-manifest.json"
+    manifest_path.write_text(
+        json.dumps(extraction_input_artifact_manifest_payload(manifest)),
+        encoding="utf-8",
+    )
     payloads = {
-        "input_artifact_manifest": b'{"paper.pdf":"abc"}\n',
         "source_tree": b"source-tree-archive\n",
         "parser_registry": b'{"parser":"table-v1"}\n',
         "numerical_runtime": b'{"python":"3.12"}\n',
         "execution_command": b"python -m veritas.extract --frozen\n",
     }
-    result: dict[str, Path] = {}
+    result: dict[str, Path] = {
+        "input_artifact_manifest": manifest_path,
+        "input_artifact_root": input_root,
+    }
     for name, payload in payloads.items():
         path = tmp_path / f"{name}.artifact"
         path.write_bytes(payload)
@@ -77,6 +92,8 @@ def _artifact_cli_args(artifacts: dict[str, Path]) -> list[str]:
     return [
         "--input-artifact-manifest",
         str(artifacts["input_artifact_manifest"]),
+        "--input-artifact-root",
+        str(artifacts["input_artifact_root"]),
         "--source-tree",
         str(artifacts["source_tree"]),
         "--parser-registry",
@@ -155,6 +172,17 @@ def test_build_external_trust_policy_cli_rejects_artifact_byte_drift(tmp_path: P
     result = subprocess.run(args, cwd=_root(), check=False, capture_output=True, text=True)
     assert result.returncode != 0
     assert "parser registry differs from archived artifact bytes" in result.stderr
+
+
+def test_build_external_trust_policy_cli_rejects_publication_byte_drift(
+    tmp_path: Path,
+) -> None:
+    args, _, _, artifacts = _policy_command(tmp_path)
+    (artifacts["input_artifact_root"] / "paper.pdf").write_bytes(b"post-hoc-publication")
+
+    result = subprocess.run(args, cwd=_root(), check=False, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "input artifact" in result.stderr
 
 
 def test_build_external_trust_policy_cli_rejects_unknown_execution_plan_fields(
