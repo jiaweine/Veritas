@@ -1,0 +1,32 @@
+{
+  "plan": {
+    "benchmark_confidence": 0.95,
+    "development_fraction": 0.25,
+    "review_protocol_version": "independent-double-review-v1",
+    "sampling_frame_sha256": "84a6761efa21ad5514fa017d97103fcb1e26f7a9442395ce3357433108a1704b",
+    "sampling_frame_source_manifest_sha256": "adc32cafceafdf9dd3f39fc5a2fc83e05d7bd5b39095b83aea70d3197a455ddc",
+    "schema_version": 1,
+    "seed_target_universe_sha256": "83e8de78d3f6374288035b5f98e6e9d809ec5dbb5480f8f98c46e99e96e0bbcf",
+    "source_seed_manifest_sha256": "e58ce1ba2aec3c5b9a0210a2b6ccc8a8550571f693ac5f796fd951ab2411974f",
+    "split_salt": "veritas-extraction-evidence-v0.15-01",
+    "threshold_grid_sha256": "e8a9a3897cf847940eab1cee89f19f4014afa974cba996bd4677fc702cb5e6c7",
+    "train_fraction": 0.55
+  },
+  "plan_sha256": "1718d57c2736260f9a49ebb844f9935df2f98bdefe8a1009f0293f9d737b9069",
+  "production_authorized": false,
+  "schema_version": 1,
+  "threshold_grid": [
+    {
+      "threshold": 0.005,
+      "threshold_id": "nc-005"
+    },
+    {
+      "threshold": 0.01,
+      "threshold_id": "nc-010"
+    },
+    {
+      "threshold": 0.02,
+      "threshold_id": "nc-020"
+    }
+  ]
+}
