@@ -5,8 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from test_extraction_evidence_workflow import _workflow_fixture
 from test_extraction_external_trust_policy import _policy_fixture
 
+from veritas.extraction_evidence_plan_json import extraction_evidence_plan_json_payload
 from veritas.extraction_execution_evidence_json import (
     attested_extraction_evidence_release_receipt_json_payload,
     extraction_execution_plan_json_payload,
@@ -35,6 +37,10 @@ def _archived_fixture(tmp_path: Path) -> tuple[list[str], Path, str, str]:
     policy, evidence_plan_sha256, trust_root, execution_plan, attested_release, signed = (
         _policy_fixture()
     )
+    workflow = _workflow_fixture()
+    assert workflow["plan"].sha256() == evidence_plan_sha256
+
+    evidence_plan_path = tmp_path / "evidence-plan.json"
     trust_root_path = tmp_path / "trust-root.json"
     trust_policy_path = tmp_path / "trust-policy.json"
     signed_path = tmp_path / "signed-provenance.json"
@@ -42,6 +48,10 @@ def _archived_fixture(tmp_path: Path) -> tuple[list[str], Path, str, str]:
     attested_release_path = tmp_path / "attested-release.json"
     output_path = tmp_path / "verified-receipt.json"
 
+    _write_json(
+        evidence_plan_path,
+        extraction_evidence_plan_json_payload(workflow["plan"], workflow["grid"]),
+    )
     _write_json(trust_root_path, extraction_external_trust_root_payload(trust_root))
     _write_json(trust_policy_path, extraction_external_trust_policy_json_payload(policy))
     _write_json(signed_path, extraction_signed_external_provenance_payload(signed))
@@ -54,6 +64,8 @@ def _archived_fixture(tmp_path: Path) -> tuple[list[str], Path, str, str]:
     args = [
         sys.executable,
         "scripts/verify_extraction_external_provenance.py",
+        "--evidence-plan",
+        str(evidence_plan_path),
         "--trust-root",
         str(trust_root_path),
         "--trust-policy",
@@ -64,8 +76,6 @@ def _archived_fixture(tmp_path: Path) -> tuple[list[str], Path, str, str]:
         str(execution_plan_path),
         "--attested-release",
         str(attested_release_path),
-        "--evidence-plan-sha256",
-        evidence_plan_sha256,
         "--expected-run-id",
         signed.statement.run_id,
         "--expected-run-attempt",
