@@ -25,9 +25,13 @@ from veritas.extraction_external_trust_policy import (
 from veritas.extraction_external_trust_policy_json import (
     load_extraction_external_trust_policy,
 )
+from veritas.extraction_input_artifacts import load_extraction_input_artifact_manifest
 from veritas.extraction_release_archive import (
     load_extraction_release_evidence_bundle,
     rebuild_attested_extraction_evidence_release_receipt_from_archive,
+)
+from veritas.extraction_release_source_binding import (
+    verify_extraction_release_source_artifacts,
 )
 
 
@@ -73,6 +77,9 @@ def main() -> int:
     trust_policy = load_extraction_external_trust_policy(args.trust_policy)
     signed_provenance = load_extraction_signed_external_provenance(args.signed_provenance)
     execution_plan = load_extraction_execution_plan(args.execution_plan)
+    input_artifact_manifest = load_extraction_input_artifact_manifest(
+        args.input_artifact_manifest
+    )
     verify_extraction_execution_plan_artifacts(
         execution_plan,
         input_artifact_manifest=args.input_artifact_manifest,
@@ -81,6 +88,11 @@ def main() -> int:
         parser_registry=args.parser_registry,
         numerical_runtime=args.numerical_runtime,
         execution_command=args.execution_command,
+    )
+    verify_extraction_release_source_artifacts(
+        release_bundle,
+        input_artifact_manifest,
+        release_artifact_root=args.release_artifact_root,
     )
     archived_attested_release = load_attested_extraction_evidence_release_receipt(
         args.attested_release
