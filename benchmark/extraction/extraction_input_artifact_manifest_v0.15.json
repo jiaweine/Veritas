@@ -1,0 +1,30 @@
+{
+  "artifacts": [
+    {
+      "artifact_id": "paper-fendo-1692917-pdf",
+      "relative_path": "publications/frontiers/fendo-2025-1692917.pdf",
+      "sha256": "d182c741e35348fa5837322b370921dc43eab6af14db2bbeabe67ee26aa9d13f",
+      "size_bytes": 2823576
+    },
+    {
+      "artifact_id": "paper-fpos-1500403-pdf",
+      "relative_path": "publications/frontiers/fpos-2025-1500403.pdf",
+      "sha256": "c0e723e2006143714362fd8157bd9472ddecbc2cae5bb20006f2d7b9c8a6a6eb",
+      "size_bytes": 866931
+    },
+    {
+      "artifact_id": "paper-fpsyg-1473953-pdf",
+      "relative_path": "publications/frontiers/fpsyg-2024-1473953.pdf",
+      "sha256": "60559b9c6f4436b78eb67df68222e41bba89e596e05022745bb51be5b9f679e9",
+      "size_bytes": 7875359
+    },
+    {
+      "artifact_id": "paper-plosone-0321641-pdf",
+      "relative_path": "publications/plos/pone-0321641.pdf",
+      "sha256": "d368dacb231770c69c2fe3507da918b384fc2ebf2c44fc5069489535e34eeb6c",
+      "size_bytes": 2206292
+    }
+  ],
+  "production_authorized": false,
+  "schema_version": 1
+}
