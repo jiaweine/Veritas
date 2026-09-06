@@ -71,6 +71,9 @@ from .extraction_release_archive import (
     load_extraction_release_evidence_bundle,
     rebuild_attested_extraction_evidence_release_receipt_from_archive,
 )
+from .extraction_release_source_binding import (
+    verify_extraction_release_source_artifacts,
+)
 
 __all__ = [
     "AttestedExtractionEvidenceReleaseReceipt",
@@ -121,5 +124,6 @@ __all__ = [
     "verify_external_extraction_provenance_for_run",
     "verify_extraction_execution_plan_artifacts",
     "verify_extraction_input_artifact_manifest",
+    "verify_extraction_release_source_artifacts",
     "verify_precommitted_external_extraction_provenance_for_run",
 ]
