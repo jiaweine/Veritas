@@ -2,30 +2,34 @@ from __future__ import annotations
 
 import argparse
 import json
-from hashlib import sha256
 from pathlib import Path
 
-from veritas.extraction_review_packet import build_blinded_seed_review_packets
+from veritas.extraction_evidence_workflow import load_extraction_seed_manifest
+from veritas.extraction_review_packet import ExtractionReviewerPacket
 
 DEFAULT_SEED = Path("benchmark/extraction/seed_cases_v0.11.json")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Build blinded independent-review packets from an unsplit extraction seed manifest."
+        description="Build blinded independent-review packets from a strict unsplit seed manifest."
     )
     parser.add_argument("--seed", type=Path, default=DEFAULT_SEED)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--reviewer-slots", nargs="+", default=("reviewer-a", "reviewer-b"))
     args = parser.parse_args()
 
-    raw = args.seed.read_bytes()
-    seed = json.loads(raw)
-    seed_sha = sha256(raw).hexdigest()
-    packets = build_blinded_seed_review_packets(
-        seed,
-        seed_manifest_sha256=seed_sha,
-        reviewer_slots=tuple(args.reviewer_slots),
+    seed = load_extraction_seed_manifest(args.seed)
+    reviewer_slots = tuple(args.reviewer_slots)
+    if len(set(reviewer_slots)) < 2:
+        raise ValueError("at least two distinct reviewer slots are required")
+    packets = tuple(
+        ExtractionReviewerPacket(
+            reviewer_slot=slot,
+            seed_manifest_sha256=seed.source_manifest_sha256,
+            targets=seed.targets,
+        )
+        for slot in reviewer_slots
     )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -47,7 +51,7 @@ def main() -> None:
     print(
         json.dumps(
             {
-                "seed_manifest_sha256": seed_sha,
+                "seed_manifest_sha256": seed.source_manifest_sha256,
                 "packet_count": len(packets),
                 "targets_per_packet": len(packets[0].targets),
                 "packets": manifest,
