@@ -63,11 +63,20 @@ from .extraction_input_artifacts import (
     load_extraction_input_artifact_manifest,
     verify_extraction_input_artifact_manifest,
 )
+from .extraction_release_archive import (
+    ExtractionArchivedThresholdRun,
+    ExtractionReleaseEvidenceBundle,
+    extraction_release_evidence_bundle_payload,
+    load_extraction_prediction_artifact,
+    load_extraction_release_evidence_bundle,
+    rebuild_attested_extraction_evidence_release_receipt_from_archive,
+)
 
 __all__ = [
     "AttestedExtractionEvidenceReleaseReceipt",
     "ExternallyVerifiedExtractionEvidenceReceipt",
     "ExternallyVerifiedExtractionRunReceipt",
+    "ExtractionArchivedThresholdRun",
     "ExtractionExecutionAttestation",
     "ExtractionExecutionEvidence",
     "ExtractionExecutionPlan",
@@ -76,6 +85,7 @@ __all__ = [
     "ExtractionExternalTrustRoot",
     "ExtractionInputArtifact",
     "ExtractionInputArtifactManifest",
+    "ExtractionReleaseEvidenceBundle",
     "ExtractionSignedExternalProvenance",
     "PrecommittedExternalExtractionRunReceipt",
     "attested_extraction_evidence_release_receipt_json_payload",
@@ -95,6 +105,7 @@ __all__ = [
     "extraction_input_artifact_manifest_payload",
     "extraction_prediction_artifact_bytes",
     "extraction_prediction_semantics_sha256",
+    "extraction_release_evidence_bundle_payload",
     "extraction_signed_external_provenance_payload",
     "load_attested_extraction_evidence_release_receipt",
     "load_extraction_evidence_plan",
@@ -102,7 +113,10 @@ __all__ = [
     "load_extraction_external_trust_policy",
     "load_extraction_external_trust_root",
     "load_extraction_input_artifact_manifest",
+    "load_extraction_prediction_artifact",
+    "load_extraction_release_evidence_bundle",
     "load_extraction_signed_external_provenance",
+    "rebuild_attested_extraction_evidence_release_receipt_from_archive",
     "verify_external_extraction_provenance",
     "verify_external_extraction_provenance_for_run",
     "verify_extraction_execution_plan_artifacts",
