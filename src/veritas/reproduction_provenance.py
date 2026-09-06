@@ -86,7 +86,11 @@ class ReproductionProvenanceGraph:
         if transform.code_artifact_id in transform.output_artifact_ids:
             raise ValueError("code artifact cannot also be a transform output")
         self.transforms[transform.transform_id] = transform
-        self.validate()
+        try:
+            self.validate()
+        except Exception:
+            del self.transforms[transform.transform_id]
+            raise
 
     def validate(self) -> None:
         producer: dict[str, str] = {}
