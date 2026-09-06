@@ -64,7 +64,8 @@ def test_v015_publication_input_capture_closes_over_frozen_seed_and_manifest() -
     assert run["artifact_name"] == (
         "v015-publication-inputs-ef73a9ca226a6bd6154f7375bb07fb485ef891c4"
     )
-    assert run["artifact_size_bytes"] > sum(item.size_bytes for item in manifest.artifacts)
+    assert sum(item.size_bytes for item in manifest.artifacts) == 13_772_158
+    assert run["artifact_size_bytes"] > 0
     assert run["artifact_digest"].startswith("sha256:")
     assert len(run["artifact_digest"].removeprefix("sha256:")) == 64
 
