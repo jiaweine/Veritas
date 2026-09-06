@@ -33,6 +33,13 @@ from veritas.extraction_release_archive import (
 from veritas.extraction_release_source_binding import (
     verify_extraction_release_source_artifacts,
 )
+from veritas.extraction_source_archive_provenance import (
+    verify_precommitted_extraction_source_archive_provenance_for_run,
+)
+from veritas.extraction_source_archive_provenance_json import (
+    load_extraction_signed_source_archive_provenance,
+    load_extraction_source_archive_trust_policy,
+)
 
 
 def _add_execution_artifact_args(parser: argparse.ArgumentParser) -> None:
@@ -44,12 +51,39 @@ def _add_execution_artifact_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--execution-command", type=Path, required=True)
 
 
+def _add_optional_source_archive_provenance_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--source-archive-trust-root", type=Path)
+    parser.add_argument("--source-archive-trust-policy", type=Path)
+    parser.add_argument("--signed-source-archive-provenance", type=Path)
+    parser.add_argument("--expected-source-archive-run-id")
+    parser.add_argument("--expected-source-archive-run-attempt", type=int)
+
+
+def _source_archive_args_are_complete(args: argparse.Namespace) -> bool:
+    values = (
+        args.source_archive_trust_root,
+        args.source_archive_trust_policy,
+        args.signed_source_archive_provenance,
+        args.expected_source_archive_run_id,
+        args.expected_source_archive_run_attempt,
+    )
+    if all(value is None for value in values):
+        return False
+    if any(value is None for value in values):
+        raise ValueError(
+            "source archive provenance verification requires trust root, trust policy, signed "
+            "provenance, expected run id, and expected run attempt together"
+        )
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Cold-rebuild and verify archived extraction evidence against exact pre-TEST "
             "sources, plans, publication/execution bytes, trust policy, independently "
-            "selected run context, and Ed25519 provenance."
+            "selected run context, and Ed25519 provenance. Optionally verify a separately "
+            "precommitted trusted source-archive build relation from Git commit to archive bytes."
         )
     )
     parser.add_argument("--sampling-frame", type=Path, required=True)
@@ -66,6 +100,7 @@ def main() -> int:
     parser.add_argument("--expected-run-id", required=True)
     parser.add_argument("--expected-run-attempt", type=int, required=True)
     parser.add_argument("--expected-commit-sha", required=True)
+    _add_optional_source_archive_provenance_args(parser)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -124,13 +159,39 @@ def main() -> int:
         expected_run_attempt=args.expected_run_attempt,
         expected_commit_sha=args.expected_commit_sha,
     )
-    payload = {
+    payload: dict[str, object] = {
         "schema_version": 1,
         "release_bundle_sha256": release_bundle.sha256(),
         "rebuilt_attested_release_sha256": rebuilt_attested_release.sha256(),
         "receipt": asdict(receipt),
         "receipt_sha256": receipt.sha256(),
     }
+    if _source_archive_args_are_complete(args):
+        source_archive_trust_root = load_extraction_external_trust_root(
+            args.source_archive_trust_root
+        )
+        source_archive_trust_policy = load_extraction_source_archive_trust_policy(
+            args.source_archive_trust_policy
+        )
+        signed_source_archive_provenance = (
+            load_extraction_signed_source_archive_provenance(
+                args.signed_source_archive_provenance
+            )
+        )
+        source_archive_receipt = (
+            verify_precommitted_extraction_source_archive_provenance_for_run(
+                trust_policy=source_archive_trust_policy,
+                trust_root=source_archive_trust_root,
+                signed_provenance=signed_source_archive_provenance,
+                execution_plan=execution_plan,
+                expected_run_id=args.expected_source_archive_run_id,
+                expected_run_attempt=args.expected_source_archive_run_attempt,
+                expected_commit_sha=args.expected_commit_sha,
+            )
+        )
+        payload["source_archive_receipt"] = asdict(source_archive_receipt)
+        payload["source_archive_receipt_sha256"] = source_archive_receipt.sha256()
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",

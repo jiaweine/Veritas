@@ -82,6 +82,22 @@ from .extraction_review_submission_json import (
     load_extraction_adjudication,
     load_extraction_review_submission,
 )
+from .extraction_source_archive_provenance import (
+    ExtractionSignedSourceArchiveProvenance,
+    ExtractionSourceArchiveProvenanceStatement,
+    ExtractionSourceArchiveTrustPolicy,
+    PrecommittedExtractionSourceArchiveReceipt,
+    build_extraction_source_archive_provenance_statement,
+    build_extraction_source_archive_trust_policy,
+    extraction_source_archive_provenance_statement_bytes,
+    verify_precommitted_extraction_source_archive_provenance_for_run,
+)
+from .extraction_source_archive_provenance_json import (
+    extraction_signed_source_archive_provenance_json_payload,
+    extraction_source_archive_trust_policy_json_payload,
+    load_extraction_signed_source_archive_provenance,
+    load_extraction_source_archive_trust_policy,
+)
 
 __all__ = [
     "AttestedExtractionEvidenceReleaseReceipt",
@@ -98,7 +114,11 @@ __all__ = [
     "ExtractionInputArtifactManifest",
     "ExtractionReleaseEvidenceBundle",
     "ExtractionSignedExternalProvenance",
+    "ExtractionSignedSourceArchiveProvenance",
+    "ExtractionSourceArchiveProvenanceStatement",
+    "ExtractionSourceArchiveTrustPolicy",
     "PrecommittedExternalExtractionRunReceipt",
+    "PrecommittedExtractionSourceArchiveReceipt",
     "attested_extraction_evidence_release_receipt_json_payload",
     "build_attested_extraction_evidence_release_receipt",
     "build_extraction_execution_evidence",
@@ -106,6 +126,8 @@ __all__ = [
     "build_extraction_external_provenance_statement",
     "build_extraction_external_trust_policy",
     "build_extraction_input_artifact_manifest",
+    "build_extraction_source_archive_provenance_statement",
+    "build_extraction_source_archive_trust_policy",
     "extraction_adjudication_json_payload",
     "extraction_evidence_plan_json_payload",
     "extraction_execution_artifact_sha256",
@@ -121,6 +143,9 @@ __all__ = [
     "extraction_review_record_json_payload",
     "extraction_review_submission_json_payload",
     "extraction_signed_external_provenance_payload",
+    "extraction_signed_source_archive_provenance_json_payload",
+    "extraction_source_archive_provenance_statement_bytes",
+    "extraction_source_archive_trust_policy_json_payload",
     "load_attested_extraction_evidence_release_receipt",
     "load_extraction_adjudication",
     "load_extraction_evidence_plan",
@@ -133,6 +158,8 @@ __all__ = [
     "load_extraction_review_record",
     "load_extraction_review_submission",
     "load_extraction_signed_external_provenance",
+    "load_extraction_signed_source_archive_provenance",
+    "load_extraction_source_archive_trust_policy",
     "rebuild_attested_extraction_evidence_release_receipt_from_archive",
     "verify_external_extraction_provenance",
     "verify_external_extraction_provenance_for_run",
@@ -140,4 +167,5 @@ __all__ = [
     "verify_extraction_input_artifact_manifest",
     "verify_extraction_release_source_artifacts",
     "verify_precommitted_external_extraction_provenance_for_run",
+    "verify_precommitted_extraction_source_archive_provenance_for_run",
 ]
