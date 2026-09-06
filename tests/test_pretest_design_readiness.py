@@ -16,7 +16,7 @@ def _root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def test_v015_pretest_design_readiness_recomputes_current_identity_and_power_blocker() -> None:
+def test_v015_pretest_design_readiness_recomputes_current_identity_power_and_resolution() -> None:
     root = _root()
     readiness = json.loads(
         (root / "benchmark/extraction/pretest_design_readiness_v0.15.json").read_text(
@@ -31,10 +31,9 @@ def test_v015_pretest_design_readiness_recomputes_current_identity_and_power_blo
     frame = load_extraction_sampling_frame(frame_path)
     seed = load_extraction_seed_manifest(seed_path)
 
-    assert readiness["status"] == "blocked_seed_family_count_for_default_error_bound"
+    assert readiness["status"] == "resolved_with_explicit_nonproduction_pilot_policy"
     assert readiness["production_authorized"] is False
-    assert readiness["evidence_plan_frozen"] is False
-    assert "threshold_grid" not in readiness
+    assert readiness["evidence_plan_frozen"] is True
 
     assert sha256(frame_raw).hexdigest() == readiness["sampling_frame"]["source_sha256"]
     assert frame.sha256() == readiness["sampling_frame"]["normalized_sha256"]
@@ -45,8 +44,8 @@ def test_v015_pretest_design_readiness_recomputes_current_identity_and_power_blo
     families = sorted({target.article_family_id for target in seed.targets})
     assert len(families) == readiness["seed_manifest"]["article_family_count"] == 4
 
-    split = readiness["candidate_split_design"]
-    assert split["status"] == "identity_only_readiness_probe_not_frozen"
+    split = readiness["frozen_split_design"]
+    assert split["status"] == "frozen_nonproduction_pilot_plan"
     expected_assignments = {
         row["article_family_id"]: row["split"] for row in split["assignments"]
     }
@@ -92,3 +91,16 @@ def test_v015_pretest_design_readiness_recomputes_current_identity_and_power_blo
     ] == 59
     assert observed_upper > power["max_critical_family_wrong_accept_upper_bound"]
     assert power["satisfies_default_policy_floor"] is False
+
+    resolution = readiness["resolution"]
+    plan = json.loads((root / resolution["evidence_plan_path"]).read_text(encoding="utf-8"))
+    policy = json.loads(
+        (root / resolution["pilot_threshold_policy_path"]).read_text(encoding="utf-8")
+    )
+    assert resolution["evidence_plan_sha256"] == plan["plan_sha256"]
+    assert resolution["pilot_threshold_policy_sha256"] == policy["threshold_policy_sha256"]
+    assert policy["bound_evidence_plan_sha256"] == plan["plan_sha256"]
+    assert policy["production_authorized"] is False
+    assert policy["threshold_policy"]["max_critical_family_wrong_accept_upper_bound"] == 0.80
+    assert "does not replace the default 0.05" in resolution["resolution_rule"]
+    assert "Independently archive" in readiness["remaining_external_pretest_work"]
