@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "status": "blocked_seed_family_count_for_default_error_bound",
+  "as_of": "2026-09-07",
+  "production_authorized": false,
+  "evidence_plan_frozen": false,
+  "sampling_frame": {
+    "path": "benchmark/corpus/evidence_sampling_frame_v0.15.json",
+    "source_sha256": "adc32cafceafdf9dd3f39fc5a2fc83e05d7bd5b39095b83aea70d3197a455ddc",
+    "normalized_sha256": "84a6761efa21ad5514fa017d97103fcb1e26f7a9442395ce3357433108a1704b"
+  },
+  "seed_manifest": {
+    "path": "benchmark/extraction/evidence_seed_manifest_v0.15.json",
+    "source_sha256": "e58ce1ba2aec3c5b9a0210a2b6ccc8a8550571f693ac5f796fd951ab2411974f",
+    "target_universe_sha256": "83e8de78d3f6374288035b5f98e6e9d809ec5dbb5480f8f98c46e99e96e0bbcf",
+    "target_count": 18,
+    "article_family_count": 4
+  },
+  "candidate_split_design": {
+    "status": "identity_only_readiness_probe_not_frozen",
+    "split_salt": "veritas-extraction-evidence-v0.15-01",
+    "train_fraction": 0.55,
+    "development_fraction": 0.25,
+    "test_fraction": 0.20,
+    "selection_rule": "Salt was checked only against pre-existing article-family identities to require non-empty TRAIN, DEVELOPMENT, and TEST partitions; no review values, parser accuracy, benchmark outcomes, or TEST results were used.",
+    "assignments": [
+      {
+        "article_family_id": "doi:10.1371/journal.pone.0321641",
+        "split": "development"
+      },
+      {
+        "article_family_id": "doi:10.3389/fendo.2025.1692917",
+        "split": "test"
+      },
+      {
+        "article_family_id": "doi:10.3389/fpos.2025.1500403",
+        "split": "train"
+      },
+      {
+        "article_family_id": "doi:10.3389/fpsyg.2024.1473953",
+        "split": "development"
+      }
+    ],
+    "train_article_families": 1,
+    "development_article_families": 2,
+    "test_article_families": 1
+  },
+  "default_policy_power_check": {
+    "benchmark_confidence": 0.95,
+    "max_critical_family_wrong_accept_upper_bound": 0.05,
+    "development_wrong_accept_families_assumed": 0,
+    "development_article_families": 2,
+    "zero_wrong_accept_clopper_pearson_upper_bound": 0.776393202250021,
+    "minimum_development_families_for_zero_wrong_accept_upper_bound_at_or_below_policy": 59,
+    "satisfies_default_policy_floor": false
+  },
+  "blocker": "With only two DEVELOPMENT article families under the candidate identity-only split, even zero wrong-accept families yields a 95% one-sided exact upper bound of 0.776393202250021, far above the default 0.05 policy. Freezing the evidence plan now would lock a design that cannot satisfy the default family-level error-bound criterion.",
+  "required_resolution_before_plan_freeze": "Either expand the explicit evidence seed enough to support the intended family-level confidence bound under the frozen split design, or explicitly choose and archive a looser non-production threshold policy before TEST. Do not represent this readiness probe as a frozen ExtractionEvidencePlan or as production certification."
+}
