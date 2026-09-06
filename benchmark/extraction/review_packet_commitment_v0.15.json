@@ -1,0 +1,24 @@
+{
+  "actual_reviewer_identities_assigned": false,
+  "as_of": "2026-09-07",
+  "distributed_to_human_reviewers": false,
+  "generator": "scripts/build_extraction_review_packets.py",
+  "packet_bytes_archived_in_repository": false,
+  "production_authorized": false,
+  "reviewer_packets": [
+    {
+      "packet_sha256": "d5dbb4118d376915f4b5c4c089a1677c362fa7d3ef1f7cedd481b49cf171a8bb",
+      "reviewer_slot": "reviewer-a",
+      "target_count": 18
+    },
+    {
+      "packet_sha256": "0d86b9254baa61217f2802db820c3a7c8d12904ba79d37afd99c251072203ace",
+      "reviewer_slot": "reviewer-b",
+      "target_count": 18
+    }
+  ],
+  "schema_version": 1,
+  "seed_manifest_sha256": "e58ce1ba2aec3c5b9a0210a2b6ccc8a8550571f693ac5f796fd951ab2411974f",
+  "status": "blinded_review_packet_hashes_precommitted_not_distributed",
+  "note": "The deterministic blinded packet hashes are precommitted before human review. Generic reviewer slots are not human identities. Packet distribution and completed submissions remain blocked until exact publication/input artifact IDs are available from the verified input-artifact manifest."
+}
