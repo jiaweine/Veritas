@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "status": "blocked_seed_family_count_for_default_error_bound",
+  "status": "resolved_with_explicit_nonproduction_pilot_policy",
   "as_of": "2026-09-07",
   "production_authorized": false,
-  "evidence_plan_frozen": false,
+  "evidence_plan_frozen": true,
   "sampling_frame": {
     "path": "benchmark/corpus/evidence_sampling_frame_v0.15.json",
     "source_sha256": "adc32cafceafdf9dd3f39fc5a2fc83e05d7bd5b39095b83aea70d3197a455ddc",
@@ -16,8 +16,8 @@
     "target_count": 18,
     "article_family_count": 4
   },
-  "candidate_split_design": {
-    "status": "identity_only_readiness_probe_not_frozen",
+  "frozen_split_design": {
+    "status": "frozen_nonproduction_pilot_plan",
     "split_salt": "veritas-extraction-evidence-v0.15-01",
     "train_fraction": 0.55,
     "development_fraction": 0.25,
@@ -54,6 +54,12 @@
     "minimum_development_families_for_zero_wrong_accept_upper_bound_at_or_below_policy": 59,
     "satisfies_default_policy_floor": false
   },
-  "blocker": "With only two DEVELOPMENT article families under the candidate identity-only split, even zero wrong-accept families yields a 95% one-sided exact upper bound of 0.776393202250021, far above the default 0.05 policy. Freezing the evidence plan now would lock a design that cannot satisfy the default family-level error-bound criterion.",
-  "required_resolution_before_plan_freeze": "Either expand the explicit evidence seed enough to support the intended family-level confidence bound under the frozen split design, or explicitly choose and archive a looser non-production threshold policy before TEST. Do not represent this readiness probe as a frozen ExtractionEvidencePlan or as production certification."
+  "resolution": {
+    "evidence_plan_path": "benchmark/extraction/evidence_plan_v0.15.json",
+    "evidence_plan_sha256": "1718d57c2736260f9a49ebb844f9935df2f98bdefe8a1009f0293f9d737b9069",
+    "pilot_threshold_policy_path": "benchmark/extraction/pretest_pilot_threshold_policy_v0.15.json",
+    "pilot_threshold_policy_sha256": "c8e9c7b65106460a49caa803b81b89eb2807a67a7cfb159f9cecb36b26a6fb55",
+    "resolution_rule": "Proceed only as an explicitly non-production pilot. The pilot policy allows a 0.80 critical-family wrong-accept upper bound, which the frozen two-family DEVELOPMENT allocation can satisfy only with zero critical-family wrong accepts. It does not replace the default 0.05 production-grade target."
+  },
+  "remaining_external_pretest_work": "Independently archive the canonical evidence-plan bytes/hash, exact publication/input bytes and manifest, execution artifacts/plan, source commit, trust root/policies, and historical pre-TEST evidence before any held-out TEST evaluation."
 }
