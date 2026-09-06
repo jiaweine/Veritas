@@ -27,9 +27,9 @@ def test_v015_nonproduction_pilot_plan_rebuilds_from_exact_sources() -> None:
     seed = load_extraction_seed_manifest(
         root / "benchmark/extraction/evidence_seed_manifest_v0.15.json"
     )
-    archived = json.loads(
-        (root / "benchmark/extraction/evidence_plan_v0.15.json").read_text(encoding="utf-8")
-    )
+    plan_path = root / "benchmark/extraction/evidence_plan_v0.15.json"
+    archived_text = plan_path.read_text(encoding="utf-8")
+    archived = json.loads(archived_text)
 
     grid = ExtractionThresholdGrid(
         points=(("nc-005", 0.005), ("nc-010", 0.01), ("nc-020", 0.02))
@@ -44,8 +44,16 @@ def test_v015_nonproduction_pilot_plan_rebuilds_from_exact_sources() -> None:
         development_fraction=0.25,
         benchmark_confidence=0.95,
     )
+    rebuilt_payload = extraction_evidence_plan_payload(plan, grid)
+    rebuilt_text = json.dumps(
+        rebuilt_payload,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    ) + "\n"
 
-    assert extraction_evidence_plan_payload(plan, grid) == archived
+    assert rebuilt_payload == archived
+    assert rebuilt_text == archived_text
     assert plan.sha256() == archived["plan_sha256"] == (
         "1718d57c2736260f9a49ebb844f9935df2f98bdefe8a1009f0293f9d737b9069"
     )
