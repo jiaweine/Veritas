@@ -13,10 +13,12 @@ from veritas.extraction_execution_evidence_json import extraction_execution_plan
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Build a safe pre-TEST ExtractionExecutionPlan from exact archived artifact bytes."
+            "Build a safe pre-TEST ExtractionExecutionPlan from verified publication and "
+            "execution artifact bytes."
         )
     )
     parser.add_argument("--input-artifact-manifest", type=Path, required=True)
+    parser.add_argument("--input-artifact-root", type=Path, required=True)
     parser.add_argument("--source-tree", type=Path, required=True)
     parser.add_argument("--parser-registry", type=Path, required=True)
     parser.add_argument("--numerical-runtime", type=Path, required=True)
@@ -26,6 +28,7 @@ def main() -> int:
 
     plan = build_extraction_execution_plan_from_artifacts(
         input_artifact_manifest=args.input_artifact_manifest,
+        input_artifact_root=args.input_artifact_root,
         source_tree=args.source_tree,
         parser_registry=args.parser_registry,
         numerical_runtime=args.numerical_runtime,
