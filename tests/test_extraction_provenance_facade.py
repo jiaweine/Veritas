@@ -8,9 +8,11 @@ from veritas.extraction_provenance import (
     PrecommittedExternalExtractionRunReceipt,
     attested_extraction_evidence_release_receipt_json_payload,
     build_attested_extraction_evidence_release_receipt,
+    build_extraction_execution_plan_from_artifacts,
     build_extraction_external_provenance_statement,
     build_extraction_external_trust_policy,
     extraction_evidence_plan_json_payload,
+    extraction_execution_artifact_sha256,
     extraction_execution_plan_json_payload,
     load_attested_extraction_evidence_release_receipt,
     load_extraction_evidence_plan,
@@ -20,6 +22,7 @@ from veritas.extraction_provenance import (
     load_extraction_signed_external_provenance,
     verify_external_extraction_provenance,
     verify_external_extraction_provenance_for_run,
+    verify_extraction_execution_plan_artifacts,
     verify_precommitted_external_extraction_provenance_for_run,
 )
 
@@ -34,9 +37,11 @@ def test_extraction_provenance_facade_exports_stable_public_symbols() -> None:
     assert PrecommittedExternalExtractionRunReceipt.__name__.startswith("PrecommittedExternal")
     assert callable(attested_extraction_evidence_release_receipt_json_payload)
     assert callable(build_attested_extraction_evidence_release_receipt)
+    assert callable(build_extraction_execution_plan_from_artifacts)
     assert callable(build_extraction_external_provenance_statement)
     assert callable(build_extraction_external_trust_policy)
     assert callable(extraction_evidence_plan_json_payload)
+    assert callable(extraction_execution_artifact_sha256)
     assert callable(extraction_execution_plan_json_payload)
     assert callable(load_attested_extraction_evidence_release_receipt)
     assert callable(load_extraction_evidence_plan)
@@ -46,4 +51,5 @@ def test_extraction_provenance_facade_exports_stable_public_symbols() -> None:
     assert callable(load_extraction_signed_external_provenance)
     assert callable(verify_external_extraction_provenance)
     assert callable(verify_external_extraction_provenance_for_run)
+    assert callable(verify_extraction_execution_plan_artifacts)
     assert callable(verify_precommitted_external_extraction_provenance_for_run)
