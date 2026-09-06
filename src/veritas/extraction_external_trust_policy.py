@@ -19,6 +19,7 @@ from .extraction_external_provenance_context import (
 )
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class ExtractionExternalTrustPolicy:
     policy_id: str
     evidence_plan_sha256: str
     execution_plan_sha256: str
+    source_commit_sha: str
     trust_root_sha256: str
     issuer: str
     runner_identity: str
@@ -45,6 +47,7 @@ class ExtractionExternalTrustPolicy:
             _require_nonempty_string(value, label=label)
         _require_sha256(self.evidence_plan_sha256, label="evidence_plan_sha256")
         _require_sha256(self.execution_plan_sha256, label="execution_plan_sha256")
+        _require_git_sha(self.source_commit_sha, label="source_commit_sha")
         _require_sha256(self.trust_root_sha256, label="trust_root_sha256")
         if type(self.production_authorized) is not bool or self.production_authorized:
             raise ValueError("external extraction trust policies are non-production only")
@@ -62,6 +65,7 @@ class PrecommittedExternalExtractionRunReceipt:
     trust_policy_sha256: str
     evidence_plan_sha256: str
     execution_plan_sha256: str
+    source_commit_sha: str
     trust_root_sha256: str
     verified_run_receipt_sha256: str
     production_authorized: bool = False
@@ -76,6 +80,7 @@ class PrecommittedExternalExtractionRunReceipt:
             ("verified_run_receipt_sha256", self.verified_run_receipt_sha256),
         ):
             _require_sha256(value, label=label)
+        _require_git_sha(self.source_commit_sha, label="source_commit_sha")
         if type(self.production_authorized) is not bool or self.production_authorized:
             raise ValueError("precommitted external extraction run receipts are non-production only")
         if isinstance(self.schema_version, bool) or not isinstance(self.schema_version, int):
@@ -94,16 +99,19 @@ def build_extraction_external_trust_policy(
     policy_id: str,
     evidence_plan_sha256: str,
     execution_plan: ExtractionExecutionPlan,
+    source_commit_sha: str,
     trust_root: ExtractionExternalTrustRoot,
 ) -> ExtractionExternalTrustPolicy:
     if not isinstance(execution_plan, ExtractionExecutionPlan):
         raise TypeError("execution_plan must be an ExtractionExecutionPlan")
     if not isinstance(trust_root, ExtractionExternalTrustRoot):
         raise TypeError("trust_root must be an ExtractionExternalTrustRoot")
+    _require_git_sha(source_commit_sha, label="source_commit_sha")
     return ExtractionExternalTrustPolicy(
         policy_id=policy_id,
         evidence_plan_sha256=evidence_plan_sha256,
         execution_plan_sha256=execution_plan.sha256(),
+        source_commit_sha=source_commit_sha,
         trust_root_sha256=trust_root.sha256(),
         issuer=trust_root.issuer,
         runner_identity=trust_root.runner_identity,
@@ -135,6 +143,7 @@ def verify_precommitted_external_extraction_provenance_for_run(
     if not isinstance(execution_plan, ExtractionExecutionPlan):
         raise TypeError("execution_plan must be an ExtractionExecutionPlan")
     _require_sha256(evidence_plan_sha256, label="evidence_plan_sha256")
+    _require_git_sha(expected_commit_sha, label="expected_commit_sha")
 
     if trust_policy.evidence_plan_sha256 != evidence_plan_sha256:
         raise ValueError("external trust policy is bound to a different evidence plan")
@@ -142,6 +151,10 @@ def verify_precommitted_external_extraction_provenance_for_run(
         raise ValueError("signed attested release is bound to a different evidence plan")
     if trust_policy.execution_plan_sha256 != execution_plan.sha256():
         raise ValueError("external trust policy is bound to a different execution plan")
+    if trust_policy.source_commit_sha != expected_commit_sha:
+        raise ValueError("external trust policy is bound to a different source commit")
+    if trust_policy.source_commit_sha != signed_provenance.statement.commit_sha:
+        raise ValueError("signed external provenance uses a different source commit")
     if trust_policy.trust_root_sha256 != trust_root.sha256():
         raise ValueError("external trust policy is bound to a different trust root")
     expected_identity = (
@@ -174,6 +187,7 @@ def verify_precommitted_external_extraction_provenance_for_run(
         trust_policy_sha256=trust_policy.sha256(),
         evidence_plan_sha256=evidence_plan_sha256,
         execution_plan_sha256=execution_plan.sha256(),
+        source_commit_sha=expected_commit_sha,
         trust_root_sha256=trust_root.sha256(),
         verified_run_receipt_sha256=verified_run.sha256(),
     )
@@ -195,6 +209,11 @@ def _require_nonempty_string(value: object, *, label: str) -> None:
 def _require_sha256(value: object, *, label: str) -> None:
     if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
         raise ValueError(f"{label} must be a lowercase SHA-256 digest")
+
+
+def _require_git_sha(value: object, *, label: str) -> None:
+    if not isinstance(value, str) or not _GIT_SHA_RE.fullmatch(value):
+        raise ValueError(f"{label} must be a lowercase 40-character git SHA")
 
 
 def _stable_sha256(value: object) -> str:
