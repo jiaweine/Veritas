@@ -1,5 +1,9 @@
 """Stable public facade for extraction execution and signed provenance evidence."""
 
+from .extraction_evidence_plan_json import (
+    extraction_evidence_plan_json_payload,
+    load_extraction_evidence_plan,
+)
 from .extraction_execution_evidence import (
     AttestedExtractionEvidenceReleaseReceipt,
     ExtractionExecutionAttestation,
@@ -64,6 +68,7 @@ __all__ = [
     "build_extraction_execution_evidence",
     "build_extraction_external_provenance_statement",
     "build_extraction_external_trust_policy",
+    "extraction_evidence_plan_json_payload",
     "extraction_execution_plan_json_payload",
     "extraction_external_provenance_statement_bytes",
     "extraction_external_trust_policy_json_payload",
@@ -73,6 +78,7 @@ __all__ = [
     "extraction_prediction_semantics_sha256",
     "extraction_signed_external_provenance_payload",
     "load_attested_extraction_evidence_release_receipt",
+    "load_extraction_evidence_plan",
     "load_extraction_execution_plan",
     "load_extraction_external_trust_policy",
     "load_extraction_external_trust_root",
