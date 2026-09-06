@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -336,6 +337,6 @@ def _finite_number(value: object, *, label: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError(f"{label} must be a finite number")
     result = float(value)
-    if result != result or result in (float("inf"), float("-inf")):
+    if not math.isfinite(result):
         raise ValueError(f"{label} must be a finite number")
     return result
