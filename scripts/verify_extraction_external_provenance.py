@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from veritas.extraction_evidence_plan_json import load_extraction_evidence_plan
 from veritas.extraction_execution_evidence_json import (
     load_attested_extraction_evidence_release_receipt,
     load_extraction_execution_plan,
@@ -24,22 +25,23 @@ from veritas.extraction_external_trust_policy_json import (
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Verify archived extraction execution evidence against a pre-TEST trust policy, "
-            "independently selected run context, and an Ed25519-signed provenance envelope."
+            "Verify archived extraction evidence against an exact pre-TEST evidence plan, "
+            "trust policy, independently selected run context, and Ed25519 provenance."
         )
     )
+    parser.add_argument("--evidence-plan", type=Path, required=True)
     parser.add_argument("--trust-root", type=Path, required=True)
     parser.add_argument("--trust-policy", type=Path, required=True)
     parser.add_argument("--signed-provenance", type=Path, required=True)
     parser.add_argument("--execution-plan", type=Path, required=True)
     parser.add_argument("--attested-release", type=Path, required=True)
-    parser.add_argument("--evidence-plan-sha256", required=True)
     parser.add_argument("--expected-run-id", required=True)
     parser.add_argument("--expected-run-attempt", type=int, required=True)
     parser.add_argument("--expected-commit-sha", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
+    evidence_plan, _ = load_extraction_evidence_plan(args.evidence_plan)
     trust_root = load_extraction_external_trust_root(args.trust_root)
     trust_policy = load_extraction_external_trust_policy(args.trust_policy)
     signed_provenance = load_extraction_signed_external_provenance(args.signed_provenance)
@@ -48,7 +50,7 @@ def main() -> int:
 
     receipt = verify_precommitted_external_extraction_provenance_for_run(
         trust_policy=trust_policy,
-        evidence_plan_sha256=args.evidence_plan_sha256,
+        evidence_plan_sha256=evidence_plan.sha256(),
         trust_root=trust_root,
         signed_provenance=signed_provenance,
         attested_release_receipt=attested_release,
