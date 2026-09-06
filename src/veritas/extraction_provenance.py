@@ -10,6 +10,12 @@ from .extraction_execution_evidence import (
     extraction_prediction_artifact_bytes,
     extraction_prediction_semantics_sha256,
 )
+from .extraction_execution_evidence_json import (
+    attested_extraction_evidence_release_receipt_json_payload,
+    extraction_execution_plan_json_payload,
+    load_attested_extraction_evidence_release_receipt,
+    load_extraction_execution_plan,
+)
 from .extraction_external_provenance import (
     ExternallyVerifiedExtractionEvidenceReceipt,
     ExtractionExternalProvenanceStatement,
@@ -53,10 +59,12 @@ __all__ = [
     "ExtractionExternalTrustRoot",
     "ExtractionSignedExternalProvenance",
     "PrecommittedExternalExtractionRunReceipt",
+    "attested_extraction_evidence_release_receipt_json_payload",
     "build_attested_extraction_evidence_release_receipt",
     "build_extraction_execution_evidence",
     "build_extraction_external_provenance_statement",
     "build_extraction_external_trust_policy",
+    "extraction_execution_plan_json_payload",
     "extraction_external_provenance_statement_bytes",
     "extraction_external_trust_policy_json_payload",
     "extraction_external_trust_policy_payload",
@@ -64,6 +72,8 @@ __all__ = [
     "extraction_prediction_artifact_bytes",
     "extraction_prediction_semantics_sha256",
     "extraction_signed_external_provenance_payload",
+    "load_attested_extraction_evidence_release_receipt",
+    "load_extraction_execution_plan",
     "load_extraction_external_trust_policy",
     "load_extraction_external_trust_root",
     "load_extraction_signed_external_provenance",
