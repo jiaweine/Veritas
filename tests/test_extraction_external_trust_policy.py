@@ -17,6 +17,7 @@ def _policy_fixture():
     policy = build_extraction_external_trust_policy(
         policy_id="real-extraction-run-v1",
         evidence_plan_sha256=evidence_plan_sha256,
+        execution_plan=execution_plan,
         trust_root=trust_root,
     )
     return (
@@ -29,7 +30,7 @@ def _policy_fixture():
     )
 
 
-def test_precommitted_policy_binds_plan_root_and_verified_run() -> None:
+def test_precommitted_policy_binds_plans_root_and_verified_run() -> None:
     policy, evidence_plan_sha256, trust_root, execution_plan, attested_release, signed = (
         _policy_fixture()
     )
@@ -48,7 +49,9 @@ def test_precommitted_policy_binds_plan_root_and_verified_run() -> None:
     assert receipt.production_authorized is False
     assert receipt.trust_policy_sha256 == policy.sha256()
     assert receipt.evidence_plan_sha256 == evidence_plan_sha256
+    assert receipt.execution_plan_sha256 == execution_plan.sha256()
     assert receipt.trust_root_sha256 == trust_root.sha256()
+    assert policy.execution_plan_sha256 == execution_plan.sha256()
     assert len(receipt.verified_run_receipt_sha256) == 64
     assert len(receipt.sha256()) == 64
 
@@ -103,6 +106,26 @@ def test_policy_rejects_signed_release_bound_to_different_evidence_plan() -> Non
             signed_provenance=signed,
             attested_release_receipt=drifted_release,
             execution_plan=execution_plan,
+            expected_run_id=signed.statement.run_id,
+            expected_run_attempt=signed.statement.run_attempt,
+            expected_commit_sha=signed.statement.commit_sha,
+        )
+
+
+def test_policy_rejects_posthoc_execution_plan_drift() -> None:
+    policy, evidence_plan_sha256, trust_root, execution_plan, attested_release, signed = (
+        _policy_fixture()
+    )
+    drifted_execution_plan = replace(execution_plan, source_tree_sha256="9" * 64)
+
+    with pytest.raises(ValueError, match="different execution plan"):
+        verify_precommitted_external_extraction_provenance_for_run(
+            trust_policy=policy,
+            evidence_plan_sha256=evidence_plan_sha256,
+            trust_root=trust_root,
+            signed_provenance=signed,
+            attested_release_receipt=attested_release,
+            execution_plan=drifted_execution_plan,
             expected_run_id=signed.statement.run_id,
             expected_run_attempt=signed.statement.run_attempt,
             expected_commit_sha=signed.statement.commit_sha,
