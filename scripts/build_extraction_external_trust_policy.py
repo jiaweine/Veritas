@@ -16,6 +16,7 @@ from veritas.extraction_external_trust_policy_json import (
 
 def _add_execution_artifact_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--input-artifact-manifest", type=Path, required=True)
+    parser.add_argument("--input-artifact-root", type=Path, required=True)
     parser.add_argument("--source-tree", type=Path, required=True)
     parser.add_argument("--parser-registry", type=Path, required=True)
     parser.add_argument("--numerical-runtime", type=Path, required=True)
@@ -42,7 +43,7 @@ def main() -> int:
         type=Path,
         help=(
             "Strict JSON ExtractionExecutionPlan archive frozen before TEST. "
-            "Its SHA-256 and all five artifact commitments are recomputed."
+            "Its SHA-256 and all publication/execution artifact commitments are recomputed."
         ),
     )
     _add_execution_artifact_args(parser)
@@ -60,6 +61,7 @@ def main() -> int:
     verify_extraction_execution_plan_artifacts(
         execution_plan,
         input_artifact_manifest=args.input_artifact_manifest,
+        input_artifact_root=args.input_artifact_root,
         source_tree=args.source_tree,
         parser_registry=args.parser_registry,
         numerical_runtime=args.numerical_runtime,
