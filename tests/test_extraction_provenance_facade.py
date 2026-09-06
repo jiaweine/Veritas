@@ -10,8 +10,10 @@ from veritas.extraction_provenance import (
     build_attested_extraction_evidence_release_receipt,
     build_extraction_external_provenance_statement,
     build_extraction_external_trust_policy,
+    extraction_evidence_plan_json_payload,
     extraction_execution_plan_json_payload,
     load_attested_extraction_evidence_release_receipt,
+    load_extraction_evidence_plan,
     load_extraction_execution_plan,
     load_extraction_external_trust_policy,
     load_extraction_external_trust_root,
@@ -34,8 +36,10 @@ def test_extraction_provenance_facade_exports_stable_public_symbols() -> None:
     assert callable(build_attested_extraction_evidence_release_receipt)
     assert callable(build_extraction_external_provenance_statement)
     assert callable(build_extraction_external_trust_policy)
+    assert callable(extraction_evidence_plan_json_payload)
     assert callable(extraction_execution_plan_json_payload)
     assert callable(load_attested_extraction_evidence_release_receipt)
+    assert callable(load_extraction_evidence_plan)
     assert callable(load_extraction_execution_plan)
     assert callable(load_extraction_external_trust_policy)
     assert callable(load_extraction_external_trust_root)
