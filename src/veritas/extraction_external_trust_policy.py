@@ -25,6 +25,7 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 class ExtractionExternalTrustPolicy:
     policy_id: str
     evidence_plan_sha256: str
+    execution_plan_sha256: str
     trust_root_sha256: str
     issuer: str
     runner_identity: str
@@ -43,6 +44,7 @@ class ExtractionExternalTrustPolicy:
         ):
             _require_nonempty_string(value, label=label)
         _require_sha256(self.evidence_plan_sha256, label="evidence_plan_sha256")
+        _require_sha256(self.execution_plan_sha256, label="execution_plan_sha256")
         _require_sha256(self.trust_root_sha256, label="trust_root_sha256")
         if type(self.production_authorized) is not bool or self.production_authorized:
             raise ValueError("external extraction trust policies are non-production only")
@@ -59,6 +61,7 @@ class ExtractionExternalTrustPolicy:
 class PrecommittedExternalExtractionRunReceipt:
     trust_policy_sha256: str
     evidence_plan_sha256: str
+    execution_plan_sha256: str
     trust_root_sha256: str
     verified_run_receipt_sha256: str
     production_authorized: bool = False
@@ -68,6 +71,7 @@ class PrecommittedExternalExtractionRunReceipt:
         for label, value in (
             ("trust_policy_sha256", self.trust_policy_sha256),
             ("evidence_plan_sha256", self.evidence_plan_sha256),
+            ("execution_plan_sha256", self.execution_plan_sha256),
             ("trust_root_sha256", self.trust_root_sha256),
             ("verified_run_receipt_sha256", self.verified_run_receipt_sha256),
         ):
@@ -89,13 +93,17 @@ def build_extraction_external_trust_policy(
     *,
     policy_id: str,
     evidence_plan_sha256: str,
+    execution_plan: ExtractionExecutionPlan,
     trust_root: ExtractionExternalTrustRoot,
 ) -> ExtractionExternalTrustPolicy:
+    if not isinstance(execution_plan, ExtractionExecutionPlan):
+        raise TypeError("execution_plan must be an ExtractionExecutionPlan")
     if not isinstance(trust_root, ExtractionExternalTrustRoot):
         raise TypeError("trust_root must be an ExtractionExternalTrustRoot")
     return ExtractionExternalTrustPolicy(
         policy_id=policy_id,
         evidence_plan_sha256=evidence_plan_sha256,
+        execution_plan_sha256=execution_plan.sha256(),
         trust_root_sha256=trust_root.sha256(),
         issuer=trust_root.issuer,
         runner_identity=trust_root.runner_identity,
@@ -124,12 +132,16 @@ def verify_precommitted_external_extraction_provenance_for_run(
         raise TypeError(
             "attested_release_receipt must be an AttestedExtractionEvidenceReleaseReceipt"
         )
+    if not isinstance(execution_plan, ExtractionExecutionPlan):
+        raise TypeError("execution_plan must be an ExtractionExecutionPlan")
     _require_sha256(evidence_plan_sha256, label="evidence_plan_sha256")
 
     if trust_policy.evidence_plan_sha256 != evidence_plan_sha256:
         raise ValueError("external trust policy is bound to a different evidence plan")
     if attested_release_receipt.evidence_plan_sha256 != evidence_plan_sha256:
         raise ValueError("signed attested release is bound to a different evidence plan")
+    if trust_policy.execution_plan_sha256 != execution_plan.sha256():
+        raise ValueError("external trust policy is bound to a different execution plan")
     if trust_policy.trust_root_sha256 != trust_root.sha256():
         raise ValueError("external trust policy is bound to a different trust root")
     expected_identity = (
@@ -161,6 +173,7 @@ def verify_precommitted_external_extraction_provenance_for_run(
     return PrecommittedExternalExtractionRunReceipt(
         trust_policy_sha256=trust_policy.sha256(),
         evidence_plan_sha256=evidence_plan_sha256,
+        execution_plan_sha256=execution_plan.sha256(),
         trust_root_sha256=trust_root.sha256(),
         verified_run_receipt_sha256=verified_run.sha256(),
     )
