@@ -21,6 +21,7 @@ from veritas.extraction_provenance import (
     extraction_execution_plan_json_payload,
     extraction_input_artifact_manifest_payload,
     extraction_release_evidence_bundle_payload,
+    extraction_review_record_json_payload,
     load_attested_extraction_evidence_release_receipt,
     load_extraction_evidence_plan,
     load_extraction_execution_plan,
@@ -29,6 +30,7 @@ from veritas.extraction_provenance import (
     load_extraction_input_artifact_manifest,
     load_extraction_prediction_artifact,
     load_extraction_release_evidence_bundle,
+    load_extraction_review_record,
     load_extraction_signed_external_provenance,
     rebuild_attested_extraction_evidence_release_receipt_from_archive,
     verify_external_extraction_provenance,
@@ -63,6 +65,7 @@ def test_extraction_provenance_facade_exports_stable_public_symbols() -> None:
     assert callable(extraction_execution_plan_json_payload)
     assert callable(extraction_input_artifact_manifest_payload)
     assert callable(extraction_release_evidence_bundle_payload)
+    assert callable(extraction_review_record_json_payload)
     assert callable(load_attested_extraction_evidence_release_receipt)
     assert callable(load_extraction_evidence_plan)
     assert callable(load_extraction_execution_plan)
@@ -71,6 +74,7 @@ def test_extraction_provenance_facade_exports_stable_public_symbols() -> None:
     assert callable(load_extraction_input_artifact_manifest)
     assert callable(load_extraction_prediction_artifact)
     assert callable(load_extraction_release_evidence_bundle)
+    assert callable(load_extraction_review_record)
     assert callable(load_extraction_signed_external_provenance)
     assert callable(rebuild_attested_extraction_evidence_release_receipt_from_archive)
     assert callable(verify_external_extraction_provenance)
