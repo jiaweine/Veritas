@@ -110,7 +110,8 @@ jobs:
           )
           actual = {row["reviewer_slot"]: row["packet_sha256"] for row in built["packets"]}
           expected = {
-              row["reviewer_slot"]: row["packet_sha256"] for row in commitment["packets"]
+              row["reviewer_slot"]: row["packet_sha256"]
+              for row in commitment["reviewer_packets"]
           }
           if actual != expected:
               raise SystemExit(f"review packet commitment mismatch: {actual!r} != {expected!r}")
