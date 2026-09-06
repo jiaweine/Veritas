@@ -18,6 +18,8 @@ from veritas.extraction_input_artifacts import (
     extraction_input_artifact_manifest_payload,
 )
 
+_SOURCE_COMMIT = "a" * 40
+
 
 def _root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -119,6 +121,8 @@ def _policy_command(
             "scripts/build_extraction_external_trust_policy.py",
             "--policy-id",
             "real-run-v1",
+            "--source-commit-sha",
+            _SOURCE_COMMIT,
             "--evidence-plan",
             str(evidence_plan_path),
             "--execution-plan",
@@ -149,8 +153,17 @@ def test_build_external_trust_policy_cli_round_trip(tmp_path: Path) -> None:
     assert policy.policy_id == "real-run-v1"
     assert policy.evidence_plan_sha256 == evidence_plan_sha256
     assert policy.execution_plan_sha256 == execution_plan_sha256
+    assert policy.source_commit_sha == _SOURCE_COMMIT
     assert policy.production_authorized is False
     assert result.stdout.strip() == policy.sha256()
+
+
+def test_build_external_trust_policy_cli_rejects_bad_source_commit(tmp_path: Path) -> None:
+    args, _, _, _ = _policy_command(tmp_path)
+    args[args.index(_SOURCE_COMMIT)] = "not-a-commit"
+    result = subprocess.run(args, cwd=_root(), check=False, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "source commit SHA must be 40 lowercase hexadecimal characters" in result.stderr
 
 
 def test_build_external_trust_policy_cli_rejects_drifted_plan_archive(tmp_path: Path) -> None:
