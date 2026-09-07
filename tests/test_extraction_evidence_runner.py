@@ -17,7 +17,7 @@ from veritas.extraction_input_artifacts import (
     build_extraction_input_artifact_manifest,
     extraction_input_artifact_manifest_payload,
 )
-from veritas.extraction_review_packet import ExtractionReviewPacketTarget, ExtractionReviewerPacket
+from veritas.extraction_review_packet import ExtractionReviewerPacket, ExtractionReviewPacketTarget
 from veritas.models import SourceLocation
 
 
