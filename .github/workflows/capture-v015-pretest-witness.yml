@@ -78,15 +78,23 @@ jobs:
             --execution-command benchmark/extraction/execution_artifacts_v0.15/execution_command.json \
             --output "$RUNNER_TEMP/pretest_external_witness_commitment_v0.15.json" \
             | tee "$RUNNER_TEMP/pretest_external_witness_commitment_v0.15.sha256"
+          cmp --silent \
+            "$RUNNER_TEMP/pretest_external_witness_commitment_v0.15.json" \
+            benchmark/extraction/pretest_external_witness_commitment_v0.15.json
           python - <<'PY'
           import json
           import os
+          from hashlib import sha256
           from pathlib import Path
-          payload = json.loads(
-              (Path(os.environ["RUNNER_TEMP"]) / "pretest_external_witness_commitment_v0.15.json").read_text(
-                  encoding="utf-8"
-              )
-          )
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          generated = temp / "pretest_external_witness_commitment_v0.15.json"
+          committed = Path("benchmark/extraction/pretest_external_witness_commitment_v0.15.json")
+          payload = json.loads(generated.read_text(encoding="utf-8"))
+          if sha256(generated.read_bytes()).hexdigest() != "1f36c2ff4d27ddf82b099ee6ff1a3501a39cd98b554c17f59e7d2b1ebe4fc5d8":
+              raise SystemExit("generated witness commitment SHA-256 differs from frozen identity")
+          if generated.read_bytes() != committed.read_bytes():
+              raise SystemExit("generated witness commitment differs from repository commitment")
           if payload["independent_external_anchor_present"] is not False:
               raise SystemExit("repository-side witness must not claim an independent external anchor")
           if payload["external_trust_root_pinned"] is not False:
@@ -103,5 +111,6 @@ jobs:
           path: |
             ${{ runner.temp }}/pretest_external_witness_commitment_v0.15.json
             ${{ runner.temp }}/pretest_external_witness_commitment_v0.15.sha256
+            benchmark/extraction/pretest_external_witness_commitment_v0.15.json
           if-no-files-found: error
           retention-days: 90
