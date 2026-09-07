@@ -18,7 +18,7 @@ from .extraction_input_artifacts import (
     load_extraction_input_artifact_manifest,
     verify_extraction_input_artifact_manifest,
 )
-from .extraction_review_packet import ExtractionReviewPacketTarget, ExtractionReviewerPacket
+from .extraction_review_packet import ExtractionReviewerPacket, ExtractionReviewPacketTarget
 from .pdf_native import parse_pdf_dual
 from .pdf_regression import RegressionLocator, extract_regression_table
 
@@ -262,7 +262,7 @@ def run_extraction_evidence_threshold(
                 )
                 bundle_cache[target.case_id] = bundle
 
-            ambiguities = tuple(getattr(bundle, "ambiguities"))
+            ambiguities = tuple(bundle.ambiguities)
             if ambiguities:
                 resolution = _abstention(
                     threshold,
@@ -276,7 +276,7 @@ def run_extraction_evidence_threshold(
                         reason=f"No frozen extractor mapping exists for target key: {target.key}.",
                     )
                 else:
-                    field_candidates = getattr(bundle, "field_candidates")
+                    field_candidates = bundle.field_candidates
                     resolution = resolve_extraction_candidates_at_threshold(
                         tuple(field_candidates.get(extractor_key, ())),
                         threshold=threshold,
