@@ -194,22 +194,17 @@ jobs:
           from pathlib import Path
           from veritas.extraction_execution_artifacts import verify_extraction_execution_plan_artifacts
           from veritas.extraction_execution_evidence_json import load_extraction_execution_plan
-          from veritas.extraction_input_artifacts import load_extraction_input_artifact_manifest
 
           temp = Path(os.environ["RUNNER_TEMP"])
           plan = load_extraction_execution_plan(temp / "extraction_execution_plan_v0.15.json")
-          manifest = load_extraction_input_artifact_manifest(
-              "benchmark/extraction/extraction_input_artifact_manifest_v0.15.json"
-          )
           verify_extraction_execution_plan_artifacts(
               plan,
-              input_artifact_manifest=manifest,
-              input_artifact_manifest_path="benchmark/extraction/extraction_input_artifact_manifest_v0.15.json",
+              input_artifact_manifest="benchmark/extraction/extraction_input_artifact_manifest_v0.15.json",
               input_artifact_root=temp / "v015-execution-input-root",
-              source_tree_path=temp / "source-tree-v0.15.tar",
-              parser_registry_path="benchmark/extraction/execution_artifacts_v0.15/parser_registry.json",
-              numerical_runtime_path="benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json",
-              execution_command_path="benchmark/extraction/execution_artifacts_v0.15/execution_command.json",
+              source_tree=temp / "source-tree-v0.15.tar",
+              parser_registry="benchmark/extraction/execution_artifacts_v0.15/parser_registry.json",
+              numerical_runtime="benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json",
+              execution_command="benchmark/extraction/execution_artifacts_v0.15/execution_command.json",
           )
           if not plan.network_disabled or not plan.source_mount_read_only or plan.credentials_mounted:
               raise SystemExit("execution plan isolation contract is not fail-closed")
