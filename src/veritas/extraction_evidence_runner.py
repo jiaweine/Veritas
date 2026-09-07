@@ -8,6 +8,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from .benchmark import BenchmarkSplit
 from .extraction import ExtractionCandidate, ExtractionDecision, ExtractionResolution
 from .extraction_benchmark import ExtractionPrediction
 from .extraction_evidence_workflow import ExtractionSplitTargetManifest
@@ -20,7 +21,6 @@ from .extraction_input_artifacts import (
 from .extraction_review_packet import ExtractionReviewPacketTarget, ExtractionReviewerPacket
 from .pdf_native import parse_pdf_dual
 from .pdf_regression import RegressionLocator, extract_regression_table
-from .protocol import BenchmarkSplit
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _PACKET_KEYS = frozenset(
