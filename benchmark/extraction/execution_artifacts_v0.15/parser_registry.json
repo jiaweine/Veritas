@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "status": "pretest_nonproduction_execution_parser_registry",
+  "production_authorized": false,
+  "source_commit_sha": "d6ffdf7debd63281e0db5934e3d4b7ebafb98311",
+  "parsers": [
+    {
+      "parser_id": "pymupdf_native",
+      "parser_family": "mupdf_native",
+      "python_module": "veritas.pdf_native",
+      "python_class": "PyMuPDFNativeParser",
+      "distribution": "PyMuPDF",
+      "distribution_version": "1.28.2"
+    },
+    {
+      "parser_id": "pdfplumber_native",
+      "parser_family": "pdfminer_native",
+      "python_module": "veritas.pdf_native",
+      "python_class": "PDFPlumberNativeParser",
+      "distribution": "pdfplumber",
+      "distribution_version": "0.11.10"
+    }
+  ],
+  "extractor": {
+    "python_module": "veritas.pdf_regression",
+    "entrypoint": "extract_regression_table",
+    "cell_normalizer_version": "1.0.0",
+    "geometry_version": "1.4.0",
+    "candidate_nonconformity": {
+      "native_table": 0.01,
+      "word_geometry_v1": 0.02
+    }
+  },
+  "target_key_mapping": {
+    "beta": "beta",
+    "p_value": "p_value",
+    "se": "se",
+    "z_stat": "t_stat"
+  },
+  "unsupported_target_keys_fail_closed_to_abstention": true,
+  "note": "This registry freezes parser/extractor identities for the v0.15 non-production pilot. It does not claim parser correctness, human validation, or production certification."
+}
