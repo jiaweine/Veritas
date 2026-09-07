@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
-from typing import Mapping
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -125,7 +125,7 @@ def extraction_pretest_archive_object_set_sha256(
     if not isinstance(repository_files, list) or not repository_files:
         raise ValueError("external archive handoff must contain repository_files")
     if not isinstance(binary_artifacts, dict):
-        raise ValueError("external archive handoff must contain required_external_binary_artifacts")
+        raise TypeError("external archive handoff required_external_binary_artifacts must be an object")
     return _stable_sha256(
         {
             "repository_files": repository_files,
@@ -207,10 +207,10 @@ def _require_optional_utc_timestamp(value: object) -> None:
     if not isinstance(value, str) or not value.endswith("Z"):
         raise ValueError("external_timestamp_utc must be an ISO-8601 UTC timestamp ending in Z")
     try:
-        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise ValueError("external_timestamp_utc must be a valid ISO-8601 UTC timestamp") from exc
-    if parsed.utcoffset() != timezone.utc.utcoffset(parsed):
+    if parsed.utcoffset() != UTC.utcoffset(parsed):
         raise ValueError("external_timestamp_utc must use UTC")
 
 
