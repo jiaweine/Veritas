@@ -1,0 +1,12 @@
+{
+  "credentials_mounted": false,
+  "execution_command_sha256": "02eba08853a02c99f831fd13a98ee697f60bb030f5e6f5301c6101fc158a3393",
+  "input_artifact_manifest_sha256": "d318a546bdb9801d24a95db26c6ba4c44ed38a7262d3a31eccb728c89edf0f74",
+  "network_disabled": true,
+  "numerical_runtime_sha256": "45bd39ca70eea67d02d107ad6fe7f7bb5a1eeffababf00b5ed806f39e8f37f76",
+  "parser_registry_sha256": "9d18fa6795d0fd20c8dee8de61acb0d9ef88c1bac77843ccab3c8ec5a328837c",
+  "production_authorized": false,
+  "schema_version": 1,
+  "source_mount_read_only": true,
+  "source_tree_sha256": "dbe998b2017aa616001d983df8f3c136d28f3dbd8c5183dcecc6bfcc9e1bd167"
+}
