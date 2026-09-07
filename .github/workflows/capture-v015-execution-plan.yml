@@ -189,14 +189,35 @@ jobs:
             --numerical-runtime benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json \
             --execution-command benchmark/extraction/execution_artifacts_v0.15/execution_command.json \
             --output "$out" | tee "$RUNNER_TEMP/extraction_execution_plan_v0.15.sha256"
+          cmp --silent "$out" benchmark/extraction/extraction_execution_plan_v0.15.json
           python - <<'PY'
+          import json
           import os
+          from hashlib import sha256
           from pathlib import Path
+
           from veritas.extraction_execution_artifacts import verify_extraction_execution_plan_artifacts
           from veritas.extraction_execution_evidence_json import load_extraction_execution_plan
 
           temp = Path(os.environ["RUNNER_TEMP"])
-          plan = load_extraction_execution_plan(temp / "extraction_execution_plan_v0.15.json")
+          generated_path = temp / "extraction_execution_plan_v0.15.json"
+          committed_path = Path("benchmark/extraction/extraction_execution_plan_v0.15.json")
+          capture = json.loads(
+              Path("benchmark/extraction/execution_plan_capture_v0.15.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          plan = load_extraction_execution_plan(generated_path)
+          committed = load_extraction_execution_plan(committed_path)
+          if plan != committed:
+              raise SystemExit("generated execution plan differs from repository commitment")
+          if plan.sha256() != capture["execution_plan"]["canonical_plan_sha256"]:
+              raise SystemExit("canonical execution plan identity differs from capture commitment")
+          if sha256(generated_path.read_bytes()).hexdigest() != capture["execution_plan"]["json_file_sha256"]:
+              raise SystemExit("execution plan JSON bytes differ from capture commitment")
+          if capture["selected_source_commit_sha"] != os.environ["SOURCE_COMMIT"]:
+              raise SystemExit("capture record selected source commit differs")
+
           verify_extraction_execution_plan_artifacts(
               plan,
               input_artifact_manifest="benchmark/extraction/extraction_input_artifact_manifest_v0.15.json",
@@ -210,10 +231,14 @@ jobs:
               raise SystemExit("execution plan isolation contract is not fail-closed")
           if plan.production_authorized:
               raise SystemExit("v0.15 execution plan must remain non-production")
+          if capture["capture_behavior"]["executed_v015_development_or_test_predictions"] is not False:
+              raise SystemExit("capture record must not claim v0.15 DEV/TEST execution")
           PY
           sha256sum \
             "$RUNNER_TEMP/extraction_execution_plan_v0.15.json" \
             "$RUNNER_TEMP/source-tree-v0.15.tar" \
+            benchmark/extraction/extraction_execution_plan_v0.15.json \
+            benchmark/extraction/execution_plan_capture_v0.15.json \
             benchmark/extraction/execution_artifacts_v0.15/parser_registry.json \
             benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json \
             benchmark/extraction/execution_artifacts_v0.15/execution_command.json \
@@ -232,6 +257,8 @@ jobs:
             ${{ runner.temp }}/v015-execution-review-packet/reviewer-a.review-packet.json
             ${{ runner.temp }}/v015-execution-input-root/
             benchmark/extraction/extraction_input_artifact_manifest_v0.15.json
+            benchmark/extraction/extraction_execution_plan_v0.15.json
+            benchmark/extraction/execution_plan_capture_v0.15.json
             benchmark/extraction/execution_artifacts_v0.15/parser_registry.json
             benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json
             benchmark/extraction/execution_artifacts_v0.15/execution_command.json
