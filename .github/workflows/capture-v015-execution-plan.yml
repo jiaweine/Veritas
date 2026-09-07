@@ -1,0 +1,244 @@
+name: capture-v015-execution-plan
+
+on:
+  push:
+    branches:
+      - evidence/v0.15-real-paper-corpus
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_COMMIT: d6ffdf7debd63281e0db5934e3d4b7ebafb98311
+      REVIEW_PACKET_SHA256: d5dbb4118d376915f4b5c4c089a1677c362fa7d3ef1f7cedd481b49cf171a8bb
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e '.[pdf]'
+
+      - name: Verify frozen runtime and parser registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import importlib.metadata
+          import json
+          import os
+          import platform
+          from pathlib import Path
+
+          from veritas.pdf_native import PDFPlumberNativeParser, PyMuPDFNativeParser
+
+          source_commit = os.environ["SOURCE_COMMIT"]
+          runtime = json.loads(
+              Path("benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          registry = json.loads(
+              Path("benchmark/extraction/execution_artifacts_v0.15/parser_registry.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          command = json.loads(
+              Path("benchmark/extraction/execution_artifacts_v0.15/execution_command.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          for label, payload in (
+              ("runtime", runtime),
+              ("parser registry", registry),
+              ("execution command", command),
+          ):
+              if payload["source_commit_sha"] != source_commit:
+                  raise SystemExit(f"{label} source commit differs from frozen SOURCE_COMMIT")
+              if payload["production_authorized"] is not False:
+                  raise SystemExit(f"{label} must remain non-production")
+
+          if platform.python_implementation() != runtime["python"]["implementation"]:
+              raise SystemExit("Python implementation differs from frozen runtime")
+          if platform.python_version() != runtime["python"]["version"]:
+              raise SystemExit("Python version differs from frozen runtime")
+          for distribution, expected_version in runtime["distributions"].items():
+              actual = importlib.metadata.version(distribution)
+              if actual != expected_version:
+                  raise SystemExit(
+                      f"runtime distribution drift: {distribution} {actual!r} != {expected_version!r}"
+                  )
+
+          expected_parsers = {
+              "pymupdf_native": ("mupdf_native", "PyMuPDF", "1.28.2"),
+              "pdfplumber_native": ("pdfminer_native", "pdfplumber", "0.11.10"),
+          }
+          observed_classes = {
+              "pymupdf_native": PyMuPDFNativeParser,
+              "pdfplumber_native": PDFPlumberNativeParser,
+          }
+          rows = {row["parser_id"]: row for row in registry["parsers"]}
+          if set(rows) != set(expected_parsers):
+              raise SystemExit("parser registry membership drift")
+          for parser_id, (family, distribution, version) in expected_parsers.items():
+              row = rows[parser_id]
+              cls = observed_classes[parser_id]
+              if row["parser_family"] != family:
+                  raise SystemExit(f"parser family drift: {parser_id}")
+              if cls.parser_id != parser_id or cls.parser_family != family:
+                  raise SystemExit(f"parser class identity drift: {parser_id}")
+              if row["distribution"] != distribution or row["distribution_version"] != version:
+                  raise SystemExit(f"parser distribution registry drift: {parser_id}")
+              if importlib.metadata.version(distribution) != version:
+                  raise SystemExit(f"installed parser distribution drift: {parser_id}")
+
+          isolation = command["isolation_requirements"]
+          if isolation != {
+              "network_disabled": True,
+              "source_mount_read_only": True,
+              "credentials_mounted": False,
+          }:
+              raise SystemExit("execution command isolation requirements drift")
+          PY
+
+      - name: Download and verify exact publication inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v015-execution-input-root"
+          mkdir -p "$root/publications/frontiers" "$root/publications/plos"
+          curl_args=(--fail --location --retry 3 --retry-all-errors --connect-timeout 20 --max-time 180 --user-agent "Veritas-execution-plan-capture/0.15")
+          curl "${curl_args[@]}" "https://www.frontiersin.org/journals/endocrinology/articles/10.3389/fendo.2025.1692917/pdf" -o "$root/publications/frontiers/fendo-2025-1692917.pdf"
+          curl "${curl_args[@]}" "https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2024.1473953/pdf" -o "$root/publications/frontiers/fpsyg-2024-1473953.pdf"
+          curl "${curl_args[@]}" "https://www.frontiersin.org/journals/political-science/articles/10.3389/fpos.2025.1500403/pdf" -o "$root/publications/frontiers/fpos-2025-1500403.pdf"
+          curl "${curl_args[@]}" "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0321641&type=printable" -o "$root/publications/plos/pone-0321641.pdf"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from veritas.extraction_input_artifacts import (
+              load_extraction_input_artifact_manifest,
+              verify_extraction_input_artifact_manifest,
+          )
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "v015-execution-input-root"
+          manifest = load_extraction_input_artifact_manifest(
+              "benchmark/extraction/extraction_input_artifact_manifest_v0.15.json"
+          )
+          verify_extraction_input_artifact_manifest(manifest, root)
+          for artifact in manifest.artifacts:
+              raw = (root / artifact.relative_path).read_bytes()
+              if not raw.startswith(b"%PDF-"):
+                  raise SystemExit(f"not a PDF by magic bytes: {artifact.artifact_id}")
+          PY
+
+      - name: Rebuild blinded target-universe packet
+        shell: bash
+        run: |
+          set -euo pipefail
+          packets="$RUNNER_TEMP/v015-execution-review-packet"
+          python scripts/build_extraction_review_packets.py \
+            --seed benchmark/extraction/evidence_seed_manifest_v0.15.json \
+            --output-dir "$packets" \
+            --reviewer-slots reviewer-a reviewer-b \
+            | tee "$RUNNER_TEMP/review-packet-build.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from veritas.extraction_evidence_runner import load_blinded_extraction_reviewer_packet
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          packet = load_blinded_extraction_reviewer_packet(
+              temp / "v015-execution-review-packet/reviewer-a.review-packet.json"
+          )
+          expected = os.environ["REVIEW_PACKET_SHA256"]
+          if packet.sha256() != expected:
+              raise SystemExit("rebuilt blinded review packet differs from precommitted SHA-256")
+          build = json.loads((temp / "review-packet-build.json").read_text(encoding="utf-8"))
+          if build["legacy_values_included"] is not False:
+              raise SystemExit("review packet build must remain blinded to legacy values")
+          PY
+
+      - name: Build deterministic source archive for frozen source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$SOURCE_COMMIT^{commit}"
+          git archive --format=tar --prefix=veritas-source/ "$SOURCE_COMMIT" > "$RUNNER_TEMP/source-tree-v0.15.tar"
+          test -s "$RUNNER_TEMP/source-tree-v0.15.tar"
+          git archive --format=tar --prefix=veritas-source/ "$SOURCE_COMMIT" > "$RUNNER_TEMP/source-tree-v0.15-repeat.tar"
+          cmp --silent "$RUNNER_TEMP/source-tree-v0.15.tar" "$RUNNER_TEMP/source-tree-v0.15-repeat.tar"
+          rm "$RUNNER_TEMP/source-tree-v0.15-repeat.tar"
+          sha256sum "$RUNNER_TEMP/source-tree-v0.15.tar" | tee "$RUNNER_TEMP/source-tree-v0.15.sha256"
+
+      - name: Build and verify extraction execution plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/extraction_execution_plan_v0.15.json"
+          python scripts/build_extraction_execution_plan.py \
+            --input-artifact-manifest benchmark/extraction/extraction_input_artifact_manifest_v0.15.json \
+            --input-artifact-root "$RUNNER_TEMP/v015-execution-input-root" \
+            --source-tree "$RUNNER_TEMP/source-tree-v0.15.tar" \
+            --parser-registry benchmark/extraction/execution_artifacts_v0.15/parser_registry.json \
+            --numerical-runtime benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json \
+            --execution-command benchmark/extraction/execution_artifacts_v0.15/execution_command.json \
+            --output "$out" | tee "$RUNNER_TEMP/extraction_execution_plan_v0.15.sha256"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from veritas.extraction_execution_artifacts import verify_extraction_execution_plan_artifacts
+          from veritas.extraction_execution_evidence_json import load_extraction_execution_plan
+          from veritas.extraction_input_artifacts import load_extraction_input_artifact_manifest
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          plan = load_extraction_execution_plan(temp / "extraction_execution_plan_v0.15.json")
+          manifest = load_extraction_input_artifact_manifest(
+              "benchmark/extraction/extraction_input_artifact_manifest_v0.15.json"
+          )
+          verify_extraction_execution_plan_artifacts(
+              plan,
+              input_artifact_manifest=manifest,
+              input_artifact_manifest_path="benchmark/extraction/extraction_input_artifact_manifest_v0.15.json",
+              input_artifact_root=temp / "v015-execution-input-root",
+              source_tree_path=temp / "source-tree-v0.15.tar",
+              parser_registry_path="benchmark/extraction/execution_artifacts_v0.15/parser_registry.json",
+              numerical_runtime_path="benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json",
+              execution_command_path="benchmark/extraction/execution_artifacts_v0.15/execution_command.json",
+          )
+          if not plan.network_disabled or not plan.source_mount_read_only or plan.credentials_mounted:
+              raise SystemExit("execution plan isolation contract is not fail-closed")
+          if plan.production_authorized:
+              raise SystemExit("v0.15 execution plan must remain non-production")
+          PY
+          sha256sum \
+            "$RUNNER_TEMP/extraction_execution_plan_v0.15.json" \
+            "$RUNNER_TEMP/source-tree-v0.15.tar" \
+            benchmark/extraction/execution_artifacts_v0.15/parser_registry.json \
+            benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json \
+            benchmark/extraction/execution_artifacts_v0.15/execution_command.json \
+            | tee "$RUNNER_TEMP/execution-artifact-sha256s.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v015-execution-plan-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/extraction_execution_plan_v0.15.json
+            ${{ runner.temp }}/extraction_execution_plan_v0.15.sha256
+            ${{ runner.temp }}/source-tree-v0.15.tar
+            ${{ runner.temp }}/source-tree-v0.15.sha256
+            ${{ runner.temp }}/execution-artifact-sha256s.txt
+            ${{ runner.temp }}/review-packet-build.json
+            ${{ runner.temp }}/v015-execution-review-packet/reviewer-a.review-packet.json
+            ${{ runner.temp }}/v015-execution-input-root/
+            benchmark/extraction/extraction_input_artifact_manifest_v0.15.json
+            benchmark/extraction/execution_artifacts_v0.15/parser_registry.json
+            benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json
+            benchmark/extraction/execution_artifacts_v0.15/execution_command.json
+          if-no-files-found: error
+          retention-days: 90
