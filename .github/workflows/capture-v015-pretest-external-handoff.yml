@@ -17,10 +17,12 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Build repository-side external archive handoff
+      - name: Build and verify repository-side external archive handoff
         shell: bash
         run: |
           set -euo pipefail
+          generated="$RUNNER_TEMP/pretest_external_archive_handoff_v0.15.json"
+          committed="benchmark/extraction/pretest_external_archive_handoff_v0.15.json"
           python scripts/build_extraction_pretest_external_handoff.py \
             --witness benchmark/extraction/pretest_external_witness_commitment_v0.15.json \
             --sampling-frame benchmark/corpus/evidence_sampling_frame_v0.15.json \
@@ -33,8 +35,11 @@ jobs:
             --parser-registry benchmark/extraction/execution_artifacts_v0.15/parser_registry.json \
             --numerical-runtime benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json \
             --execution-command benchmark/extraction/execution_artifacts_v0.15/execution_command.json \
-            --output "$RUNNER_TEMP/pretest_external_archive_handoff_v0.15.json" \
+            --output "$generated" \
             | tee "$RUNNER_TEMP/pretest_external_archive_handoff_v0.15.sha256"
+          cmp --silent "$generated" "$committed"
+          test "$(sha256sum "$generated" | awk '{print $1}')" = "90fe5c7e27b7a8133fad0d5ce485b7f6866383fa6ddf3155403c098aa4acb7fa"
+          test "$(sha256sum "$committed" | awk '{print $1}')" = "90fe5c7e27b7a8133fad0d5ce485b7f6866383fa6ddf3155403c098aa4acb7fa"
           python - <<'PY'
           import json
           import os
@@ -44,14 +49,13 @@ jobs:
           payload = json.loads(path.read_text(encoding="utf-8"))
           if payload["status"] != "repository_side_external_archive_handoff_ready_awaiting_independent_archive":
               raise SystemExit("unexpected external archive handoff status")
-          if payload["pending_external_evidence"]["independent_archive_receipt_present"] is not False:
-              raise SystemExit("repository-side handoff must not claim an independent archive receipt")
-          if payload["pending_external_evidence"]["external_trust_root_pinned"] is not False:
-              raise SystemExit("repository-side handoff must not claim an external trust root")
-          if payload["pending_external_evidence"]["external_trust_policy_built"] is not False:
-              raise SystemExit("repository-side handoff must not claim an external trust policy")
+          pending = payload["pending_external_evidence"]
+          if any(value is not False for value in pending.values()):
+              raise SystemExit("repository-side handoff must keep every external-evidence item pending")
           if payload["executed_v015_development_or_test_predictions"] is not False:
               raise SystemExit("handoff capture must not run DEVELOPMENT/TEST predictions")
+          if payload["production_authorized"] is not False:
+              raise SystemExit("handoff capture must remain non-production")
           PY
 
       - uses: actions/upload-artifact@v4
