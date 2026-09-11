@@ -67,7 +67,7 @@ def test_execution_attestation_strict_json_rejects_type_and_split_drift(
 
     boolean_schema = tmp_path / "boolean-schema.json"
     _write_json(boolean_schema, {**payload, "schema_version": True})
-    with pytest.raises(ValueError, match="schema_version must be 1"):
+    with pytest.raises(TypeError, match="schema_version must be integer 1"):
         load_extraction_execution_attestation(boolean_schema)
 
     unsupported_split = tmp_path / "unsupported-split.json"
