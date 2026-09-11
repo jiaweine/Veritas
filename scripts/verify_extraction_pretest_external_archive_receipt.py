@@ -105,6 +105,7 @@ def main() -> int:
     receipt = load_extraction_pretest_external_archive_receipt(args.receipt)
     verified = verify_pretest_external_archive_receipt_binding(
         receipt=receipt,
+        receipt_file_sha256=receipt_file_sha256,
         expected_handoff_sha256=args.expected_handoff_sha256,
         expected_archived_object_set_sha256=object_set_sha256,
         expected_source_commit_sha=args.expected_source_commit_sha,
@@ -114,7 +115,6 @@ def main() -> int:
         expected_archive_record_id=args.expected_archive_record_id,
     )
     payload = verified_pretest_external_archive_receipt_binding_json_payload(verified)
-    payload["receipt_file_sha256"] = receipt_file_sha256
     rendered = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
