@@ -21,6 +21,7 @@ from veritas.extraction_pretest_archive_receipt_json import (
 
 _HANDOFF_PATH = Path("benchmark/extraction/pretest_external_archive_handoff_v0.15.json")
 _HANDOFF_FILE_SHA256 = "90fe5c7e27b7a8133fad0d5ce485b7f6866383fa6ddf3155403c098aa4acb7fa"
+_MOCK_RECEIPT_FILE_SHA256 = "0" * 64
 
 
 def _handoff() -> dict[str, object]:
@@ -49,6 +50,7 @@ def test_frozen_handoff_file_hash_and_receipt_binding_contract() -> None:
     receipt = _receipt()
     verified = verify_pretest_external_archive_receipt_binding(
         receipt=receipt,
+        receipt_file_sha256=_MOCK_RECEIPT_FILE_SHA256,
         expected_handoff_sha256=receipt.handoff_sha256,
         expected_archived_object_set_sha256=receipt.archived_object_set_sha256,
         expected_source_commit_sha=receipt.source_commit_sha,
@@ -59,6 +61,7 @@ def test_frozen_handoff_file_hash_and_receipt_binding_contract() -> None:
     )
 
     assert verified.receipt_sha256 == receipt.sha256()
+    assert verified.receipt_file_sha256 == _MOCK_RECEIPT_FILE_SHA256
     assert verified.independent_control_established is False
     assert verified.historical_channel_semantics_established is False
     assert verified.production_authorized is False
@@ -83,6 +86,7 @@ def test_receipt_binding_rejects_posthoc_context_drift() -> None:
     with pytest.raises(ValueError, match="different archive channel identity"):
         verify_pretest_external_archive_receipt_binding(
             receipt=receipt,
+            receipt_file_sha256=_MOCK_RECEIPT_FILE_SHA256,
             expected_handoff_sha256=receipt.handoff_sha256,
             expected_archived_object_set_sha256=receipt.archived_object_set_sha256,
             expected_source_commit_sha=receipt.source_commit_sha,
@@ -148,6 +152,7 @@ def test_receipt_and_verified_binding_cannot_authorize_production() -> None:
 
     verified = verify_pretest_external_archive_receipt_binding(
         receipt=receipt,
+        receipt_file_sha256=_MOCK_RECEIPT_FILE_SHA256,
         expected_handoff_sha256=receipt.handoff_sha256,
         expected_archived_object_set_sha256=receipt.archived_object_set_sha256,
         expected_source_commit_sha=receipt.source_commit_sha,
