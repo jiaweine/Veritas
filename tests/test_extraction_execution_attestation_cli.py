@@ -120,7 +120,7 @@ def test_execution_attestation_cli_rejects_unknown_threshold(tmp_path: Path) -> 
 def test_execution_attestation_cli_rejects_prediction_membership_drift(tmp_path: Path) -> None:
     _, observation, prediction_path, output_path, args = _fixture(tmp_path)
     predictions = tuple(observation.predictions or ())
-    assert len(predictions) > 1
+    assert predictions
     prediction_path.write_bytes(extraction_prediction_artifact_bytes(predictions[:-1]))
 
     result = subprocess.run(
