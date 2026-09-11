@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "status": "sampling_frame_only_unlabeled",
+  "scope": "v0.15_real_open_access_extraction_evidence_sampling_frame",
+  "rule": "Presence in this file is metadata only. It is not evidence that a paper, analysis, author, journal, or result is reliable or unreliable. Claim-level labels require the independent-review protocol.",
+  "as_of": "2026-09-07",
+  "papers": [
+    {
+      "paper_id": "doi:10.3389/fendo.2025.1692917",
+      "article_family_id": "doi:10.3389/fendo.2025.1692917",
+      "doi": "10.3389/fendo.2025.1692917",
+      "title": "Development and external validation of machine-learning based models to predict diabetic foot ulcer in diabetes population",
+      "discipline": "clinical_endocrinology_prediction",
+      "year": 2025,
+      "source_url": "https://www.frontiersin.org/journals/endocrinology/articles/10.3389/fendo.2025.1692917/full",
+      "access_tier": "paper_only",
+      "artifact_urls": [
+        "https://www.frontiersin.org/journals/endocrinology/articles/10.3389/fendo.2025.1692917/pdf",
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC12745231/"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "Publisher page and PDF state CC BY. This sampling frame stores links only; no article mirror is committed here.",
+      "extraction_layout_note": "Physical PDF page 5 contains TABLE 1 Continued above TABLE 2. TABLE 1 has grouped NHANES/external-validation cohort headers and a significance footnote; TABLE 2 encodes one 95% CI header across separate lower/upper numeric columns.",
+      "candidate_object_types": ["RegressionResult", "GroupedDescriptiveTable"],
+      "source_metadata_verified_on": "2026-09-07"
+    },
+    {
+      "paper_id": "doi:10.3389/fpsyg.2024.1473953",
+      "article_family_id": "doi:10.3389/fpsyg.2024.1473953",
+      "doi": "10.3389/fpsyg.2024.1473953",
+      "title": "Efficacy of personalized feedback in encouraging sustainable washing behavior: evidence from a pilot study in Germany",
+      "discipline": "environmental_psychology_behavioral_science",
+      "year": 2025,
+      "source_url": "https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2024.1473953/full",
+      "access_tier": "paper_only",
+      "artifact_urls": [
+        "https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2024.1473953/pdf"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "Publisher page and PDF state CC BY. This sampling frame stores links only; no article mirror is committed here.",
+      "extraction_layout_note": "Physical PDF page 7 places TABLE 3 and TABLE 4 side by side. Both mixed-effects regression tables use a two-level 95% CI header (LL/UL), repeated beta/SE/z/p columns, interaction rows, and dense model-statistic footnotes.",
+      "candidate_object_types": ["MixedEffectsRegressionResult"],
+      "source_metadata_verified_on": "2026-09-07"
+    },
+    {
+      "paper_id": "doi:10.3389/fpos.2025.1500403",
+      "article_family_id": "doi:10.3389/fpos.2025.1500403",
+      "doi": "10.3389/fpos.2025.1500403",
+      "title": "The quantitative and qualitative allocation of ministerial portfolios to European radical right parties",
+      "discipline": "political_science_coalition_government",
+      "year": 2025,
+      "source_url": "https://www.frontiersin.org/journals/political-science/articles/10.3389/fpos.2025.1500403/full",
+      "access_tier": "paper_only",
+      "artifact_urls": [
+        "https://www.frontiersin.org/journals/political-science/articles/10.3389/fpos.2025.1500403/pdf"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "Publisher page and PDF state CC BY. This sampling frame stores links only; no article mirror is committed here.",
+      "extraction_layout_note": "Physical PDF page 10 stacks TABLE 2 and TABLE 3. Each table has three regional column groups, six model columns, alternating coefficient/parenthesized-SE rows, sparse cells, and significance-star footnotes; model identity must not be inferred from position alone.",
+      "candidate_object_types": ["RegressionResult", "MultiModelRegressionTable"],
+      "source_metadata_verified_on": "2026-09-07"
+    },
+    {
+      "paper_id": "doi:10.1371/journal.pone.0321641",
+      "article_family_id": "doi:10.1371/journal.pone.0321641",
+      "doi": "10.1371/journal.pone.0321641",
+      "pmcid": "PMC12074527",
+      "title": "Colorectal cancer risk prediction using a simple multivariable model",
+      "discipline": "cancer_epidemiology_risk_prediction",
+      "year": 2025,
+      "source_url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0321641",
+      "access_tier": "public_code_restricted_data",
+      "artifact_urls": [
+        "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0321641&type=printable",
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC12074527/",
+        "https://github.com/gillie17/PONE-D-24-21842R1"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "PLOS article states CC BY. The article reports UK Biobank data restrictions; analysis code is linked separately. This sampling frame stores source links only.",
+      "extraction_layout_note": "The paper combines sex-stratified Cox-model tables with multi-panel calibration and cumulative-hazard figures. TABLE 7 continues across pages, while Figs 1, 2, 5, and 6 contain multiple labeled panels; figure-panel identity is part of the source locator rather than a cosmetic label.",
+      "candidate_object_types": ["CoxRegressionResult", "CalibrationFigure", "MultiPanelFigure"],
+      "source_metadata_verified_on": "2026-09-07"
+    },
+    {
+      "paper_id": "doi:10.4103/picr.PICR_87_17",
+      "article_family_id": "doi:10.4103/picr.PICR_87_17",
+      "doi": "10.4103/picr.PICR_87_17",
+      "pmcid": "PMC5543767",
+      "title": "Common pitfalls in statistical analysis: Logistic regression",
+      "discipline": "clinical_research_methods_biostatistics",
+      "year": 2017,
+      "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5543767/",
+      "access_tier": "paper_only",
+      "artifact_urls": [
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC5543767/",
+        "https://doaj.org/article/85da82976fde4c64b3bc95c1e8891a60"
+      ],
+      "redistributable_artifacts": false,
+      "license_note": "PMC states Creative Commons Attribution-NonCommercial-ShareAlike 3.0. This sampling frame links the article only and conservatively does not mark article artifacts redistributable.",
+      "extraction_layout_note": "PMC's canonical full-text rendition identifies Tables 1, 2, and 3 as JPEG graphic-file assets (PCR-8-148-g001.jpg, PCR-8-148-g002.jpg, and PCR-8-148-g003.jpg) rather than structured HTML table cells. This is a real OCR-like adverse table representation with regression content; it does not assert that a linked PDF lacks a text layer.",
+      "candidate_object_types": ["RegressionResult", "RasterTable"],
+      "ocr_like_adverse_status": "pmc_full_text_tables_are_raster_graphic_assets",
+      "source_metadata_verified_on": "2026-09-07"
+    }
+  ]
+}

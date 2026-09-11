@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "status": "pretest_repository_side_execution_plan_archive",
+  "as_of": "2026-09-07",
+  "production_authorized": false,
+  "selected_source_commit_sha": "d6ffdf7debd63281e0db5934e3d4b7ebafb98311",
+  "selected_source_commit_ci": {
+    "workflow": "ci",
+    "workflow_run_id": 34097731344,
+    "conclusion": "success"
+  },
+  "execution_plan": {
+    "path": "benchmark/extraction/extraction_execution_plan_v0.15.json",
+    "canonical_plan_sha256": "ea34c3840fefd3f3d25c48464f62667ce5525479615b1deea6c019764bdd9a21",
+    "json_file_sha256": "bc02297f577998b3fd778d99c32045bae79ee6a3a6b262818c45852ccb3994df"
+  },
+  "input_artifact_manifest_sha256": "d318a546bdb9801d24a95db26c6ba4c44ed38a7262d3a31eccb728c89edf0f74",
+  "execution_artifacts": {
+    "source_tree": {
+      "archive_name": "source-tree-v0.15.tar",
+      "sha256": "dbe998b2017aa616001d983df8f3c136d28f3dbd8c5183dcecc6bfcc9e1bd167",
+      "builder": "git archive --format=tar --prefix=veritas-source/ <selected-source-commit>"
+    },
+    "parser_registry": {
+      "path": "benchmark/extraction/execution_artifacts_v0.15/parser_registry.json",
+      "sha256": "9d18fa6795d0fd20c8dee8de61acb0d9ef88c1bac77843ccab3c8ec5a328837c"
+    },
+    "numerical_runtime": {
+      "path": "benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json",
+      "sha256": "45bd39ca70eea67d02d107ad6fe7f7bb5a1eeffababf00b5ed806f39e8f37f76"
+    },
+    "execution_command": {
+      "path": "benchmark/extraction/execution_artifacts_v0.15/execution_command.json",
+      "sha256": "02eba08853a02c99f831fd13a98ee697f60bb030f5e6f5301c6101fc158a3393"
+    }
+  },
+  "isolation_contract": {
+    "network_disabled": true,
+    "source_mount_read_only": true,
+    "credentials_mounted": false
+  },
+  "capture": {
+    "repository": "jiaweine/Veritas",
+    "workflow_path": ".github/workflows/capture-v015-execution-plan.yml",
+    "workflow_run_id": 34098454563,
+    "run_attempt": 1,
+    "head_sha": "b902f5a4a6f4ff7b5d45b357a9b32a49a1b1d6d2",
+    "artifact_id": 10009519805,
+    "artifact_name": "v015-execution-plan-b902f5a4a6f4ff7b5d45b357a9b32a49a1b1d6d2",
+    "artifact_size_bytes": 10450949,
+    "artifact_digest": "sha256:2ee0df6e0f4f91f687eee343f69a725bed6f09ab1cf571d014b138ec9bbb564b",
+    "artifact_expires_at": "2026-12-06T08:02:12Z"
+  },
+  "capture_behavior": {
+    "reverified_publication_input_manifest_and_files": true,
+    "reconstructed_blinded_reviewer_packet": true,
+    "rebuilt_source_archive_twice_and_required_byte_equality": true,
+    "built_execution_plan_with_repository_builder": true,
+    "reverified_execution_plan_against_exact_artifact_bytes": true,
+    "executed_v015_development_or_test_predictions": false
+  },
+  "durable_independent_external_archive": false,
+  "trusted_commit_to_source_archive_provenance_established": false,
+  "note": "This record captures a repository-side pre-TEST execution-plan archive. The GitHub Actions artifact is retention-limited. It does not establish an independently governed historical channel, trusted key ownership, or the stronger externally trusted Git-commit-to-source-archive relation, and it does not authorize production findings."
+}

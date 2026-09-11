@@ -1,0 +1,865 @@
+from __future__ import annotations
+
+import json
+import math
+import re
+from dataclasses import asdict, dataclass
+from hashlib import sha256
+from pathlib import Path
+from typing import Any
+
+from .benchmark import BenchmarkSplit
+from .corpus import AccessTier, ArticleFamilySplitLock, CorpusPaper
+from .extraction_benchmark import (
+    ExtractionGoldTarget,
+    ExtractionSelectivityCurve,
+    build_extraction_selectivity_curve,
+    evaluate_extraction_benchmark,
+)
+from .extraction_calibration import (
+    ExtractionTestEvaluationLock,
+    ExtractionThresholdObservation,
+    ExtractionThresholdPolicy,
+    FrozenExtractionThreshold,
+    select_development_threshold,
+)
+from .extraction_review import (
+    ExtractionGoldManifest,
+    ExtractionReviewRecord,
+    validate_extraction_gold_review_records,
+)
+from .extraction_review_packet import (
+    ExtractionReviewPacketTarget,
+    build_blinded_seed_review_packets,
+)
+from .extraction_test_seal import ExtractionTestSetSeal
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_SAMPLING_FRAME_STATUS = "sampling_frame_only_unlabeled"
+_SEED_MANIFEST_STATUS = "seed_corpus_not_locked_gold"
+
+
+@dataclass(frozen=True)
+class ExtractionSamplingFrame:
+    papers: tuple[CorpusPaper, ...]
+    source_manifest_sha256: str
+    status: str = _SAMPLING_FRAME_STATUS
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        if self.status != _SAMPLING_FRAME_STATUS:
+            raise ValueError("extraction sampling frame must remain explicitly unlabeled")
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("extraction sampling frame schema_version must be 1")
+        _require_sha256(self.source_manifest_sha256, label="sampling-frame source manifest")
+        if not self.papers:
+            raise ValueError("extraction sampling frame requires at least one paper")
+        paper_ids = [paper.paper_id for paper in self.papers]
+        if len(set(paper_ids)) != len(paper_ids):
+            raise ValueError("extraction sampling-frame paper ids must be unique")
+
+    def paper_family_map(self) -> dict[str, str]:
+        return {paper.paper_id: paper.article_family_id for paper in self.papers}
+
+    def sha256(self) -> str:
+        return _stable_sha256(
+            {
+                "schema_version": self.schema_version,
+                "status": self.status,
+                "source_manifest_sha256": self.source_manifest_sha256,
+                "papers": [
+                    _corpus_paper_payload(paper)
+                    for paper in sorted(self.papers, key=lambda item: item.paper_id)
+                ],
+            }
+        )
+
+
+@dataclass(frozen=True)
+class ExtractionSeedManifest:
+    source_manifest_sha256: str
+    targets: tuple[ExtractionReviewPacketTarget, ...]
+    status: str = _SEED_MANIFEST_STATUS
+    production_hard_finding_authorized: bool = False
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        _require_sha256(self.source_manifest_sha256, label="seed-manifest source")
+        if self.status != _SEED_MANIFEST_STATUS:
+            raise ValueError("extraction seed manifest must remain explicit non-gold seed data")
+        if type(self.production_hard_finding_authorized) is not bool:
+            raise TypeError("seed-manifest production authority flag must be boolean")
+        if self.production_hard_finding_authorized:
+            raise ValueError("extraction seed manifest must not carry production authority")
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("extraction seed manifest schema_version must be 1")
+        if not self.targets:
+            raise ValueError("extraction seed manifest requires at least one review target")
+        target_ids = [target.target_id for target in self.targets]
+        if len(set(target_ids)) != len(target_ids):
+            raise ValueError("extraction seed-manifest target ids must be unique")
+
+    def target_map(self) -> dict[str, ExtractionReviewPacketTarget]:
+        return {target.target_id: target for target in self.targets}
+
+    def sha256(self) -> str:
+        return _stable_sha256(
+            {
+                "schema_version": self.schema_version,
+                "status": self.status,
+                "source_manifest_sha256": self.source_manifest_sha256,
+                "production_hard_finding_authorized": self.production_hard_finding_authorized,
+                "targets": [
+                    asdict(target)
+                    for target in sorted(self.targets, key=lambda item: item.target_id)
+                ],
+            }
+        )
+
+
+@dataclass(frozen=True)
+class ExtractionSplitTargetManifest:
+    split: BenchmarkSplit
+    gold_manifest_sha256: str
+    split_lock_sha256: str
+    article_family_ids: tuple[str, ...]
+    target_ids: tuple[str, ...]
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        if self.split not in {BenchmarkSplit.DEVELOPMENT, BenchmarkSplit.TEST}:
+            raise ValueError("extraction split target manifests are DEVELOPMENT or TEST only")
+        _require_sha256(self.gold_manifest_sha256, label="split-target gold manifest")
+        _require_sha256(self.split_lock_sha256, label="split-target split lock")
+        if tuple(sorted(set(self.article_family_ids))) != self.article_family_ids:
+            raise ValueError("split-target article_family_ids must be unique and sorted")
+        if tuple(sorted(set(self.target_ids))) != self.target_ids:
+            raise ValueError("split-target target_ids must be unique and sorted")
+        if not self.article_family_ids or not self.target_ids:
+            raise ValueError("split-target manifest requires non-empty family and target membership")
+        if any(not value.strip() for value in self.article_family_ids):
+            raise ValueError("split-target article_family_ids cannot be empty")
+        if any(not value.strip() for value in self.target_ids):
+            raise ValueError("split-target target_ids cannot be empty")
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("extraction split target manifest schema_version must be 1")
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "split": self.split.value,
+            "gold_manifest_sha256": self.gold_manifest_sha256,
+            "split_lock_sha256": self.split_lock_sha256,
+            "article_family_ids": list(self.article_family_ids),
+            "target_ids": list(self.target_ids),
+        }
+
+    def sha256(self) -> str:
+        return _stable_sha256(self.to_payload())
+
+
+@dataclass(frozen=True)
+class ExtractionThresholdGrid:
+    points: tuple[tuple[str, float], ...]
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("threshold-grid schema_version must be 1")
+        if not self.points:
+            raise ValueError("threshold grid requires at least one point")
+        ids = [threshold_id for threshold_id, _ in self.points]
+        if len(set(ids)) != len(ids):
+            raise ValueError("threshold-grid ids must be unique")
+        if any(not isinstance(value, str) or not value.strip() for value in ids):
+            raise ValueError("threshold-grid ids must be non-empty strings")
+        thresholds = [threshold for _, threshold in self.points]
+        if any(
+            isinstance(threshold, bool)
+            or not isinstance(threshold, (int, float))
+            or not math.isfinite(float(threshold))
+            or float(threshold) < 0.0
+            for threshold in thresholds
+        ):
+            raise ValueError("threshold-grid values must be finite non-negative numbers")
+        if len({float(value) for value in thresholds}) != len(thresholds):
+            raise ValueError("threshold-grid numeric values must be unique")
+
+    @property
+    def threshold_ids(self) -> tuple[str, ...]:
+        return tuple(sorted(threshold_id for threshold_id, _ in self.points))
+
+    @property
+    def thresholds(self) -> tuple[float, ...]:
+        return tuple(sorted(float(threshold) for _, threshold in self.points))
+
+    def threshold_for_id(self, threshold_id: str) -> float:
+        for candidate_id, threshold in self.points:
+            if candidate_id == threshold_id:
+                return float(threshold)
+        raise KeyError(threshold_id)
+
+    def sha256(self) -> str:
+        return _stable_sha256(
+            {
+                "schema_version": self.schema_version,
+                "points": [
+                    {"threshold_id": threshold_id, "threshold": float(threshold)}
+                    for threshold_id, threshold in sorted(self.points)
+                ],
+            }
+        )
+
+
+@dataclass(frozen=True)
+class ExtractionEvidencePlan:
+    sampling_frame_sha256: str
+    sampling_frame_source_manifest_sha256: str
+    source_seed_manifest_sha256: str
+    seed_target_universe_sha256: str
+    review_protocol_version: str
+    split_salt: str
+    threshold_grid_sha256: str
+    train_fraction: float = 0.60
+    development_fraction: float = 0.20
+    benchmark_confidence: float = 0.95
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("sampling_frame_sha256", self.sampling_frame_sha256),
+            (
+                "sampling_frame_source_manifest_sha256",
+                self.sampling_frame_source_manifest_sha256,
+            ),
+            ("source_seed_manifest_sha256", self.source_seed_manifest_sha256),
+            ("seed_target_universe_sha256", self.seed_target_universe_sha256),
+            ("threshold_grid_sha256", self.threshold_grid_sha256),
+        ):
+            _require_sha256(value, label=label)
+        if not isinstance(self.review_protocol_version, str) or not self.review_protocol_version.strip():
+            raise ValueError("review_protocol_version is required")
+        if not isinstance(self.split_salt, str) or not self.split_salt.strip():
+            raise ValueError("split_salt is required")
+        _require_split_fractions(self.train_fraction, self.development_fraction)
+        _require_confidence(self.benchmark_confidence)
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("extraction evidence plan schema_version must be 1")
+
+    def sha256(self) -> str:
+        return _stable_sha256(asdict(self))
+
+
+@dataclass(frozen=True)
+class ExtractionEvidenceReleaseReceipt:
+    plan_sha256: str
+    gold_manifest_sha256: str
+    split_lock_sha256: str
+    development_manifest_sha256: str
+    test_manifest_sha256: str
+    development_observations_sha256: str
+    test_observations_sha256: str
+    frozen_threshold_sha256: str
+    test_seal_sha256: str
+    test_evaluation_lock_sha256: str
+    development_curve_sha256: str
+    test_curve_sha256: str
+    production_authorized: bool = False
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("plan_sha256", self.plan_sha256),
+            ("gold_manifest_sha256", self.gold_manifest_sha256),
+            ("split_lock_sha256", self.split_lock_sha256),
+            ("development_manifest_sha256", self.development_manifest_sha256),
+            ("test_manifest_sha256", self.test_manifest_sha256),
+            ("development_observations_sha256", self.development_observations_sha256),
+            ("test_observations_sha256", self.test_observations_sha256),
+            ("frozen_threshold_sha256", self.frozen_threshold_sha256),
+            ("test_seal_sha256", self.test_seal_sha256),
+            ("test_evaluation_lock_sha256", self.test_evaluation_lock_sha256),
+            ("development_curve_sha256", self.development_curve_sha256),
+            ("test_curve_sha256", self.test_curve_sha256),
+        ):
+            _require_sha256(value, label=label)
+        if type(self.production_authorized) is not bool or self.production_authorized:
+            raise ValueError("extraction evidence release receipts are non-production only")
+        if self.schema_version != 1 or isinstance(self.schema_version, bool):
+            raise ValueError("extraction evidence release receipt schema_version must be 1")
+
+    def sha256(self) -> str:
+        return _stable_sha256(asdict(self))
+
+
+def file_sha256(path: str | Path) -> str:
+    source_path = Path(path)
+    if not source_path.is_file():
+        raise ValueError("evidence-workflow manifest path must point to a file")
+    return sha256(source_path.read_bytes()).hexdigest()
+
+
+def load_extraction_sampling_frame(path: str | Path) -> ExtractionSamplingFrame:
+    source_path = Path(path)
+    raw = source_path.read_bytes()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("sampling-frame manifest must be UTF-8 JSON") from exc
+    payload = _loads_strict_json(text, label="sampling-frame manifest")
+    if not isinstance(payload, dict):
+        raise TypeError("sampling-frame manifest root must be an object")
+    if "labels" in payload:
+        raise ValueError("sampling-frame manifest must not contain labels")
+    if payload.get("schema_version") != 1 or isinstance(payload.get("schema_version"), bool):
+        raise ValueError("sampling-frame manifest schema_version must be 1")
+    if payload.get("status") != _SAMPLING_FRAME_STATUS:
+        raise ValueError("sampling-frame manifest must be explicitly unlabeled")
+    rows = payload.get("papers")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("sampling-frame manifest requires a non-empty papers array")
+    return ExtractionSamplingFrame(
+        papers=tuple(_paper_from_mapping(row) for row in rows),
+        source_manifest_sha256=sha256(raw).hexdigest(),
+    )
+
+
+def load_extraction_seed_manifest(path: str | Path) -> ExtractionSeedManifest:
+    source_path = Path(path)
+    raw = source_path.read_bytes()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("seed manifest must be UTF-8 JSON") from exc
+    payload = _loads_strict_json(text, label="seed manifest")
+    if not isinstance(payload, dict):
+        raise TypeError("seed manifest root must be an object")
+    if payload.get("schema_version") != 1 or isinstance(payload.get("schema_version"), bool):
+        raise ValueError("seed manifest schema_version must be 1")
+    seed_sha256 = sha256(raw).hexdigest()
+    packets = build_blinded_seed_review_packets(
+        payload,
+        seed_manifest_sha256=seed_sha256,
+        reviewer_slots=("seed-universe-a", "seed-universe-b"),
+    )
+    return ExtractionSeedManifest(
+        source_manifest_sha256=seed_sha256,
+        targets=packets[0].targets,
+        status=str(payload.get("status")),
+        production_hard_finding_authorized=payload.get("production_hard_finding_authorized"),
+    )
+
+
+def build_extraction_evidence_plan(
+    sampling_frame: ExtractionSamplingFrame,
+    seed_manifest: ExtractionSeedManifest,
+    threshold_grid: ExtractionThresholdGrid,
+    *,
+    review_protocol_version: str = "independent-double-review-v1",
+    split_salt: str,
+    train_fraction: float = 0.60,
+    development_fraction: float = 0.20,
+    benchmark_confidence: float = 0.95,
+) -> ExtractionEvidencePlan:
+    return ExtractionEvidencePlan(
+        sampling_frame_sha256=sampling_frame.sha256(),
+        sampling_frame_source_manifest_sha256=sampling_frame.source_manifest_sha256,
+        source_seed_manifest_sha256=seed_manifest.source_manifest_sha256,
+        seed_target_universe_sha256=seed_manifest.sha256(),
+        review_protocol_version=review_protocol_version,
+        split_salt=split_salt,
+        threshold_grid_sha256=threshold_grid.sha256(),
+        train_fraction=train_fraction,
+        development_fraction=development_fraction,
+        benchmark_confidence=benchmark_confidence,
+    )
+
+
+def build_extraction_split_target_manifest(
+    gold_manifest: ExtractionGoldManifest,
+    split_lock: ArticleFamilySplitLock,
+    *,
+    split: BenchmarkSplit,
+) -> ExtractionSplitTargetManifest:
+    if split not in {BenchmarkSplit.DEVELOPMENT, BenchmarkSplit.TEST}:
+        raise ValueError("extraction evidence split manifest must be DEVELOPMENT or TEST")
+    expected_split_lock = gold_manifest.build_split_lock(
+        train_fraction=split_lock.train_fraction,
+        development_fraction=split_lock.development_fraction,
+    )
+    if expected_split_lock.sha256() != split_lock.sha256():
+        raise ValueError("split lock is not the deterministic lock for the reviewed gold manifest")
+    if split_lock.manifest_sha256 != gold_manifest.sha256():
+        raise ValueError("split lock is not bound to the supplied extraction gold manifest")
+
+    family_ids = tuple(
+        sorted(family_id for family_id, assigned in split_lock.assignments if assigned is split)
+    )
+    family_set = set(family_ids)
+    target_ids = tuple(
+        sorted(
+            target.target_id
+            for target in gold_manifest.targets
+            if target.article_family_id in family_set
+        )
+    )
+    if not family_ids or not target_ids:
+        raise ValueError(f"{split.value} split target manifest cannot be empty")
+    return ExtractionSplitTargetManifest(
+        split=split,
+        gold_manifest_sha256=gold_manifest.sha256(),
+        split_lock_sha256=split_lock.sha256(),
+        article_family_ids=family_ids,
+        target_ids=target_ids,
+    )
+
+
+def build_extraction_evidence_release_receipt(
+    *,
+    plan: ExtractionEvidencePlan,
+    sampling_frame: ExtractionSamplingFrame,
+    seed_manifest: ExtractionSeedManifest,
+    threshold_grid: ExtractionThresholdGrid,
+    gold_manifest: ExtractionGoldManifest,
+    review_records: tuple[ExtractionReviewRecord, ...] | list[ExtractionReviewRecord],
+    split_lock: ArticleFamilySplitLock,
+    threshold_policy: ExtractionThresholdPolicy,
+    development_observations: tuple[ExtractionThresholdObservation, ...]
+    | list[ExtractionThresholdObservation],
+    test_observations: tuple[ExtractionThresholdObservation, ...]
+    | list[ExtractionThresholdObservation],
+    frozen_threshold: FrozenExtractionThreshold,
+    test_seal: ExtractionTestSetSeal,
+    test_evaluation_lock: ExtractionTestEvaluationLock,
+    development_curve: ExtractionSelectivityCurve,
+    test_curve: ExtractionSelectivityCurve,
+) -> ExtractionEvidenceReleaseReceipt:
+    if sampling_frame.sha256() != plan.sampling_frame_sha256:
+        raise ValueError("sampling frame does not match the precommitted evidence plan")
+    if sampling_frame.source_manifest_sha256 != plan.sampling_frame_source_manifest_sha256:
+        raise ValueError("sampling-frame source bytes do not match the precommitted evidence plan")
+    if seed_manifest.source_manifest_sha256 != plan.source_seed_manifest_sha256:
+        raise ValueError("seed manifest does not match the precommitted evidence plan")
+    if seed_manifest.sha256() != plan.seed_target_universe_sha256:
+        raise ValueError("seed target universe does not match the precommitted evidence plan")
+    if threshold_grid.sha256() != plan.threshold_grid_sha256:
+        raise ValueError("threshold grid does not match the precommitted evidence plan")
+    if gold_manifest.source_seed_manifest_sha256 != plan.source_seed_manifest_sha256:
+        raise ValueError("gold seed manifest differs from the precommitted evidence plan")
+    if gold_manifest.review_protocol_version != plan.review_protocol_version:
+        raise ValueError("gold review protocol differs from the precommitted evidence plan")
+    if gold_manifest.split_salt != plan.split_salt:
+        raise ValueError("gold split salt differs from the precommitted evidence plan")
+
+    seed_targets = seed_manifest.target_map()
+    family_by_paper = sampling_frame.paper_family_map()
+    for target in gold_manifest.targets:
+        seed_target = seed_targets.get(target.target_id)
+        if seed_target is None:
+            raise ValueError(
+                "gold target is outside the precommitted seed target universe: "
+                f"{target.target_id!r}"
+            )
+        seed_identity = (
+            seed_target.paper_id,
+            seed_target.article_family_id,
+            seed_target.object_type,
+            seed_target.key,
+            seed_target.critical_for_hard_audit,
+        )
+        gold_identity = (
+            target.paper_id,
+            target.article_family_id,
+            target.object_type,
+            target.key,
+            target.critical_for_hard_audit,
+        )
+        if seed_identity != gold_identity:
+            raise ValueError(f"gold target identity drifted from seed manifest: {target.target_id!r}")
+        seed_locator = (
+            seed_target.expected_page,
+            seed_target.table_label,
+            seed_target.row_label,
+        )
+        gold_locator = (
+            target.source.page,
+            target.source.table,
+            target.source.row,
+        )
+        if seed_locator != gold_locator:
+            raise ValueError(
+                f"gold target source locator drifted from seed manifest: {target.target_id!r}"
+            )
+
+        expected_family = family_by_paper.get(target.paper_id)
+        if expected_family is None:
+            raise ValueError(
+                "gold target paper is outside the precommitted sampling frame: "
+                f"{target.paper_id!r}"
+            )
+        if expected_family != target.article_family_id:
+            raise ValueError(f"gold target article-family identity drifted: {target.target_id!r}")
+
+    validate_extraction_gold_review_records(gold_manifest, review_records)
+
+    if float(split_lock.train_fraction) != float(plan.train_fraction):
+        raise ValueError("split lock train fraction differs from the precommitted evidence plan")
+    if float(split_lock.development_fraction) != float(plan.development_fraction):
+        raise ValueError("split lock development fraction differs from the precommitted evidence plan")
+    expected_split_lock = gold_manifest.build_split_lock(
+        train_fraction=plan.train_fraction,
+        development_fraction=plan.development_fraction,
+    )
+    if expected_split_lock.sha256() != split_lock.sha256():
+        raise ValueError("split lock is not the deterministic lock for the reviewed gold manifest")
+    if split_lock.split_salt != plan.split_salt:
+        raise ValueError("split lock salt differs from the precommitted evidence plan")
+    split_values = {split for _, split in split_lock.assignments}
+    if BenchmarkSplit.DEVELOPMENT not in split_values:
+        raise ValueError("release workflow requires at least one DEVELOPMENT article family")
+    if BenchmarkSplit.TEST not in split_values:
+        raise ValueError("release workflow requires at least one TEST article family")
+
+    development_manifest = build_extraction_split_target_manifest(
+        gold_manifest,
+        split_lock,
+        split=BenchmarkSplit.DEVELOPMENT,
+    )
+    test_manifest = build_extraction_split_target_manifest(
+        gold_manifest,
+        split_lock,
+        split=BenchmarkSplit.TEST,
+    )
+    development_manifest_sha256 = development_manifest.sha256()
+    test_manifest_sha256 = test_manifest.sha256()
+    development_gold = _gold_for_split_manifest(gold_manifest, development_manifest)
+    test_gold = _gold_for_split_manifest(gold_manifest, test_manifest)
+
+    development_observations = _validate_threshold_observations_against_grid(
+        development_observations,
+        threshold_grid,
+        split=BenchmarkSplit.DEVELOPMENT,
+        label="DEVELOPMENT",
+    )
+    test_observations = _validate_threshold_observations_against_grid(
+        test_observations,
+        threshold_grid,
+        split=BenchmarkSplit.TEST,
+        label="TEST",
+    )
+    _validate_observation_prediction_reports(
+        development_observations,
+        development_gold,
+        confidence=plan.benchmark_confidence,
+        label="DEVELOPMENT",
+    )
+    _validate_observation_prediction_reports(
+        test_observations,
+        test_gold,
+        confidence=plan.benchmark_confidence,
+        label="TEST",
+    )
+
+    expected_frozen_threshold = select_development_threshold(
+        development_observations,
+        policy=threshold_policy,
+        development_manifest_sha256=development_manifest_sha256,
+    )
+    if expected_frozen_threshold.sha256() != frozen_threshold.sha256():
+        raise ValueError(
+            "frozen threshold differs from deterministic DEVELOPMENT selection "
+            "under the supplied policy and observations"
+        )
+
+    expected_development_curve = build_extraction_selectivity_curve(
+        tuple(
+            (observation.threshold, observation.report)
+            for observation in development_observations
+        )
+    )
+    if _curve_sha256(expected_development_curve) != _curve_sha256(development_curve):
+        raise ValueError("DEVELOPMENT selectivity curve differs from bound DEVELOPMENT observations")
+    expected_test_curve = build_extraction_selectivity_curve(
+        tuple((observation.threshold, observation.report) for observation in test_observations)
+    )
+    if _curve_sha256(expected_test_curve) != _curve_sha256(test_curve):
+        raise ValueError("TEST selectivity curve differs from bound TEST observations")
+
+    test_seal.validate(gold_manifest, split_lock)
+    if test_evaluation_lock.frozen_threshold_sha256 != frozen_threshold.sha256():
+        raise ValueError("TEST evaluation lock is not bound to the frozen DEVELOPMENT threshold")
+    if test_evaluation_lock.test_manifest_sha256 != test_manifest_sha256:
+        raise ValueError("TEST evaluation lock is bound to a different TEST manifest")
+
+    expected_thresholds = threshold_grid.thresholds
+    _require_curve_thresholds(development_curve, expected_thresholds, label="DEVELOPMENT")
+    _require_curve_thresholds(test_curve, expected_thresholds, label="TEST")
+    return ExtractionEvidenceReleaseReceipt(
+        plan_sha256=plan.sha256(),
+        gold_manifest_sha256=gold_manifest.sha256(),
+        split_lock_sha256=split_lock.sha256(),
+        development_manifest_sha256=development_manifest_sha256,
+        test_manifest_sha256=test_manifest_sha256,
+        development_observations_sha256=_observations_sha256(development_observations),
+        test_observations_sha256=_observations_sha256(test_observations),
+        frozen_threshold_sha256=frozen_threshold.sha256(),
+        test_seal_sha256=test_seal.sha256(),
+        test_evaluation_lock_sha256=test_evaluation_lock.sha256(),
+        development_curve_sha256=_curve_sha256(development_curve),
+        test_curve_sha256=_curve_sha256(test_curve),
+    )
+
+
+def extraction_evidence_plan_payload(
+    plan: ExtractionEvidencePlan,
+    threshold_grid: ExtractionThresholdGrid,
+) -> dict[str, Any]:
+    if threshold_grid.sha256() != plan.threshold_grid_sha256:
+        raise ValueError("threshold grid does not match extraction evidence plan")
+    return {
+        "schema_version": 1,
+        "plan": asdict(plan),
+        "threshold_grid": [
+            {"threshold_id": threshold_id, "threshold": float(threshold)}
+            for threshold_id, threshold in sorted(threshold_grid.points)
+        ],
+        "plan_sha256": plan.sha256(),
+        "production_authorized": False,
+    }
+
+
+def _validate_threshold_observations_against_grid(
+    observations: tuple[ExtractionThresholdObservation, ...]
+    | list[ExtractionThresholdObservation],
+    threshold_grid: ExtractionThresholdGrid,
+    *,
+    split: BenchmarkSplit,
+    label: str,
+) -> tuple[ExtractionThresholdObservation, ...]:
+    observations = tuple(observations)
+    if not observations:
+        raise ValueError(f"release workflow requires {label} threshold observations")
+    if any(not isinstance(observation, ExtractionThresholdObservation) for observation in observations):
+        raise TypeError(
+            f"{label.lower()}_observations must contain ExtractionThresholdObservation values"
+        )
+    observation_ids = tuple(sorted(observation.threshold_id for observation in observations))
+    if observation_ids != threshold_grid.threshold_ids:
+        raise ValueError(f"{label} observation ids differ from the precommitted threshold grid")
+    for observation in observations:
+        if observation.split is not split:
+            raise ValueError(f"release {label} observations must use the {label} split")
+        try:
+            expected_threshold = threshold_grid.threshold_for_id(observation.threshold_id)
+        except KeyError as exc:
+            raise ValueError(
+                f"{label} observation id is not in the precommitted threshold grid"
+            ) from exc
+        if float(observation.threshold) != expected_threshold:
+            raise ValueError(
+                f"{label} observation threshold value differs from the precommitted threshold grid"
+            )
+    return observations
+
+
+def _validate_observation_prediction_reports(
+    observations: tuple[ExtractionThresholdObservation, ...],
+    gold: tuple[ExtractionGoldTarget, ...],
+    *,
+    confidence: float,
+    label: str,
+) -> None:
+    for observation in observations:
+        if observation.predictions is None:
+            raise ValueError(
+                f"{label} threshold observations require exact prediction provenance"
+            )
+        expected_report = evaluate_extraction_benchmark(
+            gold,
+            observation.predictions,
+            confidence=confidence,
+        )
+        if expected_report != observation.report:
+            raise ValueError(
+                f"{label} benchmark report differs from exact bound predictions/resolutions"
+            )
+
+
+def _gold_for_split_manifest(
+    gold_manifest: ExtractionGoldManifest,
+    split_manifest: ExtractionSplitTargetManifest,
+) -> tuple[ExtractionGoldTarget, ...]:
+    target_ids = set(split_manifest.target_ids)
+    result = tuple(
+        target for target in gold_manifest.targets if target.target_id in target_ids
+    )
+    if {target.target_id for target in result} != target_ids:
+        raise ValueError("split-target manifest membership is not present in reviewed gold")
+    return result
+
+
+def _observations_sha256(
+    observations: tuple[ExtractionThresholdObservation, ...],
+) -> str:
+    return _stable_sha256(
+        {
+            "observations": [
+                asdict(observation)
+                for observation in sorted(observations, key=lambda item: item.threshold_id)
+            ]
+        }
+    )
+
+
+def _require_curve_thresholds(
+    curve: ExtractionSelectivityCurve,
+    expected: tuple[float, ...],
+    *,
+    label: str,
+) -> None:
+    actual = tuple(float(point.threshold) for point in curve.points)
+    if actual != expected:
+        raise ValueError(
+            f"{label} selectivity curve does not match the precommitted threshold grid"
+        )
+
+
+def _curve_sha256(curve: ExtractionSelectivityCurve) -> str:
+    return _stable_sha256(
+        {
+            "points": [asdict(point) for point in curve.points],
+            "production_authorized": False,
+        }
+    )
+
+
+def _paper_from_mapping(value: object) -> CorpusPaper:
+    if not isinstance(value, dict):
+        raise TypeError("sampling-frame paper rows must be objects")
+    required = (
+        "paper_id",
+        "article_family_id",
+        "title",
+        "discipline",
+        "year",
+        "source_url",
+        "access_tier",
+    )
+    if any(key not in value for key in required):
+        raise ValueError("sampling-frame paper row is missing required identity metadata")
+    year = value["year"]
+    if isinstance(year, bool) or not isinstance(year, int):
+        raise TypeError("sampling-frame paper year must be an integer")
+    redistributable = value.get("redistributable_artifacts", False)
+    if type(redistributable) is not bool:
+        raise TypeError("redistributable_artifacts must be a boolean")
+    artifact_urls = value.get("artifact_urls", [])
+    if not isinstance(artifact_urls, list) or any(not isinstance(item, str) for item in artifact_urls):
+        raise TypeError("artifact_urls must be an array of strings")
+    return CorpusPaper(
+        paper_id=_required_string(value["paper_id"], label="paper_id"),
+        article_family_id=_required_string(value["article_family_id"], label="article_family_id"),
+        doi=_optional_string(value.get("doi"), label="doi"),
+        title=_required_string(value["title"], label="title"),
+        discipline=_required_string(value["discipline"], label="discipline"),
+        year=year,
+        source_url=_required_string(value["source_url"], label="source_url"),
+        access_tier=AccessTier(value["access_tier"]),
+        artifact_urls=tuple(artifact_urls),
+        license_note=_optional_string(value.get("license_note"), label="license_note"),
+        redistributable_artifacts=redistributable,
+    )
+
+
+def _corpus_paper_payload(paper: CorpusPaper) -> dict[str, Any]:
+    return {
+        "paper_id": paper.paper_id,
+        "article_family_id": paper.article_family_id,
+        "doi": paper.doi,
+        "title": paper.title,
+        "discipline": paper.discipline,
+        "year": paper.year,
+        "source_url": paper.source_url,
+        "access_tier": paper.access_tier.value,
+        "artifact_urls": list(paper.artifact_urls),
+        "license_note": paper.license_note,
+        "redistributable_artifacts": paper.redistributable_artifacts,
+        "artifact_sha256": paper.artifact_sha256,
+    }
+
+
+def _loads_strict_json(text: str, *, label: str) -> Any:
+    def reject_duplicate(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"{label} contains duplicate JSON object key: {key!r}")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"{label} contains unsupported JSON numeric constant: {value}")
+
+    try:
+        return json.loads(
+            text,
+            object_pairs_hook=reject_duplicate,
+            parse_constant=reject_constant,
+        )
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{label} must be valid JSON") from exc
+
+
+def _required_string(value: object, *, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"sampling-frame {label} must be a non-empty string")
+    return value
+
+
+def _optional_string(value: object, *, label: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError(f"sampling-frame {label} must be a string or null")
+    return value
+
+
+def _require_split_fractions(train_fraction: object, development_fraction: object) -> None:
+    for label, value in (
+        ("train_fraction", train_fraction),
+        ("development_fraction", development_fraction),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) <= 0.0
+        ):
+            raise ValueError(f"{label} must be a finite positive number")
+    if float(train_fraction) + float(development_fraction) >= 1.0:
+        raise ValueError("split fractions must leave positive mass for the TEST split")
+
+
+def _require_confidence(value: object) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or not 0.0 < float(value) < 1.0
+    ):
+        raise ValueError("benchmark_confidence must be a finite number in (0, 1)")
+
+
+def _require_sha256(value: str, *, label: str) -> None:
+    if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
+        raise ValueError(f"{label} must be a lowercase SHA-256 hex digest")
+
+
+def _stable_sha256(value: object) -> str:
+    raw = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return sha256(raw).hexdigest()

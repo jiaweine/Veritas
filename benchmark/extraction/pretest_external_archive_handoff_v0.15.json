@@ -1,0 +1,123 @@
+{
+  "executed_v015_development_or_test_predictions": false,
+  "external_archive_requirements": {
+    "build_external_trust_policy_only_after_independent_root_selection": true,
+    "do_not_copy_expected_context_from_future_signed_envelope": true,
+    "immutable_or_append_only_record_required": true,
+    "independently_controlled_historical_channel_required": true,
+    "independently_select_expected_context_before_test": true,
+    "pin_external_trust_root_before_test": true,
+    "preserve_exact_bytes": true,
+    "preserve_source_archive_builder_identity_and_history_for_commit_to_archive_claim": true,
+    "record_external_timestamp_or_sequence_position": true
+  },
+  "note": "This repository-side handoff enumerates exact bytes/hashes for an independent pre-TEST archive. It is not an archive receipt, timestamp, trust root, trust policy, proof of key ownership, proof of workflow semantics, human review, TEST evidence, or production authorization.",
+  "pending_external_evidence": {
+    "external_trust_policy_built": false,
+    "external_trust_root_pinned": false,
+    "independent_archive_receipt_present": false,
+    "source_archive_builder_history_preserved": false,
+    "source_archive_provenance_statement_present": false,
+    "source_archive_trust_policy_built": false
+  },
+  "pretest_witness": {
+    "path": "benchmark/extraction/pretest_external_witness_commitment_v0.15.json",
+    "sha256": "1f36c2ff4d27ddf82b099ee6ff1a3501a39cd98b554c17f59e7d2b1ebe4fc5d8"
+  },
+  "production_authorized": false,
+  "repository_files": [
+    {
+      "path": "benchmark/corpus/evidence_sampling_frame_v0.15.json",
+      "sha256": "adc32cafceafdf9dd3f39fc5a2fc83e05d7bd5b39095b83aea70d3197a455ddc"
+    },
+    {
+      "path": "benchmark/extraction/evidence_plan_v0.15.json",
+      "sha256": "3d09330bb71f37715f31bc268f92ef329bbd918a7eeede91117c0721bbbeb51f"
+    },
+    {
+      "path": "benchmark/extraction/evidence_seed_manifest_v0.15.json",
+      "sha256": "e58ce1ba2aec3c5b9a0210a2b6ccc8a8550571f693ac5f796fd951ab2411974f"
+    },
+    {
+      "path": "benchmark/extraction/execution_artifacts_v0.15/execution_command.json",
+      "sha256": "02eba08853a02c99f831fd13a98ee697f60bb030f5e6f5301c6101fc158a3393"
+    },
+    {
+      "path": "benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json",
+      "sha256": "45bd39ca70eea67d02d107ad6fe7f7bb5a1eeffababf00b5ed806f39e8f37f76"
+    },
+    {
+      "path": "benchmark/extraction/execution_artifacts_v0.15/parser_registry.json",
+      "sha256": "9d18fa6795d0fd20c8dee8de61acb0d9ef88c1bac77843ccab3c8ec5a328837c"
+    },
+    {
+      "path": "benchmark/extraction/extraction_execution_plan_v0.15.json",
+      "sha256": "bc02297f577998b3fd778d99c32045bae79ee6a3a6b262818c45852ccb3994df"
+    },
+    {
+      "path": "benchmark/extraction/extraction_input_artifact_manifest_v0.15.json",
+      "sha256": "d318a546bdb9801d24a95db26c6ba4c44ed38a7262d3a31eccb728c89edf0f74"
+    },
+    {
+      "path": "benchmark/extraction/pretest_external_witness_commitment_v0.15.json",
+      "sha256": "1f36c2ff4d27ddf82b099ee6ff1a3501a39cd98b554c17f59e7d2b1ebe4fc5d8"
+    },
+    {
+      "path": "benchmark/extraction/pretest_pilot_threshold_policy_v0.15.json",
+      "sha256": "6cbf6a3514b65f67d748a12baecffff07bb665551c3470c6a90ee577c29efa59"
+    },
+    {
+      "path": "benchmark/extraction/review_packet_commitment_v0.15.json",
+      "sha256": "0a04fcda6d557a7862a0b69a0a502111af8f0b4845261f9a95b34fe2287e880d"
+    }
+  ],
+  "required_external_binary_artifacts": {
+    "blinded_reviewer_packets": [
+      {
+        "packet_file_sha256": "1753c024b057d085ddc4af33e3d9a235f7481ebf996cd8271bdc760a1e513447",
+        "packet_sha256": "d5dbb4118d376915f4b5c4c089a1677c362fa7d3ef1f7cedd481b49cf171a8bb",
+        "reviewer_slot": "reviewer-a",
+        "target_count": 18
+      },
+      {
+        "packet_file_sha256": "113762ea38c1710d70217c743fc96ea3bcfa59bcf956cfbc6b80bfdf7bc95997",
+        "packet_sha256": "0d86b9254baa61217f2802db820c3a7c8d12904ba79d37afd99c251072203ace",
+        "reviewer_slot": "reviewer-b",
+        "target_count": 18
+      }
+    ],
+    "publication_inputs": [
+      {
+        "artifact_id": "paper-fendo-1692917-pdf",
+        "relative_path": "publications/frontiers/fendo-2025-1692917.pdf",
+        "sha256": "d182c741e35348fa5837322b370921dc43eab6af14db2bbeabe67ee26aa9d13f",
+        "size_bytes": 2823576
+      },
+      {
+        "artifact_id": "paper-fpos-1500403-pdf",
+        "relative_path": "publications/frontiers/fpos-2025-1500403.pdf",
+        "sha256": "c0e723e2006143714362fd8157bd9472ddecbc2cae5bb20006f2d7b9c8a6a6eb",
+        "size_bytes": 866931
+      },
+      {
+        "artifact_id": "paper-fpsyg-1473953-pdf",
+        "relative_path": "publications/frontiers/fpsyg-2024-1473953.pdf",
+        "sha256": "60559b9c6f4436b78eb67df68222e41bba89e596e05022745bb51be5b9f679e9",
+        "size_bytes": 7875359
+      },
+      {
+        "artifact_id": "paper-plosone-0321641-pdf",
+        "relative_path": "publications/plos/pone-0321641.pdf",
+        "sha256": "d368dacb231770c69c2fe3507da918b384fc2ebf2c44fc5069489535e34eeb6c",
+        "size_bytes": 2206292
+      }
+    ],
+    "source_tree": {
+      "archive_name": "source-tree-v0.15.tar",
+      "sha256": "dbe998b2017aa616001d983df8f3c136d28f3dbd8c5183dcecc6bfcc9e1bd167"
+    }
+  },
+  "schema_version": 1,
+  "source_commit_sha": "d6ffdf7debd63281e0db5934e3d4b7ebafb98311",
+  "status": "repository_side_external_archive_handoff_ready_awaiting_independent_archive"
+}

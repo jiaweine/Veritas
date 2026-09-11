@@ -1,0 +1,116 @@
+name: capture-v015-pretest-witness
+
+on:
+  push:
+    branches:
+      - evidence/v0.15-real-paper-corpus
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_COMMIT: d6ffdf7debd63281e0db5934e3d4b7ebafb98311
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e '.[pdf]'
+
+      - name: Materialize exact publication root
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v015-witness-input-root"
+          mkdir -p "$root/publications/frontiers" "$root/publications/plos"
+          curl_args=(--fail --location --retry 3 --retry-all-errors --connect-timeout 20 --max-time 180 --user-agent "Veritas-pretest-witness/0.15")
+          curl "${curl_args[@]}" "https://www.frontiersin.org/journals/endocrinology/articles/10.3389/fendo.2025.1692917/pdf" -o "$root/publications/frontiers/fendo-2025-1692917.pdf"
+          curl "${curl_args[@]}" "https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2024.1473953/pdf" -o "$root/publications/frontiers/fpsyg-2024-1473953.pdf"
+          curl "${curl_args[@]}" "https://www.frontiersin.org/journals/political-science/articles/10.3389/fpos.2025.1500403/pdf" -o "$root/publications/frontiers/fpos-2025-1500403.pdf"
+          curl "${curl_args[@]}" "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0321641&type=printable" -o "$root/publications/plos/pone-0321641.pdf"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from veritas.extraction_input_artifacts import (
+              load_extraction_input_artifact_manifest,
+              verify_extraction_input_artifact_manifest,
+          )
+          root = Path(os.environ["RUNNER_TEMP"]) / "v015-witness-input-root"
+          manifest = load_extraction_input_artifact_manifest(
+              "benchmark/extraction/extraction_input_artifact_manifest_v0.15.json"
+          )
+          verify_extraction_input_artifact_manifest(manifest, root)
+          PY
+
+      - name: Materialize deterministic frozen source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$SOURCE_COMMIT^{commit}"
+          git archive --format=tar --prefix=veritas-source/ "$SOURCE_COMMIT" > "$RUNNER_TEMP/source-tree-v0.15.tar"
+          git archive --format=tar --prefix=veritas-source/ "$SOURCE_COMMIT" > "$RUNNER_TEMP/source-tree-v0.15-repeat.tar"
+          cmp --silent "$RUNNER_TEMP/source-tree-v0.15.tar" "$RUNNER_TEMP/source-tree-v0.15-repeat.tar"
+          rm "$RUNNER_TEMP/source-tree-v0.15-repeat.tar"
+
+      - name: Build repository-side pretest witness commitment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/build_extraction_pretest_witness_commitment.py \
+            --source-commit-sha "$SOURCE_COMMIT" \
+            --sampling-frame benchmark/corpus/evidence_sampling_frame_v0.15.json \
+            --seed-manifest benchmark/extraction/evidence_seed_manifest_v0.15.json \
+            --evidence-plan benchmark/extraction/evidence_plan_v0.15.json \
+            --pilot-threshold-policy benchmark/extraction/pretest_pilot_threshold_policy_v0.15.json \
+            --review-packet-commitment benchmark/extraction/review_packet_commitment_v0.15.json \
+            --execution-plan benchmark/extraction/extraction_execution_plan_v0.15.json \
+            --input-artifact-manifest benchmark/extraction/extraction_input_artifact_manifest_v0.15.json \
+            --input-artifact-root "$RUNNER_TEMP/v015-witness-input-root" \
+            --source-tree "$RUNNER_TEMP/source-tree-v0.15.tar" \
+            --parser-registry benchmark/extraction/execution_artifacts_v0.15/parser_registry.json \
+            --numerical-runtime benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json \
+            --execution-command benchmark/extraction/execution_artifacts_v0.15/execution_command.json \
+            --output "$RUNNER_TEMP/pretest_external_witness_commitment_v0.15.json" \
+            | tee "$RUNNER_TEMP/pretest_external_witness_commitment_v0.15.sha256"
+          cmp --silent \
+            "$RUNNER_TEMP/pretest_external_witness_commitment_v0.15.json" \
+            benchmark/extraction/pretest_external_witness_commitment_v0.15.json
+          python - <<'PY'
+          import json
+          import os
+          from hashlib import sha256
+          from pathlib import Path
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          generated = temp / "pretest_external_witness_commitment_v0.15.json"
+          committed = Path("benchmark/extraction/pretest_external_witness_commitment_v0.15.json")
+          payload = json.loads(generated.read_text(encoding="utf-8"))
+          if sha256(generated.read_bytes()).hexdigest() != "1f36c2ff4d27ddf82b099ee6ff1a3501a39cd98b554c17f59e7d2b1ebe4fc5d8":
+              raise SystemExit("generated witness commitment SHA-256 differs from frozen identity")
+          if generated.read_bytes() != committed.read_bytes():
+              raise SystemExit("generated witness commitment differs from repository commitment")
+          if payload["independent_external_anchor_present"] is not False:
+              raise SystemExit("repository-side witness must not claim an independent external anchor")
+          if payload["external_trust_root_pinned"] is not False:
+              raise SystemExit("repository-side witness must not claim a pinned external trust root")
+          if payload["external_trust_policy_built"] is not False:
+              raise SystemExit("repository-side witness must not claim an external trust policy")
+          if payload["executed_v015_development_or_test_predictions"] is not False:
+              raise SystemExit("witness capture must not run v0.15 DEVELOPMENT/TEST predictions")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v015-pretest-witness-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/pretest_external_witness_commitment_v0.15.json
+            ${{ runner.temp }}/pretest_external_witness_commitment_v0.15.sha256
+            benchmark/extraction/pretest_external_witness_commitment_v0.15.json
+          if-no-files-found: error
+          retention-days: 90

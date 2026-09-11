@@ -1,0 +1,93 @@
+from veritas.extraction_provenance import (
+    AttestedExtractionEvidenceReleaseReceipt,
+    ExternallyVerifiedExtractionEvidenceReceipt,
+    ExternallyVerifiedExtractionRunReceipt,
+    ExtractionArchivedThresholdRun,
+    ExtractionExecutionPlan,
+    ExtractionExternalTrustPolicy,
+    ExtractionExternalTrustRoot,
+    ExtractionInputArtifact,
+    ExtractionInputArtifactManifest,
+    ExtractionReleaseEvidenceBundle,
+    PrecommittedExternalExtractionRunReceipt,
+    attested_extraction_evidence_release_receipt_json_payload,
+    build_attested_extraction_evidence_release_receipt,
+    build_extraction_execution_plan_from_artifacts,
+    build_extraction_external_provenance_statement,
+    build_extraction_external_trust_policy,
+    build_extraction_input_artifact_manifest,
+    extraction_adjudication_json_payload,
+    extraction_evidence_plan_json_payload,
+    extraction_execution_artifact_sha256,
+    extraction_execution_plan_json_payload,
+    extraction_input_artifact_manifest_payload,
+    extraction_release_evidence_bundle_payload,
+    extraction_review_record_json_payload,
+    extraction_review_submission_json_payload,
+    load_attested_extraction_evidence_release_receipt,
+    load_extraction_adjudication,
+    load_extraction_evidence_plan,
+    load_extraction_execution_plan,
+    load_extraction_external_trust_policy,
+    load_extraction_external_trust_root,
+    load_extraction_input_artifact_manifest,
+    load_extraction_prediction_artifact,
+    load_extraction_release_evidence_bundle,
+    load_extraction_review_record,
+    load_extraction_review_submission,
+    load_extraction_signed_external_provenance,
+    rebuild_attested_extraction_evidence_release_receipt_from_archive,
+    verify_external_extraction_provenance,
+    verify_external_extraction_provenance_for_run,
+    verify_extraction_execution_plan_artifacts,
+    verify_extraction_input_artifact_manifest,
+    verify_extraction_release_source_artifacts,
+    verify_precommitted_external_extraction_provenance_for_run,
+)
+
+
+def test_extraction_provenance_facade_exports_stable_public_symbols() -> None:
+    assert ExtractionExecutionPlan.__name__ == "ExtractionExecutionPlan"
+    assert ExtractionExternalTrustRoot.__name__ == "ExtractionExternalTrustRoot"
+    assert ExtractionExternalTrustPolicy.__name__ == "ExtractionExternalTrustPolicy"
+    assert ExtractionInputArtifact.__name__ == "ExtractionInputArtifact"
+    assert ExtractionInputArtifactManifest.__name__ == "ExtractionInputArtifactManifest"
+    assert ExtractionArchivedThresholdRun.__name__ == "ExtractionArchivedThresholdRun"
+    assert ExtractionReleaseEvidenceBundle.__name__ == "ExtractionReleaseEvidenceBundle"
+    assert AttestedExtractionEvidenceReleaseReceipt.__name__.startswith("AttestedExtraction")
+    assert ExternallyVerifiedExtractionEvidenceReceipt.__name__.startswith("ExternallyVerified")
+    assert ExternallyVerifiedExtractionRunReceipt.__name__.startswith("ExternallyVerified")
+    assert PrecommittedExternalExtractionRunReceipt.__name__.startswith("PrecommittedExternal")
+    assert callable(attested_extraction_evidence_release_receipt_json_payload)
+    assert callable(build_attested_extraction_evidence_release_receipt)
+    assert callable(build_extraction_execution_plan_from_artifacts)
+    assert callable(build_extraction_external_provenance_statement)
+    assert callable(build_extraction_external_trust_policy)
+    assert callable(build_extraction_input_artifact_manifest)
+    assert callable(extraction_adjudication_json_payload)
+    assert callable(extraction_evidence_plan_json_payload)
+    assert callable(extraction_execution_artifact_sha256)
+    assert callable(extraction_execution_plan_json_payload)
+    assert callable(extraction_input_artifact_manifest_payload)
+    assert callable(extraction_release_evidence_bundle_payload)
+    assert callable(extraction_review_record_json_payload)
+    assert callable(extraction_review_submission_json_payload)
+    assert callable(load_attested_extraction_evidence_release_receipt)
+    assert callable(load_extraction_adjudication)
+    assert callable(load_extraction_evidence_plan)
+    assert callable(load_extraction_execution_plan)
+    assert callable(load_extraction_external_trust_policy)
+    assert callable(load_extraction_external_trust_root)
+    assert callable(load_extraction_input_artifact_manifest)
+    assert callable(load_extraction_prediction_artifact)
+    assert callable(load_extraction_release_evidence_bundle)
+    assert callable(load_extraction_review_record)
+    assert callable(load_extraction_review_submission)
+    assert callable(load_extraction_signed_external_provenance)
+    assert callable(rebuild_attested_extraction_evidence_release_receipt_from_archive)
+    assert callable(verify_external_extraction_provenance)
+    assert callable(verify_external_extraction_provenance_for_run)
+    assert callable(verify_extraction_execution_plan_artifacts)
+    assert callable(verify_extraction_input_artifact_manifest)
+    assert callable(verify_extraction_release_source_artifacts)
+    assert callable(verify_precommitted_external_extraction_provenance_for_run)

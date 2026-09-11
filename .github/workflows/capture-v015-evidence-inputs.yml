@@ -1,0 +1,137 @@
+name: capture-v015-evidence-inputs
+
+on:
+  push:
+    branches:
+      - evidence/v0.15-real-paper-corpus
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - name: Download exact publication inputs from frozen seed URLs
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v015-input-root"
+          mkdir -p "$root/publications/frontiers" "$root/publications/plos"
+          curl_args=(--fail --location --retry 3 --retry-all-errors --connect-timeout 20 --max-time 180 --user-agent "Veritas-evidence-input-capture/0.15")
+          curl "${curl_args[@]}" "https://www.frontiersin.org/journals/endocrinology/articles/10.3389/fendo.2025.1692917/pdf" -o "$root/publications/frontiers/fendo-2025-1692917.pdf"
+          curl "${curl_args[@]}" "https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2024.1473953/pdf" -o "$root/publications/frontiers/fpsyg-2024-1473953.pdf"
+          curl "${curl_args[@]}" "https://www.frontiersin.org/journals/political-science/articles/10.3389/fpos.2025.1500403/pdf" -o "$root/publications/frontiers/fpos-2025-1500403.pdf"
+          curl "${curl_args[@]}" "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0321641&type=printable" -o "$root/publications/plos/pone-0321641.pdf"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "v015-input-root"
+          expected = (
+              "publications/frontiers/fendo-2025-1692917.pdf",
+              "publications/frontiers/fpsyg-2024-1473953.pdf",
+              "publications/frontiers/fpos-2025-1500403.pdf",
+              "publications/plos/pone-0321641.pdf",
+          )
+          for relative in expected:
+              path = root / relative
+              raw = path.read_bytes()
+              if not raw.startswith(b"%PDF-"):
+                  raise SystemExit(f"not a PDF by magic bytes: {relative}")
+              if len(raw) < 100_000:
+                  raise SystemExit(f"unexpectedly small publication PDF: {relative} ({len(raw)} bytes)")
+          PY
+      - name: Rebuild and verify frozen publication input manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v015-input-root"
+          out="$RUNNER_TEMP/extraction_input_artifact_manifest_v0.15.json"
+          python scripts/build_extraction_input_artifact_manifest.py \
+            --root "$root" \
+            --artifact "paper-fendo-1692917-pdf=publications/frontiers/fendo-2025-1692917.pdf" \
+            --artifact "paper-fpsyg-1473953-pdf=publications/frontiers/fpsyg-2024-1473953.pdf" \
+            --artifact "paper-fpos-1500403-pdf=publications/frontiers/fpos-2025-1500403.pdf" \
+            --artifact "paper-plosone-0321641-pdf=publications/plos/pone-0321641.pdf" \
+            --output "$out" | tee "$RUNNER_TEMP/extraction_input_artifact_manifest_v0.15.sha256"
+          cmp --silent "$out" benchmark/extraction/extraction_input_artifact_manifest_v0.15.json || {
+            echo "downloaded publication bytes differ from the frozen v0.15 input manifest" >&2
+            diff -u benchmark/extraction/extraction_input_artifact_manifest_v0.15.json "$out" || true
+            exit 1
+          }
+          test "$(cat "$RUNNER_TEMP/extraction_input_artifact_manifest_v0.15.sha256")" = "d318a546bdb9801d24a95db26c6ba4c44ed38a7262d3a31eccb728c89edf0f74"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from veritas.extraction_input_artifacts import (
+              load_extraction_input_artifact_manifest,
+              verify_extraction_input_artifact_manifest,
+          )
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          root = temp / "v015-input-root"
+          manifest = load_extraction_input_artifact_manifest(
+              temp / "extraction_input_artifact_manifest_v0.15.json"
+          )
+          verify_extraction_input_artifact_manifest(manifest, root)
+          if len(manifest.artifacts) != 4:
+              raise SystemExit("expected exactly four publication input artifacts")
+          PY
+          sha256sum "$root"/publications/frontiers/*.pdf "$root"/publications/plos/*.pdf | tee "$RUNNER_TEMP/publication-input-sha256s.txt"
+          wc -c "$root"/publications/frontiers/*.pdf "$root"/publications/plos/*.pdf | tee "$RUNNER_TEMP/publication-input-sizes.txt"
+      - name: Build and verify blinded reviewer packet bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          packets="$RUNNER_TEMP/reviewer-packets-v0.15"
+          python scripts/build_extraction_review_packets.py \
+            --seed benchmark/extraction/evidence_seed_manifest_v0.15.json \
+            --output-dir "$packets" \
+            --reviewer-slots reviewer-a reviewer-b \
+            | tee "$RUNNER_TEMP/review-packet-build-v0.15.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          temp = Path(os.environ["RUNNER_TEMP"])
+          built = json.loads((temp / "review-packet-build-v0.15.json").read_text(encoding="utf-8"))
+          commitment = json.loads(
+              Path("benchmark/extraction/review_packet_commitment_v0.15.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          actual = {row["reviewer_slot"]: row["packet_sha256"] for row in built["packets"]}
+          expected = {
+              row["reviewer_slot"]: row["packet_sha256"]
+              for row in commitment["reviewer_packets"]
+          }
+          if actual != expected:
+              raise SystemExit(f"review packet commitment mismatch: {actual!r} != {expected!r}")
+          if built["legacy_values_included"] is not False:
+              raise SystemExit("review packets must not include legacy values")
+          if built["other_reviewer_submissions_included"] is not False:
+              raise SystemExit("review packets must remain isolated from other reviewer submissions")
+          PY
+          sha256sum "$packets"/*.json | tee "$RUNNER_TEMP/reviewer-packet-file-sha256s.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v015-publication-inputs-and-review-packets-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/v015-input-root/
+            ${{ runner.temp }}/extraction_input_artifact_manifest_v0.15.json
+            ${{ runner.temp }}/extraction_input_artifact_manifest_v0.15.sha256
+            ${{ runner.temp }}/publication-input-sha256s.txt
+            ${{ runner.temp }}/publication-input-sizes.txt
+            ${{ runner.temp }}/reviewer-packets-v0.15/
+            ${{ runner.temp }}/review-packet-build-v0.15.json
+            ${{ runner.temp }}/reviewer-packet-file-sha256s.txt
+          if-no-files-found: error
+          retention-days: 90

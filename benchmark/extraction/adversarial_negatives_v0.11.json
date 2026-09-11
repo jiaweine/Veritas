@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "status": "adversarial_contract_not_locked_gold",
+  "production_hard_finding_authorized": false,
+  "rule": "These cases test fail-closed extraction behavior. They do not assert anything about the integrity of a real paper.",
+  "cases": [
+    {
+      "case_id": "repeated-row-label-across-displays",
+      "family": "repeated_label",
+      "fixture_kind": "synthetic_layout",
+      "expected_decision": "non_accept",
+      "required_behavior": "Without an exact display-item locator, a row label repeated across multiple tables must not be promoted."
+    },
+    {
+      "case_id": "continuation-table-without-parent-identity",
+      "family": "continuation_table",
+      "fixture_kind": "synthetic_layout",
+      "expected_decision": "non_accept",
+      "required_behavior": "A continuation table must not inherit parent-table identity unless the continuation relationship is explicitly resolved."
+    },
+    {
+      "case_id": "multi-panel-duplicate-row-label",
+      "family": "multi_panel",
+      "fixture_kind": "synthetic_layout",
+      "expected_decision": "non_accept",
+      "required_behavior": "If the same row appears in multiple panels, panel identity is required before field promotion."
+    },
+    {
+      "case_id": "footnote-number-near-estimate",
+      "family": "footnote_pollution",
+      "fixture_kind": "synthetic_layout",
+      "expected_decision": "non_accept",
+      "required_behavior": "Footnote numerals or significance annotations must not be bound as coefficient, standard-error, statistic, or p-value fields."
+    },
+    {
+      "case_id": "ocr-like-character-confusion",
+      "family": "ocr_like_corruption",
+      "fixture_kind": "synthetic_text_corruption",
+      "expected_decision": "non_accept",
+      "required_behavior": "Ambiguous OCR-like substitutions such as O/0, l/1, Unicode minus loss, or split decimals must abstain unless independently resolved."
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "as_of": "2026-09-07",
+  "benchmark_confidence": 0.95,
+  "bound_evidence_plan_sha256": "1718d57c2736260f9a49ebb844f9935df2f98bdefe8a1009f0293f9d737b9069",
+  "current_design_power": {
+    "development_article_families": 2,
+    "one_wrong_accept_clopper_pearson_upper_bound": 0.9746794344808963,
+    "one_wrong_accept_satisfies_pilot_policy": false,
+    "zero_wrong_accept_clopper_pearson_upper_bound": 0.776393202250021,
+    "zero_wrong_accept_satisfies_pilot_policy": true
+  },
+  "interpretation": "This is a deliberately non-production pilot policy for a four-family evidence seed. At the frozen two-family DEVELOPMENT allocation, the 0.80 family-error upper-bound limit admits the exact 95% Clopper-Pearson floor only when there are zero critical-family wrong accepts; one wrong-accept family fails. The policy does not establish a low population error rate.",
+  "production_authorized": false,
+  "production_boundary": "The repository default 0.05 family-error upper-bound target is not weakened or replaced. A production-grade claim requires a materially larger independently reviewed corpus; at 95% confidence, 59 DEVELOPMENT families with zero wrong accepts are required even to make a 0.05 upper bound attainable.",
+  "schema_version": 1,
+  "status": "frozen_nonproduction_pilot_threshold_policy",
+  "threshold_policy": {
+    "max_critical_family_wrong_accept_upper_bound": 0.8,
+    "min_accepted_full_accuracy": 0.99,
+    "min_selective_coverage": 0.25,
+    "schema_version": 1
+  },
+  "threshold_policy_sha256": "c8e9c7b65106460a49caa803b81b89eb2807a67a7cfb159f9cecb36b26a6fb55"
+}

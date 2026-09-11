@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "case_id": "ssrn-7138278-model-lb-v1.3.1",
+  "status": "execution_completed_review_pending",
+  "execution_readiness": "completed",
+  "production_evidence_readiness": "blocked_pending_independent_review",
+  "benchmark_role": "author_package_pipeline_shakedown_only",
+  "agent_independence_scoring": "prohibited",
+  "as_of": "2026-09-02",
+  "paper": {
+    "paper_id": "doi:10.2139/ssrn.7138278",
+    "title": "Level Breaks and Finite-Sample GLS Detrending: The Point-Optimal Unit Root Test and the Purchasing Power Parity Puzzle",
+    "publication_status": "public_preprint_not_peer_reviewed",
+    "public_version": "SSRN posting dated 2026-08-03; manuscript dated 2026-07-18",
+    "article_version_status": "public_preprint_identity_pinned_by_ssrn_id_and_posting_date",
+    "package_mapping_note": "The public SSRN abstract matches the v1.3.1 empirical PPP classification. Later v2.x package releases use a changed calibration/output and must not be substituted for this public preprint when evaluating the selected claim."
+  },
+  "replication_package": {
+    "repository": "https://github.com/ricardogs-econ/model-LB-replication",
+    "release": "v1.3.1",
+    "release_date": "2026-07-26",
+    "git_commit_sha": "4ea6e5e4c9cf2088aa76f406705f5620e561e199",
+    "zenodo_version_doi": "10.5281/zenodo.21610828",
+    "code_license": "MIT",
+    "local_sandbox_execution_authorized": true,
+    "remote_model_egress_authorized": false,
+    "artifact_identity_status": "git_commit_and_sha256_workspace_manifest_pinned",
+    "source_manifest_sha256": "01e3b5cb3609f8547c35d1ef8a556bfc508ce73f491d94ad97955aa9e0e2633d",
+    "requirements_sha256": "f71d126e1312cfd05d73bc1817f0ceb195e63e404acdb8500148643c1238ea6a",
+    "license_sha256": "e7565a4f18abdc5f87a4695e103f61407ff69b94f11b81b9de6bc902d85e7951",
+    "requirements_git_blob_sha": "c2bb1bf19ffe81ac36932fdbbb323f6a5d7ec821",
+    "frozen_reference_output_git_blob_sha": "1ccf1840cac6ca81da59a7799066aa5dfdbe83ce"
+  },
+  "execution_tracks": {
+    "author_package": {
+      "mode": "author_code",
+      "status": "frozen_execution_attested_review_pending",
+      "entrypoint": "boot_ppp_cbar.py --empirical",
+      "runtime_family": "python_numba",
+      "runtime_version": "3.12",
+      "base_image": "python:3.12-slim@sha256:09f7da3bc104798d0afb40bc08d23ab2da20a76130cec1f2ef170848f5d85217",
+      "pip_version": "26.2.1",
+      "environment_lock": "benchmark/reproduction/environments/model_lb_v1.3.1_py312.lock.txt",
+      "environment_lock_sha256": "41e5bfeaa614edbda9dbe28caa9b474c9be09cc801aeb536f7abb26c0a1abde3",
+      "network_allowed_during_execution": false,
+      "source_mount_read_only": true,
+      "veritas_repository_mounted": false,
+      "credentials_mounted": false,
+      "resource_policy": {
+        "max_wall_seconds": 900,
+        "max_memory_mb": 8192,
+        "max_cpus": 4
+      },
+      "environment_status": "precommitted_exact_package_lock_and_immutable_base_image",
+      "expected_output": "empirical/ppp_empirical.csv",
+      "discovery_probe": {
+        "workflow_run_id": 33537386124,
+        "status": "success",
+        "environment_freeze_sha256": "41e5bfeaa614edbda9dbe28caa9b474c9be09cc801aeb536f7abb26c0a1abde3",
+        "output_artifact_sha256": "c7fac038f76b239c77c5bb19fa0e3576765690822155410d6a5bc9cb9232328c",
+        "network_disabled": true,
+        "source_mount_read_only": true,
+        "credentials_mounted": false,
+        "production_authorized": false,
+        "e4_authorized": false
+      },
+      "frozen_rerun": {
+        "workflow_run_id": 33537801212,
+        "workflow_head_sha": "b55eaf07072f5d2a364462d1b8a6b8b0a4cfad22",
+        "artifact_id": 9812365283,
+        "artifact_bundle_sha256": "5fc007f6e70d3dcd7076aedc70ea8f4e614ebec45726027480c78d5fcbf9e4d2",
+        "status": "success",
+        "source_manifest_sha256": "01e3b5cb3609f8547c35d1ef8a556bfc508ce73f491d94ad97955aa9e0e2633d",
+        "environment_freeze_sha256": "41e5bfeaa614edbda9dbe28caa9b474c9be09cc801aeb536f7abb26c0a1abde3",
+        "output_artifact_sha256": "c7fac038f76b239c77c5bb19fa0e3576765690822155410d6a5bc9cb9232328c",
+        "runtime_precommitted": true,
+        "network_disabled": true,
+        "source_mount_read_only": true,
+        "credentials_mounted": false,
+        "production_authorized": false,
+        "e4_authorized": false
+      },
+      "comparison_certificate": "benchmark/reproduction/results/ssrn_7138278_model_lb_v1.3.1_author_package_v0.11.json",
+      "blockers_to_production_authority": [
+        "method-fidelity attestation has not been independently completed",
+        "paper target has not completed second-review/adjudication"
+      ]
+    },
+    "independent_reimplementation": {
+      "mode": "independent_reimplementation",
+      "status": "prohibited_for_scoring",
+      "author_code_visible": false,
+      "author_output_visible": false,
+      "network_allowed": false,
+      "reason": "This case is an author-package engineering shakedown, not a contamination-controlled agent-independence benchmark."
+    }
+  },
+  "target_contract": {
+    "status": "selected_and_committed_orchestrator_only",
+    "target_id": "cad-config-faithful-pvalue",
+    "claim_id": "ssrn-7138278-abstract-cad-boundary",
+    "metric": "p_value",
+    "source_descriptor": "SSRN public abstract, Canadian-dollar boundary statement",
+    "target_commitment_sha256": "1f8caed19753fd1a1cfc3135ae150e025d873dd44553d7a11d420a9016b95856",
+    "reported_numeric_value_stored_in_repository": false,
+    "reproduced_value_binding": {
+      "format": "csv",
+      "row_match": {
+        "currency": "CAD"
+      },
+      "value_column": "pvalue_cf"
+    },
+    "reviewer_a_complete": true,
+    "reviewer_b_complete": false,
+    "adjudication_complete": false
+  },
+  "authority": {
+    "production_authorized": false,
+    "e4_authorized": false,
+    "maximum_current_evidence": "UNVERIFIABLE",
+    "reason": "The author package has completed a precommitted frozen isolated rerun and a descriptive MATCH certificate exists. Independent target adjudication and method-fidelity attestation remain incomplete, so production evidence promotion is still blocked."
+  },
+  "readiness_gates": {
+    "article_version_pinned": true,
+    "artifact_terms_verified": true,
+    "artifact_hashes_pinned": true,
+    "runtime_pinned": true,
+    "method_spec_double_reviewed": false,
+    "target_double_reviewed": false,
+    "target_sealed": true,
+    "author_package_execution_attested": true
+  },
+  "version_drift_control": {
+    "later_release_observed": "v2.0.1",
+    "later_release_must_not_replace_v1_3_1_for_this_target": true,
+    "reason": "The selected public-preprint claim is version-sensitive; later package output differs and belongs to a later manuscript state."
+  },
+  "source_evidence": [
+    {
+      "kind": "public_preprint",
+      "locator": "https://ssrn.com/abstract=7138278"
+    },
+    {
+      "kind": "replication_release",
+      "locator": "https://github.com/ricardogs-econ/model-LB-replication/tree/v1.3.1"
+    },
+    {
+      "kind": "replication_archive",
+      "locator": "https://doi.org/10.5281/zenodo.21610828"
+    }
+  ],
+  "rule": "The reported numeric target is intentionally absent. Only its pre-run commitment and post-run comparison status are stored. This packet and all repository URLs are orchestrator provenance and must never be mounted into an independent code-agent workspace."
+}

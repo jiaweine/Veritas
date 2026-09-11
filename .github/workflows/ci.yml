@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e '.[dev,pdf,attestation]'
+      - run: ruff check src tests
+      - run: pytest -q
+      - run: python scripts/benchmark_pdf_regression.py
+      - run: python scripts/benchmark_pdf_geometry_holdout.py
+      - name: Adversarial extraction fail-closed benchmark
+        run: python scripts/benchmark_extraction_adversarial.py
+      - name: BMC grouped regression-header probe (non-gating)
+        continue-on-error: true
+        run: python scripts/probe_bmc_grouped_headers.py
+      - name: Real PDF extraction smoke (non-gating)
+        continue-on-error: true
+        run: python scripts/smoke_real_pdf.py
+      - name: Real PDF fail-closed controls (non-gating)
+        continue-on-error: true
+        run: python scripts/smoke_real_pdf_fail_closed.py
+      - name: Real PDF selective-promotion benchmark (non-gating)
+        continue-on-error: true
+        run: python scripts/benchmark_real_pdf_promotion.py

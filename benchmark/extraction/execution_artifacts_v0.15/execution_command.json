@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "status": "pretest_nonproduction_execution_command",
+  "production_authorized": false,
+  "source_commit_sha": "d6ffdf7debd63281e0db5934e3d4b7ebafb98311",
+  "entrypoint": "scripts/run_extraction_evidence_threshold.py",
+  "review_packet": {
+    "reviewer_slot": "reviewer-a",
+    "canonical_packet_sha256": "d5dbb4118d376915f4b5c4c089a1677c362fa7d3ef1f7cedd481b49cf171a8bb"
+  },
+  "paper_artifacts": {
+    "doi:10.1371/journal.pone.0321641": "paper-plosone-0321641-pdf",
+    "doi:10.3389/fendo.2025.1692917": "paper-fendo-1692917-pdf",
+    "doi:10.3389/fpos.2025.1500403": "paper-fpos-1500403-pdf",
+    "doi:10.3389/fpsyg.2024.1473953": "paper-fpsyg-1473953-pdf"
+  },
+  "argv_template": [
+    "python",
+    "scripts/run_extraction_evidence_threshold.py",
+    "--input-artifact-manifest",
+    "/evidence/extraction_input_artifact_manifest_v0.15.json",
+    "--input-artifact-root",
+    "/evidence/input-root",
+    "--review-packet",
+    "/evidence/reviewer-a.review-packet.json",
+    "--review-packet-sha256",
+    "d5dbb4118d376915f4b5c4c089a1677c362fa7d3ef1f7cedd481b49cf171a8bb",
+    "--target-manifest",
+    "{target_manifest}",
+    "--paper-artifact",
+    "doi:10.1371/journal.pone.0321641=paper-plosone-0321641-pdf",
+    "--paper-artifact",
+    "doi:10.3389/fendo.2025.1692917=paper-fendo-1692917-pdf",
+    "--paper-artifact",
+    "doi:10.3389/fpos.2025.1500403=paper-fpos-1500403-pdf",
+    "--paper-artifact",
+    "doi:10.3389/fpsyg.2024.1473953=paper-fpsyg-1473953-pdf",
+    "--threshold-id",
+    "{threshold_id}",
+    "--threshold",
+    "{threshold}",
+    "--output",
+    "{prediction_artifact}"
+  ],
+  "permitted_substitutions": [
+    "prediction_artifact",
+    "target_manifest",
+    "threshold",
+    "threshold_id"
+  ],
+  "isolation_requirements": {
+    "network_disabled": true,
+    "source_mount_read_only": true,
+    "credentials_mounted": false
+  },
+  "forbidden_inputs": [
+    "benchmark/extraction/evidence_seed_manifest_v0.15.json",
+    "reviewed_gold_values",
+    "other_reviewer_submissions",
+    "test_outcomes"
+  ],
+  "note": "The execution command consumes byte-verified local publication files, one precommitted blinded reviewer packet, and a derived DEVELOPMENT or TEST target manifest. It does not read the value-bearing seed manifest or reviewed gold. Substitution of split target manifest and frozen threshold point is later bound by each execution attestation."
+}

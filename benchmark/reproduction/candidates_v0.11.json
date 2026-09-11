@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "status": "sampling_frame_only_no_reported_targets",
+  "agent_independence_status": "no_current_candidate_eligible",
+  "as_of": "2026-09-02",
+  "rule": "This manifest selects engineering candidates only. It contains no paper numeric targets and must never be mounted into an independent code-agent workspace. Numeric targets are independently extracted, reviewed, committed, and kept orchestrator-only until the frozen run is complete.",
+  "selection_principles": [
+    "separate author-package rerun from independent reimplementation",
+    "do not infer model-memory holdout status from a replication package publication date",
+    "for agent-independence scoring, prefer papers and data whose first public release is demonstrably after the evaluated model's documented training cutoff, or use an externally held-out corpus",
+    "pin article version and every input artifact before execution",
+    "verify artifact-level access and model-egress rights before mounting data",
+    "do not use reported outcomes, author code, output files, paper URLs, or repository URLs in the independent agent view",
+    "do not treat a successful engineering shakedown as benchmark evidence"
+  ],
+  "candidates": [
+    {
+      "candidate_id": "qje-2019-tanzania-complementarities",
+      "paper_id": "doi:10.1093/qje/qjz010",
+      "year": 2019,
+      "method_family": "cluster-randomized factorial treatment regression",
+      "replication_package": "doi:10.7910/DVN/AKVGQ7",
+      "package_status": "public replication package; external reproduction-platform record says enough materials are available",
+      "intended_role": "pipeline_shakedown_and_author_package_rerun",
+      "blind_agent_benchmark_status": "blocked_pending_contamination_control",
+      "blockers": [
+        "verify file-level Dataverse licenses and any model-egress restrictions",
+        "pin a concrete paper and replication-package version",
+        "independently extract and double-review the MethodSpecification",
+        "seal a claim-target contract without exposing numeric reported values to the agent",
+        "mitigate the high memorization risk of a widely available 2019 paper and replication package"
+      ]
+    },
+    {
+      "candidate_id": "aejep-2026-polluted-ipos",
+      "paper_id": "doi:10.1257/pol.20240900",
+      "year": 2026,
+      "method_family": "empirical finance regression and instrumental-variable analyses",
+      "replication_package": "doi:10.3886/E237301V1",
+      "package_status": "openICPSR V1 published 2026-03-27; package describes data and Stata code for all empirical analyses, tables, and figures",
+      "public_history_note": "Public working-paper/conference versions existed by 2022. The 2026 replication-package date therefore does not establish a post-training or contamination-reduced paper holdout.",
+      "intended_role": "recent_replication_package_pipeline_candidate",
+      "blind_agent_benchmark_status": "blocked_pending_contamination_control",
+      "blockers": [
+        "pin the exact forthcoming-paper version matched by replication package V1; public earlier versions used different reporting/table organization",
+        "verify artifact-level download, license, and model-egress permissions",
+        "select one narrow main-claim display item before reading author output files",
+        "independently extract and double-review the design-specific MethodSpecification",
+        "commit paper target cells before agent execution and keep them orchestrator-only",
+        "decide whether author-code rerun requires licensed Stata while independent reimplementation uses a separate supported runtime",
+        "do not score this paper as a contamination-reduced CodeAgent independence benchmark solely because package V1 was published in 2026"
+      ]
+    },
+    {
+      "candidate_id": "openicpsr-223703-v4",
+      "paper_id": "openicpsr:E223703V4",
+      "year": 2025,
+      "method_family": "observational prediction and partial-information analysis",
+      "replication_package": "doi:10.3886/E223703V4",
+      "package_status": "public data-and-code candidate already present in the real-corpus sampling frame",
+      "intended_role": "alternate_recent_pipeline_candidate",
+      "blind_agent_benchmark_status": "blocked_pending_contamination_control",
+      "blockers": [
+        "verify the currently downloadable artifact set and exact version",
+        "verify licenses and model-egress permissions",
+        "establish the paper/data first-public-release history relative to the evaluated model's documented training cutoff",
+        "complete blinded MethodSpecification review",
+        "seal a narrow claim-target contract before code-agent dispatch"
+      ]
+    },
+    {
+      "candidate_id": "aejmic-2026-rugged-landscape",
+      "paper_id": "doi:10.1257/mic.20230266",
+      "year": 2026,
+      "method_family": "dynamic spatial-competition computational model and Monte Carlo simulation",
+      "replication_package": "doi:10.3886/E238082V1",
+      "package_status": "openICPSR V1 published 2026-04-01; Python_Files contains main.py, montecarlo.py, Cython helper/build files, requirements.txt, and table1-table3 CSV outputs",
+      "public_history_note": "A public working-paper version existed by 2022, so the 2026 package is not evidence of model-memory holdout.",
+      "intended_role": "preferred_first_python_author_package_pipeline_shakedown",
+      "blind_agent_benchmark_status": "blocked_pending_contamination_control",
+      "blockers": [
+        "capture and independently review artifact-level openICPSR download/license terms before ingesting package bytes",
+        "pin the publication-visible article version matched to package V1 rather than assuming an older public draft is identical",
+        "hash the exact Python source, requirements, and reference output files after authorized retrieval",
+        "select one narrow publication-visible computational table or figure target and double-review its identity before sealing numeric targets",
+        "freeze a Python runtime compatible with the package requirements and Cython build before author-package rerun",
+        "do not use author table CSV outputs or author source code in a later independent-agent workspace"
+      ]
+    }
+  ]
+}

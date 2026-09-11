@@ -1,0 +1,50 @@
+{
+  "evidence_plan": {
+    "canonical_sha256": "1718d57c2736260f9a49ebb844f9935df2f98bdefe8a1009f0293f9d737b9069",
+    "json_file_sha256": "3d09330bb71f37715f31bc268f92ef329bbd918a7eeede91117c0721bbbeb51f",
+    "threshold_grid_sha256": "e8a9a3897cf847940eab1cee89f19f4014afa974cba996bd4677fc702cb5e6c7"
+  },
+  "executed_v015_development_or_test_predictions": false,
+  "execution_artifacts": {
+    "execution_command_sha256": "02eba08853a02c99f831fd13a98ee697f60bb030f5e6f5301c6101fc158a3393",
+    "input_artifact_manifest_sha256": "d318a546bdb9801d24a95db26c6ba4c44ed38a7262d3a31eccb728c89edf0f74",
+    "numerical_runtime_sha256": "45bd39ca70eea67d02d107ad6fe7f7bb5a1eeffababf00b5ed806f39e8f37f76",
+    "parser_registry_sha256": "9d18fa6795d0fd20c8dee8de61acb0d9ef88c1bac77843ccab3c8ec5a328837c",
+    "source_tree_sha256": "dbe998b2017aa616001d983df8f3c136d28f3dbd8c5183dcecc6bfcc9e1bd167"
+  },
+  "execution_plan": {
+    "canonical_sha256": "ea34c3840fefd3f3d25c48464f62667ce5525479615b1deea6c019764bdd9a21",
+    "json_file_sha256": "bc02297f577998b3fd778d99c32045bae79ee6a3a6b262818c45852ccb3994df"
+  },
+  "external_trust_policy_built": false,
+  "external_trust_root_pinned": false,
+  "independent_external_anchor_present": false,
+  "isolation_contract": {
+    "credentials_mounted": false,
+    "network_disabled": true,
+    "source_mount_read_only": true
+  },
+  "note": "This deterministic commitment packages repository-side pre-TEST identities for later independent historical anchoring. It does not itself establish independent governance, trusted key ownership, an external trust root/policy, commit-to-source-archive provenance, human review, DEVELOPMENT calibration, TEST evaluation, or production authority.",
+  "pilot_threshold_policy": {
+    "json_file_sha256": "6cbf6a3514b65f67d748a12baecffff07bb665551c3470c6a90ee577c29efa59",
+    "policy_sha256": "c8e9c7b65106460a49caa803b81b89eb2807a67a7cfb159f9cecb36b26a6fb55"
+  },
+  "production_authorized": false,
+  "review_packets": {
+    "commitment_json_file_sha256": "0a04fcda6d557a7862a0b69a0a502111af8f0b4845261f9a95b34fe2287e880d",
+    "reviewer_a_packet_sha256": "d5dbb4118d376915f4b5c4c089a1677c362fa7d3ef1f7cedd481b49cf171a8bb",
+    "reviewer_b_packet_sha256": "0d86b9254baa61217f2802db820c3a7c8d12904ba79d37afd99c251072203ace"
+  },
+  "sampling_frame": {
+    "json_file_sha256": "adc32cafceafdf9dd3f39fc5a2fc83e05d7bd5b39095b83aea70d3197a455ddc",
+    "normalized_sha256": "84a6761efa21ad5514fa017d97103fcb1e26f7a9442395ce3357433108a1704b"
+  },
+  "schema_version": 1,
+  "seed_manifest": {
+    "json_file_sha256": "e58ce1ba2aec3c5b9a0210a2b6ccc8a8550571f693ac5f796fd951ab2411974f",
+    "target_universe_sha256": "83e8de78d3f6374288035b5f98e6e9d809ec5dbb5480f8f98c46e99e96e0bbcf"
+  },
+  "source_commit_sha": "d6ffdf7debd63281e0db5934e3d4b7ebafb98311",
+  "status": "repository_side_pretest_witness_commitment_awaiting_independent_anchor",
+  "trusted_commit_to_source_archive_provenance_established": false
+}

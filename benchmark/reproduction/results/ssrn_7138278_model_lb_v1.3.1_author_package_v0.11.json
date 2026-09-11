@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "case_id": "ssrn-7138278-model-lb-v1.3.1",
+  "track": "author_package_frozen_environment_rerun",
+  "status": "descriptive_match_pending_independent_review",
+  "target": {
+    "target_id": "cad-config-faithful-pvalue",
+    "target_commitment_sha256": "1f8caed19753fd1a1cfc3135ae150e025d873dd44553d7a11d420a9016b95856",
+    "reported_numeric_value_stored_in_repository": false,
+    "post_run_unseal_checked_by_orchestrator": true
+  },
+  "execution": {
+    "workflow_run_id": 33537801212,
+    "workflow_head_sha": "b55eaf07072f5d2a364462d1b8a6b8b0a4cfad22",
+    "artifact_id": 9812365283,
+    "artifact_bundle_sha256": "5fc007f6e70d3dcd7076aedc70ea8f4e614ebec45726027480c78d5fcbf9e4d2",
+    "external_git_commit_sha": "4ea6e5e4c9cf2088aa76f406705f5620e561e199",
+    "source_manifest_sha256": "01e3b5cb3609f8547c35d1ef8a556bfc508ce73f491d94ad97955aa9e0e2633d",
+    "requirements_sha256": "f71d126e1312cfd05d73bc1817f0ceb195e63e404acdb8500148643c1238ea6a",
+    "base_image": "python:3.12-slim@sha256:09f7da3bc104798d0afb40bc08d23ab2da20a76130cec1f2ef170848f5d85217",
+    "environment_lock_sha256": "41e5bfeaa614edbda9dbe28caa9b474c9be09cc801aeb536f7abb26c0a1abde3",
+    "environment_freeze_sha256": "41e5bfeaa614edbda9dbe28caa9b474c9be09cc801aeb536f7abb26c0a1abde3",
+    "output_artifact_sha256": "c7fac038f76b239c77c5bb19fa0e3576765690822155410d6a5bc9cb9232328c",
+    "exit_code": 0,
+    "network_disabled": true,
+    "source_mount_read_only": true,
+    "veritas_repository_mounted": false,
+    "credentials_mounted": false,
+    "runtime_precommitted": true
+  },
+  "comparison": {
+    "decision": "MATCH",
+    "metric": "p_value",
+    "comparator": "veritas_rounding_interval_numeric_equality",
+    "target_commitment_validated": true,
+    "output_artifact_bound": true,
+    "numeric_values_persisted_in_certificate": false,
+    "note": "The frozen author-package output is compatible with the sealed public-preprint target under the declared printed-rounding comparison semantics."
+  },
+  "review": {
+    "target_reviewer_a_complete": true,
+    "target_reviewer_b_complete": false,
+    "target_adjudication_complete": false,
+    "method_fidelity_independent_complete": false
+  },
+  "authority": {
+    "production_authorized": false,
+    "e4_authorized": false,
+    "max_evidence_grade": "UNVERIFIABLE",
+    "reason": "This is a positive descriptive author-package match from a frozen isolated rerun. Independent target adjudication and method-fidelity review remain incomplete, and a match is not an integrity exoneration or E4 finding."
+  }
+}

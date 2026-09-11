@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "status": "resolved_with_explicit_nonproduction_pilot_policy",
+  "as_of": "2026-09-07",
+  "production_authorized": false,
+  "evidence_plan_frozen": true,
+  "sampling_frame": {
+    "path": "benchmark/corpus/evidence_sampling_frame_v0.15.json",
+    "source_sha256": "adc32cafceafdf9dd3f39fc5a2fc83e05d7bd5b39095b83aea70d3197a455ddc",
+    "normalized_sha256": "84a6761efa21ad5514fa017d97103fcb1e26f7a9442395ce3357433108a1704b"
+  },
+  "seed_manifest": {
+    "path": "benchmark/extraction/evidence_seed_manifest_v0.15.json",
+    "source_sha256": "e58ce1ba2aec3c5b9a0210a2b6ccc8a8550571f693ac5f796fd951ab2411974f",
+    "target_universe_sha256": "83e8de78d3f6374288035b5f98e6e9d809ec5dbb5480f8f98c46e99e96e0bbcf",
+    "target_count": 18,
+    "article_family_count": 4
+  },
+  "frozen_split_design": {
+    "status": "frozen_nonproduction_pilot_plan",
+    "split_salt": "veritas-extraction-evidence-v0.15-01",
+    "train_fraction": 0.55,
+    "development_fraction": 0.25,
+    "test_fraction": 0.20,
+    "selection_rule": "Salt was checked only against pre-existing article-family identities to require non-empty TRAIN, DEVELOPMENT, and TEST partitions; no review values, parser accuracy, benchmark outcomes, or TEST results were used.",
+    "assignments": [
+      {
+        "article_family_id": "doi:10.1371/journal.pone.0321641",
+        "split": "development"
+      },
+      {
+        "article_family_id": "doi:10.3389/fendo.2025.1692917",
+        "split": "test"
+      },
+      {
+        "article_family_id": "doi:10.3389/fpos.2025.1500403",
+        "split": "train"
+      },
+      {
+        "article_family_id": "doi:10.3389/fpsyg.2024.1473953",
+        "split": "development"
+      }
+    ],
+    "train_article_families": 1,
+    "development_article_families": 2,
+    "test_article_families": 1
+  },
+  "default_policy_power_check": {
+    "benchmark_confidence": 0.95,
+    "max_critical_family_wrong_accept_upper_bound": 0.05,
+    "development_wrong_accept_families_assumed": 0,
+    "development_article_families": 2,
+    "zero_wrong_accept_clopper_pearson_upper_bound": 0.776393202250021,
+    "minimum_development_families_for_zero_wrong_accept_upper_bound_at_or_below_policy": 59,
+    "satisfies_default_policy_floor": false
+  },
+  "resolution": {
+    "evidence_plan_path": "benchmark/extraction/evidence_plan_v0.15.json",
+    "evidence_plan_sha256": "1718d57c2736260f9a49ebb844f9935df2f98bdefe8a1009f0293f9d737b9069",
+    "pilot_threshold_policy_path": "benchmark/extraction/pretest_pilot_threshold_policy_v0.15.json",
+    "pilot_threshold_policy_sha256": "c8e9c7b65106460a49caa803b81b89eb2807a67a7cfb159f9cecb36b26a6fb55",
+    "resolution_rule": "Proceed only as an explicitly non-production pilot. The pilot policy allows a 0.80 critical-family wrong-accept upper bound, which the frozen two-family DEVELOPMENT allocation can satisfy only with zero critical-family wrong accepts. It does not replace the default 0.05 production-grade target."
+  },
+  "remaining_external_pretest_work": "Independently archive the canonical evidence-plan bytes/hash, exact publication/input bytes and manifest, execution artifacts/plan, source commit, trust root/policies, and historical pre-TEST evidence before any held-out TEST evaluation."
+}

@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "status": "captured_pretest_publication_bytes_in_github_actions_artifact",
+  "production_authorized": false,
+  "evidence_plan_sha256": "1718d57c2736260f9a49ebb844f9935df2f98bdefe8a1009f0293f9d737b9069",
+  "input_manifest_path": "benchmark/extraction/extraction_input_artifact_manifest_v0.15.json",
+  "input_manifest_sha256": "d318a546bdb9801d24a95db26c6ba4c44ed38a7262d3a31eccb728c89edf0f74",
+  "capture": {
+    "repository": "jiaweine/Veritas",
+    "workflow_path": ".github/workflows/capture-v015-evidence-inputs.yml",
+    "workflow_run_id": 34055651252,
+    "run_attempt": 1,
+    "source_commit_sha": "ef73a9ca226a6bd6154f7375bb07fb485ef891c4",
+    "artifact_id": 9995869859,
+    "artifact_name": "v015-publication-inputs-ef73a9ca226a6bd6154f7375bb07fb485ef891c4",
+    "artifact_size_bytes": 10096341,
+    "artifact_digest": "sha256:301996d54637026d637f25d154a2598c0663a2dd39cd1f230f333e8d2ad2b433",
+    "artifact_created_at": "2026-09-06T19:41:18Z",
+    "artifact_expires_at": "2026-12-05T19:40:50Z"
+  },
+  "publication_inputs": [
+    {
+      "artifact_id": "paper-fendo-1692917-pdf",
+      "seed_pdf_url": "https://www.frontiersin.org/journals/endocrinology/articles/10.3389/fendo.2025.1692917/pdf",
+      "relative_path": "publications/frontiers/fendo-2025-1692917.pdf",
+      "sha256": "d182c741e35348fa5837322b370921dc43eab6af14db2bbeabe67ee26aa9d13f",
+      "size_bytes": 2823576
+    },
+    {
+      "artifact_id": "paper-fpos-1500403-pdf",
+      "seed_pdf_url": "https://www.frontiersin.org/journals/political-science/articles/10.3389/fpos.2025.1500403/pdf",
+      "relative_path": "publications/frontiers/fpos-2025-1500403.pdf",
+      "sha256": "c0e723e2006143714362fd8157bd9472ddecbc2cae5bb20006f2d7b9c8a6a6eb",
+      "size_bytes": 866931
+    },
+    {
+      "artifact_id": "paper-fpsyg-1473953-pdf",
+      "seed_pdf_url": "https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2024.1473953/pdf",
+      "relative_path": "publications/frontiers/fpsyg-2024-1473953.pdf",
+      "sha256": "60559b9c6f4436b78eb67df68222e41bba89e596e05022745bb51be5b9f679e9",
+      "size_bytes": 7875359
+    },
+    {
+      "artifact_id": "paper-plosone-0321641-pdf",
+      "seed_pdf_url": "https://journals.plos.org/plosone/article/file?id=10.1371%2Fjournal.pone.0321641&type=printable",
+      "relative_path": "publications/plos/pone-0321641.pdf",
+      "sha256": "d368dacb231770c69c2fe3507da918b384fc2ebf2c44fc5069489535e34eeb6c",
+      "size_bytes": 2206292
+    }
+  ],
+  "authority_boundary": "This record proves that the named pre-TEST GitHub Actions run downloaded four PDF byte streams from the frozen seed URLs, passed PDF-magic/size checks, built the strict input manifest with repository code, reverified the files against that manifest, and uploaded the exact bytes as the named retention-limited Actions artifact. It does not prove publisher authenticity beyond the recorded source URLs, does not provide an independent external historical archive, and does not authorize production findings. The artifact must be copied to a durable independent pre-TEST archive before relying on it for the stronger external-history claims in issue #26."
+}

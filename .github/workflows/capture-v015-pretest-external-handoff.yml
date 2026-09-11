@@ -1,0 +1,68 @@
+name: capture-v015-pretest-external-handoff
+
+on:
+  push:
+    branches:
+      - evidence/v0.15-real-paper-corpus
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Build and verify repository-side external archive handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated="$RUNNER_TEMP/pretest_external_archive_handoff_v0.15.json"
+          committed="benchmark/extraction/pretest_external_archive_handoff_v0.15.json"
+          python scripts/build_extraction_pretest_external_handoff.py \
+            --witness benchmark/extraction/pretest_external_witness_commitment_v0.15.json \
+            --sampling-frame benchmark/corpus/evidence_sampling_frame_v0.15.json \
+            --seed-manifest benchmark/extraction/evidence_seed_manifest_v0.15.json \
+            --evidence-plan benchmark/extraction/evidence_plan_v0.15.json \
+            --pilot-threshold-policy benchmark/extraction/pretest_pilot_threshold_policy_v0.15.json \
+            --review-packet-commitment benchmark/extraction/review_packet_commitment_v0.15.json \
+            --input-artifact-manifest benchmark/extraction/extraction_input_artifact_manifest_v0.15.json \
+            --execution-plan benchmark/extraction/extraction_execution_plan_v0.15.json \
+            --parser-registry benchmark/extraction/execution_artifacts_v0.15/parser_registry.json \
+            --numerical-runtime benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json \
+            --execution-command benchmark/extraction/execution_artifacts_v0.15/execution_command.json \
+            --output "$generated" \
+            | tee "$RUNNER_TEMP/pretest_external_archive_handoff_v0.15.sha256"
+          cmp --silent "$generated" "$committed"
+          test "$(sha256sum "$generated" | awk '{print $1}')" = "90fe5c7e27b7a8133fad0d5ce485b7f6866383fa6ddf3155403c098aa4acb7fa"
+          test "$(sha256sum "$committed" | awk '{print $1}')" = "90fe5c7e27b7a8133fad0d5ce485b7f6866383fa6ddf3155403c098aa4acb7fa"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["RUNNER_TEMP"]) / "pretest_external_archive_handoff_v0.15.json"
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          if payload["status"] != "repository_side_external_archive_handoff_ready_awaiting_independent_archive":
+              raise SystemExit("unexpected external archive handoff status")
+          pending = payload["pending_external_evidence"]
+          if any(value is not False for value in pending.values()):
+              raise SystemExit("repository-side handoff must keep every external-evidence item pending")
+          if payload["executed_v015_development_or_test_predictions"] is not False:
+              raise SystemExit("handoff capture must not run DEVELOPMENT/TEST predictions")
+          if payload["production_authorized"] is not False:
+              raise SystemExit("handoff capture must remain non-production")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v015-pretest-external-handoff-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/pretest_external_archive_handoff_v0.15.json
+            ${{ runner.temp }}/pretest_external_archive_handoff_v0.15.sha256
+          if-no-files-found: error
+          retention-days: 90
