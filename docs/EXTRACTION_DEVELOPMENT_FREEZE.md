@@ -152,8 +152,7 @@ python scripts/verify_extraction_pretest_external_archive_receipt.py \
 Do not copy expected custodian/channel/record context from the receipt being verified. Those expectations must be
 selected independently.
 
-A structurally valid receipt and verified binding still do not prove that the named channel was independently
-controlled or historically append-only. Those are external governance facts.
+A structurally valid receipt and verified binding do not prove that the named channel was independently controlled or historically append-only; those remain external governance facts.
 
 ## 6. Only now open TEST
 
