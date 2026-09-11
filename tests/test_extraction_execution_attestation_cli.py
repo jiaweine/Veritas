@@ -85,7 +85,7 @@ def test_execution_attestation_cli_builds_strict_archive(tmp_path: Path) -> None
     attestation = load_extraction_execution_attestation(output_path)
 
     assert attestation.execution_id == "development-run-001"
-    assert attestation.split.value == "DEVELOPMENT"
+    assert attestation.split.value == "development"
     assert attestation.threshold_id == observation.threshold_id
     assert attestation.threshold == observation.threshold
     assert attestation.target_manifest_sha256 == fixture["development_manifest"].sha256()
