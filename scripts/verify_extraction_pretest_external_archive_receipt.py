@@ -50,7 +50,10 @@ def _load_handoff(path: Path) -> dict[str, object]:
     )
     if not isinstance(payload, dict):
         raise TypeError("external archive handoff root must be an object")
-    if payload.get("schema_version") != 1:
+    schema_version = payload.get("schema_version")
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
+        raise TypeError("external archive handoff schema_version must be an integer")
+    if schema_version != 1:
         raise ValueError("external archive handoff schema_version must be 1")
     if payload.get("status") != "repository_side_external_archive_handoff_ready_awaiting_independent_archive":
         raise ValueError("external archive handoff is not in the expected pending-independent-archive state")
@@ -98,6 +101,7 @@ def main() -> int:
         raise SystemExit("external archive handoff pretest witness SHA-256 is missing")
 
     object_set_sha256 = extraction_pretest_archive_object_set_sha256(handoff)
+    receipt_file_sha256 = _file_sha256(args.receipt)
     receipt = load_extraction_pretest_external_archive_receipt(args.receipt)
     verified = verify_pretest_external_archive_receipt_binding(
         receipt=receipt,
@@ -110,6 +114,7 @@ def main() -> int:
         expected_archive_record_id=args.expected_archive_record_id,
     )
     payload = verified_pretest_external_archive_receipt_binding_json_payload(verified)
+    payload["receipt_file_sha256"] = receipt_file_sha256
     rendered = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
