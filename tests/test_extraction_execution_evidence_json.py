@@ -4,18 +4,32 @@ import json
 from pathlib import Path
 
 import pytest
-from test_extraction_execution_evidence import _attested_release, _execution_plan
+from test_extraction_evidence_workflow import _workflow_fixture
+from test_extraction_execution_evidence import _attested_release, _evidence_set, _execution_plan
 
+from veritas.benchmark import BenchmarkSplit
 from veritas.extraction_execution_evidence_json import (
     attested_extraction_evidence_release_receipt_json_payload,
+    extraction_execution_attestation_json_payload,
     extraction_execution_plan_json_payload,
     load_attested_extraction_evidence_release_receipt,
+    load_extraction_execution_attestation,
     load_extraction_execution_plan,
 )
 
 
 def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _attestation():
+    fixture = _workflow_fixture()
+    plan = _execution_plan()
+    return _evidence_set(
+        fixture,
+        split=BenchmarkSplit.DEVELOPMENT,
+        plan=plan,
+    )[0].attestation
 
 
 def test_execution_plan_strict_json_round_trip(tmp_path: Path) -> None:
@@ -27,6 +41,44 @@ def test_execution_plan_strict_json_round_trip(tmp_path: Path) -> None:
 
     assert loaded == plan
     assert loaded.sha256() == plan.sha256()
+
+
+def test_execution_attestation_strict_json_round_trip(tmp_path: Path) -> None:
+    attestation = _attestation()
+    path = tmp_path / "execution-attestation.json"
+    _write_json(path, extraction_execution_attestation_json_payload(attestation))
+
+    loaded = load_extraction_execution_attestation(path)
+
+    assert loaded == attestation
+    assert loaded.split is BenchmarkSplit.DEVELOPMENT
+    assert loaded.sha256() == attestation.sha256()
+
+
+def test_execution_attestation_strict_json_rejects_type_and_split_drift(
+    tmp_path: Path,
+) -> None:
+    payload = extraction_execution_attestation_json_payload(_attestation())
+
+    boolean_exit = tmp_path / "boolean-exit.json"
+    _write_json(boolean_exit, {**payload, "exit_code": True})
+    with pytest.raises(TypeError, match="exit_code must be an integer"):
+        load_extraction_execution_attestation(boolean_exit)
+
+    boolean_schema = tmp_path / "boolean-schema.json"
+    _write_json(boolean_schema, {**payload, "schema_version": True})
+    with pytest.raises(TypeError, match="schema_version must be integer 1"):
+        load_extraction_execution_attestation(boolean_schema)
+
+    unsupported_split = tmp_path / "unsupported-split.json"
+    _write_json(unsupported_split, {**payload, "split": "TRAIN"})
+    with pytest.raises(ValueError, match="split is unsupported"):
+        load_extraction_execution_attestation(unsupported_split)
+
+    production = tmp_path / "production.json"
+    _write_json(production, {**payload, "production_authorized": True})
+    with pytest.raises(ValueError, match="non-production only"):
+        load_extraction_execution_attestation(production)
 
 
 def test_attested_release_strict_json_round_trip(tmp_path: Path) -> None:
