@@ -125,6 +125,22 @@ def test_strict_receipt_loader_rejects_unknown_and_duplicate_keys(tmp_path: Path
         load_extraction_pretest_external_archive_receipt(duplicate_path)
 
 
+def test_receipt_semantic_hash_does_not_substitute_for_exact_file_identity(tmp_path: Path) -> None:
+    payload = extraction_pretest_external_archive_receipt_json_payload(_receipt())
+    compact_path = tmp_path / "receipt-compact.json"
+    pretty_path = tmp_path / "receipt-pretty.json"
+    compact_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    pretty_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    compact = load_extraction_pretest_external_archive_receipt(compact_path)
+    pretty = load_extraction_pretest_external_archive_receipt(pretty_path)
+
+    assert compact.sha256() == pretty.sha256()
+    assert hashlib.sha256(compact_path.read_bytes()).hexdigest() != hashlib.sha256(
+        pretty_path.read_bytes()
+    ).hexdigest()
+
+
 def test_receipt_and_verified_binding_cannot_authorize_production() -> None:
     receipt = _receipt()
     with pytest.raises(ValueError, match="non-production"):
@@ -185,6 +201,7 @@ def test_cold_receipt_cli_requires_independently_supplied_context(tmp_path: Path
     completed = subprocess.run(command, check=False, capture_output=True, text=True)
     assert completed.returncode == 0, completed.stderr
     verified = json.loads(output_path.read_text(encoding="utf-8"))
+    assert verified["receipt_file_sha256"] == hashlib.sha256(receipt_path.read_bytes()).hexdigest()
     assert verified["independent_control_established"] is False
     assert verified["historical_channel_semantics_established"] is False
     assert verified["production_authorized"] is False
@@ -195,3 +212,49 @@ def test_cold_receipt_cli_requires_independently_supplied_context(tmp_path: Path
     rejected = subprocess.run(drifted, check=False, capture_output=True, text=True)
     assert rejected.returncode != 0
     assert "different archive record id" in rejected.stderr
+
+
+def test_cold_receipt_cli_rejects_boolean_handoff_schema_version(tmp_path: Path) -> None:
+    handoff = _handoff()
+    handoff["schema_version"] = True
+    handoff_path = tmp_path / "handoff.json"
+    handoff_path.write_text(
+        json.dumps(handoff, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    handoff_sha256 = hashlib.sha256(handoff_path.read_bytes()).hexdigest()
+
+    receipt = replace(_receipt(), handoff_sha256=handoff_sha256)
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_text(
+        json.dumps(
+            extraction_pretest_external_archive_receipt_json_payload(receipt),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    command = [
+        sys.executable,
+        "scripts/verify_extraction_pretest_external_archive_receipt.py",
+        "--receipt",
+        str(receipt_path),
+        "--handoff",
+        str(handoff_path),
+        "--expected-handoff-sha256",
+        handoff_sha256,
+        "--expected-source-commit-sha",
+        receipt.source_commit_sha,
+        "--expected-custodian-identity",
+        receipt.custodian_identity,
+        "--expected-archive-channel-identity",
+        receipt.archive_channel_identity,
+        "--expected-archive-record-id",
+        receipt.archive_record_id,
+    ]
+    rejected = subprocess.run(command, check=False, capture_output=True, text=True)
+    assert rejected.returncode != 0
+    assert "schema_version must be an integer" in rejected.stderr
