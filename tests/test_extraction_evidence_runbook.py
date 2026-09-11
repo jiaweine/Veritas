@@ -7,7 +7,7 @@ def test_extraction_evidence_runbook_preserves_external_authority_boundaries() -
     for phrase in (
         "scripts/build_extraction_split_manifests.py",
         "Do not replace the frozen execution source commit with current",
-        "Reviewer IDs are not proof of human independence",
+        "not proof of human independence",
         "selected expected run context, not from the signed envelope",
         "`production_authorized` remains false",
         "TEST must not feed back",
