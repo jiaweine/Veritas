@@ -60,6 +60,7 @@ class ExtractionPretestExternalArchiveReceipt:
 @dataclass(frozen=True)
 class VerifiedPretestExternalArchiveReceiptBinding:
     receipt_sha256: str
+    receipt_file_sha256: str
     handoff_sha256: str
     archived_object_set_sha256: str
     source_commit_sha: str
@@ -77,6 +78,7 @@ class VerifiedPretestExternalArchiveReceiptBinding:
     def __post_init__(self) -> None:
         for label, value in (
             ("receipt_sha256", self.receipt_sha256),
+            ("receipt_file_sha256", self.receipt_file_sha256),
             ("handoff_sha256", self.handoff_sha256),
             ("archived_object_set_sha256", self.archived_object_set_sha256),
             ("pretest_witness_sha256", self.pretest_witness_sha256),
@@ -137,6 +139,7 @@ def extraction_pretest_archive_object_set_sha256(
 def verify_pretest_external_archive_receipt_binding(
     *,
     receipt: ExtractionPretestExternalArchiveReceipt,
+    receipt_file_sha256: str,
     expected_handoff_sha256: str,
     expected_archived_object_set_sha256: str,
     expected_source_commit_sha: str,
@@ -147,6 +150,7 @@ def verify_pretest_external_archive_receipt_binding(
 ) -> VerifiedPretestExternalArchiveReceiptBinding:
     if not isinstance(receipt, ExtractionPretestExternalArchiveReceipt):
         raise TypeError("receipt must be an ExtractionPretestExternalArchiveReceipt")
+    _require_sha256(receipt_file_sha256, label="receipt_file_sha256")
     _require_sha256(expected_handoff_sha256, label="expected_handoff_sha256")
     _require_sha256(
         expected_archived_object_set_sha256,
@@ -188,6 +192,7 @@ def verify_pretest_external_archive_receipt_binding(
 
     return VerifiedPretestExternalArchiveReceiptBinding(
         receipt_sha256=receipt.sha256(),
+        receipt_file_sha256=receipt_file_sha256,
         handoff_sha256=receipt.handoff_sha256,
         archived_object_set_sha256=receipt.archived_object_set_sha256,
         source_commit_sha=receipt.source_commit_sha,
