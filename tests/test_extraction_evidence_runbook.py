@@ -13,17 +13,29 @@ def test_extraction_evidence_runbook_preserves_external_authority_boundaries() -
         "TEST must not feed back",
         "independent historical channel before TEST",
         "scripts/verify_extraction_release_calibration_binding.py",
+        "scripts/verify_extraction_release_execution_binding.py",
         "release-calibration-binding.json",
+        "release-execution-binding.json",
         "There are no release-stage `--min-selective-coverage`",
+        "caller-supplied",
+        "execution-id arguments",
         "A green CI run, a Git commit, or a structurally valid receipt alone is not that evidence",
     ):
         assert phrase in text
 
     release_section = text.split(
-        "## 7. Build a release bundle mechanically bound to the frozen calibration chain",
+        "## 7. Build a release bundle bound to calibration and execution attestations",
         maxsplit=1,
     )[1].split("## 8.", maxsplit=1)[0]
-    assert "--development-run nc-005 '<execution-id>'" in release_section
-    assert "--test-run nc-005 '<execution-id>'" in release_section
+    assert (
+        "--development-run nc-005 development/nc-005.json "
+        "evidence/attestations/development/nc-005.json"
+    ) in release_section
+    assert (
+        "--test-run nc-005 test/nc-005.json "
+        "evidence/attestations/test/nc-005.json"
+    ) in release_section
+    assert "--development-run nc-005 '<execution-id>'" not in release_section
+    assert "--test-run nc-005 '<execution-id>'" not in release_section
     assert "--development-run nc-005 0.005" not in release_section
     assert "--test-run nc-005 0.005" not in release_section
