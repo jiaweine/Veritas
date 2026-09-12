@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Veritas · Research Audit Harness</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">V</div>
+        <div>
+          <div class="brand-name">Veritas</div>
+          <div class="brand-tagline">Research audit harness</div>
+        </div>
+      </div>
+
+      <button id="new-audit" class="primary-button full">＋ New audit</button>
+      <input id="file-input" type="file" accept="application/pdf,.pdf" hidden />
+
+      <div class="sidebar-section">
+        <div class="section-label">Workspace</div>
+        <button class="nav-item active"><span>◫</span> Audits <span id="audit-count" class="nav-count">0</span></button>
+        <button class="nav-item muted"><span>◧</span> Runs</button>
+        <button class="nav-item muted"><span>⌁</span> Papers</button>
+        <button class="nav-item muted"><span>◇</span> Benchmarks</button>
+      </div>
+
+      <div class="sidebar-section grow">
+        <div class="section-row">
+          <div class="section-label">Recent audits</div>
+          <button id="refresh" class="icon-button" title="Refresh">↻</button>
+        </div>
+        <div id="audit-list" class="audit-list"></div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="mini-card">
+          <div class="mini-card-title">Evidence, not vibes.</div>
+          <div class="mini-card-copy">Every audit action stays linked to inspectable source evidence.</div>
+        </div>
+        <div class="footer-links"><span>Local workspace</span><span>⌘ K</span></div>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div class="paper-heading">
+          <div id="paper-title" class="paper-title">No paper selected</div>
+          <span id="run-status" class="status-pill idle">Idle</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="ghost-button">Research</button>
+          <button class="ghost-button">Audit agent</button>
+          <button class="icon-button" title="More">•••</button>
+        </div>
+      </header>
+
+      <section class="content-grid">
+        <section class="conversation-panel">
+          <div class="tabs">
+            <button class="tab active">Audit</button>
+            <button class="tab">Findings <span id="finding-count" class="tab-count">0</span></button>
+            <button class="tab">Notes</button>
+          </div>
+
+          <div id="conversation" class="conversation">
+            <div class="empty-state">
+              <div class="empty-orb">V</div>
+              <h1>Audit a paper with evidence in view.</h1>
+              <p>Upload a PDF. Veritas will parse it with independent PDF engines, surface detected tables, and keep every check connected to its source.</p>
+              <button id="empty-upload" class="primary-button">Upload paper</button>
+              <div class="empty-hints">
+                <span>/inspect</span>
+                <span>/audit row="Treatment" table=2 page=1</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="composer-wrap">
+            <div class="command-row">
+              <button class="command-chip" data-command="/inspect">/inspect</button>
+              <button class="command-chip" data-command="/audit ">/audit</button>
+              <button class="command-chip" data-command="/help">/help</button>
+            </div>
+            <div class="composer">
+              <button id="attach" class="attach-button" title="Attach paper">＋</button>
+              <textarea id="message" rows="1" placeholder="Ask Veritas to inspect or audit this paper…" disabled></textarea>
+              <button id="send" class="send-button" disabled>↑</button>
+            </div>
+            <div class="composer-caption">Deterministic checks run through the Veritas audit engine.</div>
+          </div>
+        </section>
+
+        <aside class="inspector">
+          <div class="inspector-header">
+            <div>
+              <div class="inspector-title">Evidence Inspector</div>
+              <div id="inspector-subtitle" class="inspector-subtitle">Select an audit to inspect its source.</div>
+            </div>
+            <button id="open-paper" class="icon-button" title="Open PDF" disabled>↗</button>
+          </div>
+
+          <div class="inspector-tabs">
+            <button class="inspector-tab active" data-panel="source">Source</button>
+            <button class="inspector-tab" data-panel="findings">Findings</button>
+            <button class="inspector-tab" data-panel="structure">Structure</button>
+            <button class="inspector-tab" data-panel="provenance">Provenance</button>
+          </div>
+
+          <div id="inspector-body" class="inspector-body">
+            <div class="inspector-empty">
+              <div class="grid-icon">▦</div>
+              <p>Source evidence will appear here.</p>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>
