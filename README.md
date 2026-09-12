@@ -1,70 +1,39 @@
+<div align="center">
+
 # Veritas
 
-**Evidence-first auditing for empirical social science research.**
+**Evidence-first auditing for empirical social science.**
 
-Veritas is a research-oriented platform for auditing the internal consistency, methodological robustness, reproducibility, and provenance of empirical claims in social science papers.
+Turn papers and research artifacts into inspectable, reproducible audit evidence.
 
-> Veritas does **not** estimate a "fraud probability" and does not infer author intent. It separates **verification coverage** from **review priority**, and every finding must be backed by inspectable evidence.
+[![CI](https://github.com/jiaweine/Veritas/actions/workflows/ci.yml/badge.svg)](https://github.com/jiaweine/Veritas/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![Version](https://img.shields.io/badge/version-0.15.0-111827)
 
-## Why Veritas starts with paper-only auditing
+</div>
 
-Many empirical papers do not publish raw data or replication code. Veritas treats unavailable artifacts as a **coverage limitation**, not as evidence of misconduct. Paper-only auditing therefore focuses on checks that can be performed from the publication itself and expands when appendices, registrations, code, or data become available.
+Veritas extracts reported statistical objects from research papers, checks numerical and methodological consistency with deterministic detectors, links findings back to source evidence, and carries the result through reproducibility and provenance workflows.
 
-## Core principles
+## Highlights
 
-1. **Missing data is not evidence of misconduct.** Unavailable data or code lowers verification coverage; it does not automatically increase review priority.
-2. **Applicability before detection.** A detector runs only when its statistical assumptions and required evidence are satisfied.
-3. **Deterministic checks before model judgments.** LLMs may extract and align claims; numerical contradiction tests are performed by auditable statistical code.
-4. **Evidence grades, not accusations.** Findings range from `UNVERIFIABLE` and weak signals to internal or reproduction contradictions.
-5. **Materiality matters.** A typo in an appendix and a contradiction in the primary causal estimate are not scored equally.
-6. **Correlated findings are not double counted.** Multiple consequences of the same underlying numerical error belong to one evidence family.
-7. **Protocol locking.** Artifact identities, calibration, parser versions, object schemas, detector versions, promotion policies, and numerical runtime identities are locked for an audit run.
-8. **Detector readiness is not production authority.** Benchmark and research calibrations may exercise the full detector pipeline without being allowed to publish a production-authorized hard finding.
+- **Paper-native extraction** — dual native-PDF parsing with geometry fallback and precise page/table/row/column provenance.
+- **Deterministic statistical checks** — rounding-aware regression arithmetic, sample accounting, correlations, grouped summaries, ANOVA, meta-analysis, SEM, standardized regression, DID, IV, RDD, and experimental checks.
+- **Evidence-linked claims** — `Claim → Estimate → Sample → Data → Code → Assumption` identity graphs keep findings tied to the objects they depend on.
+- **Reproducibility workflows** — isolated R/Python runner contracts, environment capture, publication-object matching, provenance DAGs, and attested reproduction findings.
+- **Research-design checks** — preregistration and PAP comparison, sample lineage, survey-integrity signals, and provenance/randomization checks.
+- **Locked evaluation** — calibration scopes, held-out TEST sealing, execution attestations, release bindings, cold verification, and archive-receipt binding for real-paper extraction evidence.
 
-## Current software milestone: v0.14
+## Quick start
 
-- statistical object and empirical claim schemas
-- evidence grade, materiality, coverage, and review-priority models
-- applicability-gated detector registry
-- rounding-aware regression consistency checks (`beta`, `SE`, `t/z`, `p`, confidence intervals)
-- conservative sample accounting checks
-- correlation, discrete-summary, algebraic, ANOVA/group-summary, meta-analysis, SEM, standardized-regression, DID/IV/RDD experimental detectors
-- native dual-parser PDF extraction with geometry fallback and precise source provenance
-- conformal extraction gates with `PROMOTE` / `REVIEW` / `UNVERIFIABLE` behavior
-- end-to-end `Claim -> Estimate -> Sample -> Data -> Code -> Assumption` identity graphs with fail-closed cross-location E3 binding
-- isolated R/Python reproduction-runner contracts, environment capture, publication-object matching, provenance DAGs, and attested E4 reproduction findings
-- preregistration/PAP/registry comparison, raw-to-analysis sample lineage, survey-integrity review signals, and direct provenance/randomization E5 checks
-- benchmark, research, and production calibration scopes
-- held-out paper-level production-certification infrastructure
-- source-tree, detector-registry, numerical-backend, parser, schema, promotion-spec, and artifact identity locking
-- precommitted real-paper extraction evidence workflow binding sampling frame, seed manifest, review protocol, split policy, threshold grid, reviewed gold, DEVELOPMENT calibration, TEST seal, prediction-bound reports, execution attestations, and coverage-selectivity release receipts
-- optional Ed25519 external-provenance verification binding trusted runner/repository/workflow identity to the exact attested release and execution-plan subject, with strict JSON ingress for archived trust-root and signed-provenance files
-
-## Detector promotion vs production authority
-
-Veritas deliberately separates three questions:
-
-1. **Was the reported statistical object extracted reliably enough to enter a detector?**
-2. **What does the deterministic detector find?**
-3. **Is this exact pipeline certified to issue a production-authorized hard finding?**
-
-A benchmark run may therefore produce a mathematically valid E3 contradiction while still carrying:
-
-```text
-production_hard_finding_authorized = false
+```bash
+git clone https://github.com/jiaweine/Veritas.git
+cd Veritas
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[pdf,attestation]"
 ```
 
-Production authority requires a held-out `ProductionCalibrationCertificate` tied to the exact calibration, parser versions, object schema, promotion spec, locked TEST benchmark, Veritas source tree, detector registry, and numerical backend. `AuditEngine.audit_production_verified()` also rechecks the current system identity before authorizing production findings.
-
-The certificate is an auditable hash-bound provenance artifact, **not** a cryptographic signature, institutional endorsement, or finding of misconduct.
-
-## Current real-PDF status
-
-The current open-access PDF smoke, fail-closed, and selective-promotion benchmarks are **not production certification**. They run under benchmark scope to validate extraction and detector-promotion behavior. Production hard-authority coverage is intentionally expected to remain zero until a sufficiently large locked held-out corpus passes the strict paper-level certification policy for the exact deployed pipeline.
-
-The extraction evidence workflow can now verify an Ed25519-signed external provenance statement when a public key is genuinely pretrusted. That verifies possession of the matching private key over the exact run/release subject; it does **not** turn a caller-generated self-signed key into GitHub, institutional, or production trust. Real external-run claims still require the trusted key to be pinned by an independent policy channel before TEST.
-
-## Minimal example
+Run a minimal audit:
 
 ```python
 from veritas import AuditEngine, RegressionResult, ReportedNumber
@@ -79,19 +48,86 @@ result = RegressionResult(
 )
 
 summary = AuditEngine().audit([result])
+
 print(summary.verification_coverage)
-print(summary.review_priority)  # review priority, NOT fraud probability
+print(summary.review_priority)
 print(summary.findings)
 ```
 
-## Roadmap
+## How it works
 
-The remaining milestone is **external evidence work**, not another unchecked software layer: expand the real open-access extraction corpus, add real adversarial layouts, complete genuinely independent double review and adjudication, calibrate only on locked DEVELOPMENT families, freeze an untouched TEST set, execute under a genuinely pretrusted signing/runner policy, publish the resulting prediction/execution provenance and coverage-selectivity curves, and only then attempt production certification for the exact deployed pipeline.
+```mermaid
+flowchart LR
+    P[Paper & appendices] --> X[Extraction & source provenance]
+    A[Code, data & registrations] --> G[Artifact & claim graph]
+    X --> V[Deterministic verification]
+    G --> V
+    V --> F[Evidence-backed findings]
+    F --> R[Reproduction & provenance]
+```
 
-The repository includes fail-closed review, split, calibration, TEST-sealing, execution-evidence, signed-provenance, and release-readiness machinery. It deliberately cannot manufacture reviewer independence, real-paper gold labels, preexisting trust in a signing key, held-out results, or production authority.
+| Stage | What Veritas records or checks |
+| --- | --- |
+| Extraction | Reported values, statistical objects, source locations, parser provenance |
+| Verification | Applicability, rounding intervals, numerical identities, sample and design constraints |
+| Evidence graph | Claim/object identity and dependencies across paper, data, code, and assumptions |
+| Reproduction | Runtime environment, execution inputs/outputs, publication-object matching |
+| Provenance | Locked artifacts, execution attestations, release identities, cold verification |
 
-See [`docs/METHODS.md`](docs/METHODS.md), [`docs/DETECTOR_CARDS.md`](docs/DETECTOR_CARDS.md), [`docs/ROADMAP.md`](docs/ROADMAP.md), [`docs/CLAIM_GRAPH_IDENTITY.md`](docs/CLAIM_GRAPH_IDENTITY.md), [`docs/REPRODUCIBILITY_ARTIFACTS.md`](docs/REPRODUCIBILITY_ARTIFACTS.md), [`docs/DATA_PREREGISTRATION_INTEGRITY.md`](docs/DATA_PREREGISTRATION_INTEGRITY.md), [`docs/EXTRACTION_EXECUTION_EVIDENCE.md`](docs/EXTRACTION_EXECUTION_EVIDENCE.md), [`docs/EXTRACTION_EXTERNAL_PROVENANCE.md`](docs/EXTRACTION_EXTERNAL_PROVENANCE.md), and [`docs/methods/pdf_ingestion_promotion.md`](docs/methods/pdf_ingestion_promotion.md).
+## Real-paper evidence workflow
 
-## Status
+Veritas v0.15 includes a locked workflow for evaluating extraction on real papers:
 
-v0.14 is an early research prototype with implemented claim-identity, reproducibility-artifact, data/provenance-integrity, extraction-evidence orchestration, and signed external-provenance verification substrates. Findings are intended to support expert review, not to constitute a determination of research misconduct. The repository contains production-authority infrastructure, but the current real-PDF benchmark calibration is explicitly **not production-certified**.
+```text
+sampling → independent review → DEVELOPMENT calibration → sealed TEST
+         → execution attestations → release bindings → cold verification
+         → external archive receipt binding
+```
+
+The canonical operator sequence is documented in [`docs/EXTRACTION_EVIDENCE_RUNBOOK.md`](docs/EXTRACTION_EVIDENCE_RUNBOOK.md). Frozen v0.15 benchmark and execution manifests live under [`benchmark/extraction/`](benchmark/extraction/).
+
+## Benchmarks
+
+The repository includes regression, geometry-holdout, adversarial, and real-PDF promotion checks:
+
+```bash
+python scripts/benchmark_pdf_regression.py
+python scripts/benchmark_pdf_geometry_holdout.py
+python scripts/benchmark_extraction_adversarial.py
+python scripts/benchmark_real_pdf_promotion.py
+```
+
+For the full test suite:
+
+```bash
+python -m pip install -e ".[dev,pdf,attestation]"
+ruff check src tests
+pytest -q
+```
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| [`src/veritas/`](src/veritas/) | Core audit, extraction, detector, reproduction, and provenance library |
+| [`scripts/`](scripts/) | Benchmark, evidence-building, and verification CLIs |
+| [`benchmark/`](benchmark/) | Benchmark corpora plus frozen evidence and execution manifests |
+| [`docs/`](docs/) | Methods, detector notes, evidence protocols, and operator runbooks |
+| [`tests/`](tests/) | Unit, regression, fail-closed, and workflow contract tests |
+
+## Documentation
+
+- [`docs/METHODS.md`](docs/METHODS.md) — audit model and methodology
+- [`docs/DETECTOR_CARDS.md`](docs/DETECTOR_CARDS.md) — detector scope and assumptions
+- [`docs/EXTRACTION.md`](docs/EXTRACTION.md) — extraction architecture
+- [`docs/CLAIM_GRAPH_IDENTITY.md`](docs/CLAIM_GRAPH_IDENTITY.md) — claim and evidence identity
+- [`docs/REPRODUCIBILITY_ARTIFACTS.md`](docs/REPRODUCIBILITY_ARTIFACTS.md) — reproduction artifacts and provenance
+- [`docs/DATA_PREREGISTRATION_INTEGRITY.md`](docs/DATA_PREREGISTRATION_INTEGRITY.md) — preregistration, lineage, and integrity checks
+- [`docs/EXTRACTION_EVIDENCE_RUNBOOK.md`](docs/EXTRACTION_EVIDENCE_RUNBOOK.md) — v0.15 real-paper evidence workflow
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — project roadmap
+
+## Research status
+
+Veritas v0.15 is research software. Current public real-PDF benchmarks run under benchmark/research calibration; production-authorized hard findings require the locked held-out certification path for the exact deployed pipeline.
+
+Findings are designed to support expert review and reproducibility work, not to serve as determinations of research misconduct.
