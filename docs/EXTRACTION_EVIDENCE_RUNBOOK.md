@@ -236,7 +236,7 @@ DEVELOPMENT/TEST attestation sets. Each threshold row binds execution id, attest
 prediction byte/semantic SHA-256. The builder reopens release prediction artifacts and requires exact agreement
 with each attestation.
 
-## 8. Bound cold verification is the final v0.15 release check
+## 8. Bound cold verification is the final repository-side v0.15 release check
 
 The standalone binding verifiers remain useful diagnostic preflights. They can identify calibration-chain or
 execution-attestation problems before the more expensive cold rebuild:
@@ -325,7 +325,90 @@ envelope. For a stronger source-archive claim, also provide the complete optiona
 chain; partial chains must fail closed. See `docs/BOUND_EXTRACTION_EXTERNAL_PROVENANCE.md` for the narrower
 contract.
 
-## 9. What closes issue #26
+## 9. Archive the post-verification replay set and verify the external receipt
+
+A successful `bound-cold-verification.json` closes the repository-side release verification, not the external
+custody requirement. Immediately build the post-verification handoff from the same exact artifacts. This command
+re-checks the release bindings, cold-rebuild inputs, external signature/run context, and the exact bound-verification
+artifact before defining the stable replay object set:
+
+```bash
+python scripts/build_extraction_postverification_external_handoff.py \
+  --bound-verification evidence/release/bound-cold-verification.json \
+  --sampling-frame benchmark/corpus/evidence_sampling_frame_v0.15.json \
+  --seed-manifest benchmark/extraction/evidence_seed_manifest_v0.15.json \
+  --evidence-plan benchmark/extraction/evidence_plan_v0.15.json \
+  --release-bundle evidence/release/release-evidence-bundle.json \
+  --release-artifact-root evidence/predictions \
+  --release-calibration-binding evidence/release/release-calibration-binding.json \
+  --pilot-threshold-policy benchmark/extraction/pretest_pilot_threshold_policy_v0.15.json \
+  --development-freeze evidence/calibration/development-calibration-freeze.json \
+  --development-manifest evidence/splits/development-target-manifest.json \
+  --test-evaluation-lock evidence/calibration/test-evaluation-lock.json \
+  --test-manifest evidence/splits/test-target-manifest.json \
+  --release-execution-binding evidence/release/release-execution-binding.json \
+  --development-attestation nc-005 evidence/attestations/development/nc-005.json \
+  --development-attestation nc-010 evidence/attestations/development/nc-010.json \
+  --development-attestation nc-020 evidence/attestations/development/nc-020.json \
+  --test-attestation nc-005 evidence/attestations/test/nc-005.json \
+  --test-attestation nc-010 evidence/attestations/test/nc-010.json \
+  --test-attestation nc-020 evidence/attestations/test/nc-020.json \
+  --trust-root external/evidence-run-trust-root.json \
+  --trust-policy external/evidence-run-trust-policy.json \
+  --signed-provenance external/signed-evidence-run-provenance.json \
+  --execution-plan benchmark/extraction/extraction_execution_plan_v0.15.json \
+  --input-artifact-manifest benchmark/extraction/extraction_input_artifact_manifest_v0.15.json \
+  --input-artifact-root evidence/input-artifacts \
+  --source-tree evidence/execution/source-tree.tar \
+  --parser-registry benchmark/extraction/execution_artifacts_v0.15/parser_registry.json \
+  --numerical-runtime benchmark/extraction/execution_artifacts_v0.15/numerical_runtime.json \
+  --execution-command benchmark/extraction/execution_artifacts_v0.15/execution_command.json \
+  --attested-release evidence/release/attested-release.json \
+  --expected-run-id '<independently-selected-run-id>' \
+  --expected-run-attempt '<independently-selected-run-attempt>' \
+  --expected-commit-sha d6ffdf7debd63281e0db5934e3d4b7ebafb98311 \
+  --output external/postverification-bound-release-handoff.json
+```
+
+If the optional source-archive provenance chain was part of bound verification, supply that same complete optional
+chain to the handoff builder as well. Partial source-archive chains must fail closed.
+
+The handoff is still repository-side evidence. Its status must remain
+`repository_side_postverification_external_archive_handoff_ready_awaiting_independent_archive`, and
+`production_authorized` remains false. Record the exact handoff file SHA-256 independently, then transmit the
+complete `archive_objects` set to the genuinely external custodian identified by the archive policy. The repository
+does **not** provide a command that generates the custodian receipt.
+
+After the independent archive has preserved the exact object set and issued its own receipt or equivalent record,
+verify that externally supplied receipt using expectations selected independently from the receipt itself:
+
+```bash
+python scripts/verify_extraction_postverification_external_archive_receipt.py \
+  --receipt external/postverification-archive-receipt.json \
+  --handoff external/postverification-bound-release-handoff.json \
+  --expected-handoff-sha256 '<independently-recorded-handoff-sha256>' \
+  --expected-source-commit-sha d6ffdf7debd63281e0db5934e3d4b7ebafb98311 \
+  --expected-custodian-identity '<independently-expected-custodian>' \
+  --expected-archive-channel-identity '<independently-expected-channel>' \
+  --expected-archive-record-id '<independently-expected-record-id>' \
+  --output external/verified-postverification-archive-receipt-binding.json
+```
+
+The verifier reconstructs `archive_object_set_sha256` from stable archive names, exact object SHA-256 values, and
+sizes; requires the set to contain the exact `verification/bound-cold-verification.json`; and checks the receipt
+against the independently selected handoff/source/custodian/channel/record context. Do not copy those expected
+values from the receipt immediately before verification.
+
+A successful receipt binding proves only that the supplied receipt is bound to the repository handoff identities
+that software can check. It does not interrogate the custodian service, prove every object externally retrievable,
+or establish institutional control or retention semantics. Therefore the verified binding intentionally keeps
+`independent_control_established=false`, `historical_channel_semantics_established=false`, and
+`production_authorized=false`.
+
+See `docs/EXTRACTION_POSTVERIFICATION_ARCHIVE_RECEIPT.md` for the strict receipt schema and narrower authority
+contract.
+
+## 10. What closes issue #26
 
 Repository-side success is necessary but not sufficient. The milestone closes only when archived evidence supports
 the external facts software cannot create: genuine reviewer/adjudicator independence, historical pre-TEST trust
