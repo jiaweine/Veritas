@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
 
+from ._strict_json import load_strict_json_object, require_exact_object_keys
 from .extraction_evidence_workflow import (
     ExtractionEvidencePlan,
     ExtractionThresholdGrid,
@@ -42,18 +42,22 @@ _THRESHOLD_POINT_KEYS = frozenset({"threshold_id", "threshold"})
 def load_extraction_evidence_plan(
     path: str | Path,
 ) -> tuple[ExtractionEvidencePlan, ExtractionThresholdGrid]:
-    payload = _load_strict_json_file(path, label="extraction evidence plan")
-    _require_exact_object_keys(payload, _ROOT_KEYS, label="extraction evidence plan")
+    payload = load_strict_json_object(path, label="extraction evidence plan")
+    require_exact_object_keys(payload, _ROOT_KEYS, label="extraction evidence plan")
     _require_schema_version(payload["schema_version"], label="extraction evidence plan")
     _require_nonproduction(payload["production_authorized"])
 
     plan_payload = payload["plan"]
-    _require_exact_object_keys(plan_payload, _PLAN_KEYS, label="extraction evidence plan payload")
+    require_exact_object_keys(
+        plan_payload,
+        _PLAN_KEYS,
+        label="extraction evidence plan payload",
+    )
     threshold_rows = payload["threshold_grid"]
     if not isinstance(threshold_rows, list) or not threshold_rows:
         raise ValueError("extraction evidence plan threshold_grid must be a non-empty array")
     for row in threshold_rows:
-        _require_exact_object_keys(
+        require_exact_object_keys(
             row,
             _THRESHOLD_POINT_KEYS,
             label="extraction evidence plan threshold point",
@@ -93,56 +97,6 @@ def extraction_evidence_plan_json_payload(
     threshold_grid: ExtractionThresholdGrid,
 ) -> dict[str, Any]:
     return extraction_evidence_plan_payload(plan, threshold_grid)
-
-
-def _load_strict_json_file(path: str | Path, *, label: str) -> dict[str, Any]:
-    source_path = Path(path)
-    raw = source_path.read_bytes()
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ValueError(f"{label} must be UTF-8 JSON") from exc
-    try:
-        payload = json.loads(
-            text,
-            object_pairs_hook=_reject_duplicate_object_keys,
-            parse_constant=_reject_json_constant,
-        )
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{label} must contain valid JSON") from exc
-    if not isinstance(payload, dict):
-        raise TypeError(f"{label} root must be an object")
-    return payload
-
-
-def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate object key is not allowed: {key!r}")
-        result[key] = value
-    return result
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"non-standard JSON numeric constant is not allowed: {value}")
-
-
-def _require_exact_object_keys(
-    value: object,
-    expected: frozenset[str],
-    *,
-    label: str,
-) -> None:
-    if not isinstance(value, dict):
-        raise TypeError(f"{label} must be an object")
-    actual = frozenset(value)
-    if actual != expected:
-        missing = tuple(sorted(expected - actual))
-        unknown = tuple(sorted(actual - expected))
-        raise ValueError(
-            f"{label} keys differ from schema; missing={missing!r}, unknown={unknown!r}"
-        )
 
 
 def _require_schema_version(value: object, *, label: str) -> None:

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
 
+from ._strict_json import load_strict_json_object, require_exact_object_keys
 from .benchmark import BenchmarkSplit
 from .extraction_execution_evidence import (
     AttestedExtractionEvidenceReleaseReceipt,
@@ -58,8 +57,12 @@ _ATTESTED_RELEASE_KEYS = frozenset(
 
 
 def load_extraction_execution_plan(path: str | Path) -> ExtractionExecutionPlan:
-    payload = _load_strict_json_file(path, label="extraction execution plan")
-    _require_exact_object_keys(payload, _EXECUTION_PLAN_KEYS, label="extraction execution plan")
+    payload = load_strict_json_object(path, label="extraction execution plan")
+    require_exact_object_keys(
+        payload,
+        _EXECUTION_PLAN_KEYS,
+        label="extraction execution plan",
+    )
     return ExtractionExecutionPlan(
         input_artifact_manifest_sha256=payload["input_artifact_manifest_sha256"],
         source_tree_sha256=payload["source_tree_sha256"],
@@ -77,8 +80,8 @@ def load_extraction_execution_plan(path: str | Path) -> ExtractionExecutionPlan:
 def load_extraction_execution_attestation(
     path: str | Path,
 ) -> ExtractionExecutionAttestation:
-    payload = _load_strict_json_file(path, label="extraction execution attestation")
-    _require_exact_object_keys(
+    payload = load_strict_json_object(path, label="extraction execution attestation")
+    require_exact_object_keys(
         payload,
         _EXECUTION_ATTESTATION_KEYS,
         label="extraction execution attestation",
@@ -111,8 +114,11 @@ def load_extraction_execution_attestation(
 def load_attested_extraction_evidence_release_receipt(
     path: str | Path,
 ) -> AttestedExtractionEvidenceReleaseReceipt:
-    payload = _load_strict_json_file(path, label="attested extraction evidence release receipt")
-    _require_exact_object_keys(
+    payload = load_strict_json_object(
+        path,
+        label="attested extraction evidence release receipt",
+    )
+    require_exact_object_keys(
         payload,
         _ATTESTED_RELEASE_KEYS,
         label="attested extraction evidence release receipt",
@@ -152,53 +158,3 @@ def attested_extraction_evidence_release_receipt_json_payload(
     if not isinstance(receipt, AttestedExtractionEvidenceReleaseReceipt):
         raise TypeError("receipt must be an AttestedExtractionEvidenceReleaseReceipt")
     return asdict(receipt)
-
-
-def _load_strict_json_file(path: str | Path, *, label: str) -> dict[str, Any]:
-    source_path = Path(path)
-    raw = source_path.read_bytes()
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ValueError(f"{label} must be UTF-8 JSON") from exc
-    try:
-        payload = json.loads(
-            text,
-            object_pairs_hook=_reject_duplicate_object_keys,
-            parse_constant=_reject_json_constant,
-        )
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{label} must contain valid JSON") from exc
-    if not isinstance(payload, dict):
-        raise TypeError(f"{label} root must be an object")
-    return payload
-
-
-def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate object key is not allowed: {key!r}")
-        result[key] = value
-    return result
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"non-standard JSON numeric constant is not allowed: {value}")
-
-
-def _require_exact_object_keys(
-    value: object,
-    expected: frozenset[str],
-    *,
-    label: str,
-) -> None:
-    if not isinstance(value, dict):
-        raise TypeError(f"{label} must be an object")
-    actual = frozenset(value)
-    if actual != expected:
-        missing = tuple(sorted(expected - actual))
-        unknown = tuple(sorted(actual - expected))
-        raise ValueError(
-            f"{label} keys differ from schema; missing={missing!r}, unknown={unknown!r}"
-        )
