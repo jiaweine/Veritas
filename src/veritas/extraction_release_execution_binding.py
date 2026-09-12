@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from .benchmark import BenchmarkSplit
 from .extraction_evidence_workflow import ExtractionSplitTargetManifest
@@ -207,7 +208,9 @@ def extraction_release_execution_binding_json_payload(
         "release_bundle_file_sha256": binding.release_bundle_file_sha256,
         "execution_plan_sha256": binding.execution_plan_sha256,
         "execution_plan_file_sha256": binding.execution_plan_file_sha256,
-        "development_attestations": [asdict(item) for item in binding.development_attestations],
+        "development_attestations": [
+            asdict(item) for item in binding.development_attestations
+        ],
         "test_attestations": [asdict(item) for item in binding.test_attestations],
         "production_authorized": binding.production_authorized,
     }
@@ -299,18 +302,33 @@ def _verify_attestation(
     if attestation.target_manifest_sha256 != target_manifest.sha256():
         raise ValueError(f"release {label} attestation uses a different target manifest")
 
-    prediction_path = _resolve_regular_file(release_artifact_root, run.prediction_artifact_path)
+    prediction_path = _resolve_regular_file(
+        release_artifact_root, run.prediction_artifact_path
+    )
     raw = prediction_path.read_bytes()
     if sha256(raw).hexdigest() != attestation.prediction_artifact_sha256:
-        raise ValueError(f"release {label} prediction bytes differ from execution attestation")
+        raise ValueError(
+            f"release {label} prediction bytes differ from execution attestation"
+        )
     predictions = load_extraction_prediction_artifact(prediction_path)
-    if extraction_prediction_semantics_sha256(predictions) != attestation.prediction_semantics_sha256:
-        raise ValueError(f"release {label} prediction semantics differ from execution attestation")
+    if (
+        extraction_prediction_semantics_sha256(predictions)
+        != attestation.prediction_semantics_sha256
+    ):
+        raise ValueError(
+            f"release {label} prediction semantics differ from execution attestation"
+        )
 
 
-def _attestation_rows(value: object, *, label: str) -> tuple[ExtractionReleaseExecutionAttestationBinding, ...]:
+def _attestation_rows(
+    value: object,
+    *,
+    label: str,
+) -> tuple[ExtractionReleaseExecutionAttestationBinding, ...]:
     if not isinstance(value, list) or not value:
-        raise ValueError(f"release execution binding {label} attestations must be non-empty")
+        raise ValueError(
+            f"release execution binding {label} attestations must be non-empty"
+        )
     rows: list[ExtractionReleaseExecutionAttestationBinding] = []
     for index, row in enumerate(value):
         _require_exact_keys(
@@ -337,7 +355,9 @@ def _resolve_regular_file(root: Path, relative_path: str) -> Path:
 def _file_sha256(path: str | Path) -> str:
     source = Path(path)
     if source.is_symlink() or not source.is_file():
-        raise ValueError(f"release execution binding input must be a regular non-symlink file: {source}")
+        raise ValueError(
+            f"release execution binding input must be a regular non-symlink file: {source}"
+        )
     digest = sha256()
     with source.open("rb") as handle:
         while chunk := handle.read(1024 * 1024):
@@ -376,14 +396,21 @@ def _load_strict_json_file(path: str | Path, *, label: str) -> dict[str, Any]:
     return payload
 
 
-def _require_exact_keys(value: object, expected: frozenset[str], *, label: str) -> None:
+def _require_exact_keys(
+    value: object,
+    expected: frozenset[str],
+    *,
+    label: str,
+) -> None:
     if not isinstance(value, dict):
         raise TypeError(f"{label} must be an object")
     actual = frozenset(value)
     if actual != expected:
         missing = tuple(sorted(expected - actual))
         unknown = tuple(sorted(actual - expected))
-        raise ValueError(f"{label} keys differ from schema; missing={missing!r}, unknown={unknown!r}")
+        raise ValueError(
+            f"{label} keys differ from schema; missing={missing!r}, unknown={unknown!r}"
+        )
 
 
 def _require_sha256(value: object, *, label: str) -> None:
