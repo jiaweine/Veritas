@@ -236,10 +236,10 @@ DEVELOPMENT/TEST attestation sets. Each threshold row binds execution id, attest
 prediction byte/semantic SHA-256. The builder reopens release prediction artifacts and requires exact agreement
 with each attestation.
 
-## 8. Verify both release bindings, then cold-rebuild external provenance
+## 8. Bound cold verification is the final v0.15 release check
 
-Both preflights are mandatory for the v0.15 bound-release path. First reconstruct the calibration binding from
-exact supplied bytes:
+The standalone binding verifiers remain useful diagnostic preflights. They can identify calibration-chain or
+execution-attestation problems before the more expensive cold rebuild:
 
 ```bash
 python scripts/verify_extraction_release_calibration_binding.py \
@@ -253,11 +253,7 @@ python scripts/verify_extraction_release_calibration_binding.py \
   --test-evaluation-lock evidence/calibration/test-evaluation-lock.json \
   --test-manifest evidence/splits/test-target-manifest.json \
   --output evidence/release/release-calibration-verification.json
-```
 
-Then independently reconstruct the execution-attestation binding:
-
-```bash
 python scripts/verify_extraction_release_execution_binding.py \
   --release-bundle evidence/release/release-evidence-bundle.json \
   --release-execution-binding evidence/release/release-execution-binding.json \
@@ -274,18 +270,30 @@ python scripts/verify_extraction_release_execution_binding.py \
   --output evidence/release/release-execution-verification.json
 ```
 
-Do not proceed unless both commands succeed. They recalculate their bindings instead of trusting hashes copied from
-sidecars.
-
-Then perform the existing cold rebuild and external-provenance verification:
+Those separate commands are **not** the final v0.15 verification artifact. A later file change could otherwise
+create a time-of-check/time-of-use gap. The authoritative v0.15 bound-release verification must re-check both
+sidecars in the **same process** that performs the cold rebuild and external-provenance verification:
 
 ```bash
-python scripts/verify_extraction_external_provenance.py \
+python scripts/verify_bound_extraction_external_provenance.py \
   --sampling-frame benchmark/corpus/evidence_sampling_frame_v0.15.json \
   --seed-manifest benchmark/extraction/evidence_seed_manifest_v0.15.json \
   --evidence-plan benchmark/extraction/evidence_plan_v0.15.json \
   --release-bundle evidence/release/release-evidence-bundle.json \
   --release-artifact-root evidence/predictions \
+  --release-calibration-binding evidence/release/release-calibration-binding.json \
+  --pilot-threshold-policy benchmark/extraction/pretest_pilot_threshold_policy_v0.15.json \
+  --development-freeze evidence/calibration/development-calibration-freeze.json \
+  --development-manifest evidence/splits/development-target-manifest.json \
+  --test-evaluation-lock evidence/calibration/test-evaluation-lock.json \
+  --test-manifest evidence/splits/test-target-manifest.json \
+  --release-execution-binding evidence/release/release-execution-binding.json \
+  --development-attestation nc-005 evidence/attestations/development/nc-005.json \
+  --development-attestation nc-010 evidence/attestations/development/nc-010.json \
+  --development-attestation nc-020 evidence/attestations/development/nc-020.json \
+  --test-attestation nc-005 evidence/attestations/test/nc-005.json \
+  --test-attestation nc-010 evidence/attestations/test/nc-010.json \
+  --test-attestation nc-020 evidence/attestations/test/nc-020.json \
   --trust-root external/evidence-run-trust-root.json \
   --trust-policy external/evidence-run-trust-policy.json \
   --signed-provenance external/signed-evidence-run-provenance.json \
@@ -300,17 +308,22 @@ python scripts/verify_extraction_external_provenance.py \
   --expected-run-id '<independently-selected-run-id>' \
   --expected-run-attempt '<independently-selected-run-attempt>' \
   --expected-commit-sha d6ffdf7debd63281e0db5934e3d4b7ebafb98311 \
-  --output evidence/release/cold-verification.json
+  --output evidence/release/bound-cold-verification.json
 ```
 
-Cold reconstruction remains authoritative: it reopens canonical prediction artifacts, recomputes reports,
-re-derives the DEVELOPMENT threshold, reconstructs the TEST lock, and verifies the attested release. The two
-preflight bindings additionally prove that the release package uses the exact frozen calibration chain and the
-exact DEV/TEST execution-attestation chain supplied for verification. They do not establish who controlled those
-runs or whether an external institution governed them.
+Do not use `scripts/verify_extraction_external_provenance.py` as the final verifier for a v0.15 bound release. That
+entrypoint remains only a compatibility path for older unbound archives.
 
-For a stronger source-archive claim, also provide the complete optional source-archive verification chain; partial
-chains must fail closed.
+Cold reconstruction remains authoritative: the bound verifier first reconstructs both release bindings from the
+exact supplied files, then reopens canonical prediction artifacts, verifies execution/publication bytes,
+recomputes reports, re-derives the DEVELOPMENT threshold, reconstructs the TEST lock, requires the archived
+attested release to match the cold rebuild, and verifies the precommitted external signature/run context. Its final
+JSON also commits the semantic and exact-file SHA-256 identities of both release bindings.
+
+The expected run id/attempt/commit must still be independently selected rather than copied from the signed
+envelope. For a stronger source-archive claim, also provide the complete optional source-archive verification
+chain; partial chains must fail closed. See `docs/BOUND_EXTRACTION_EXTERNAL_PROVENANCE.md` for the narrower
+contract.
 
 ## 9. What closes issue #26
 
