@@ -13,7 +13,7 @@ from veritas.extraction_calibration_archive import (
     ExtractionDevelopmentCalibrationObservationArchive,
     ExtractionTestEvaluationArchive,
     development_calibration_freeze_json_payload,
-    test_evaluation_archive_json_payload,
+    test_evaluation_archive_json_payload as _test_evaluation_archive_json_payload,
 )
 from veritas.extraction_evidence_workflow import extraction_evidence_plan_payload
 from veritas.extraction_execution_evidence import (
@@ -150,7 +150,7 @@ def _fixture_args(tmp_path: Path):
         test_evaluation_lock=fixture["test_lock"],
     )
     test_lock_path = tmp_path / "test-evaluation-lock.json"
-    _write_json(test_lock_path, test_evaluation_archive_json_payload(test_archive))
+    _write_json(test_lock_path, _test_evaluation_archive_json_payload(test_archive))
 
     test_args = []
     for observation in fixture["test_observations"]:
