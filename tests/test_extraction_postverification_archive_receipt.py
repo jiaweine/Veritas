@@ -8,7 +8,6 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
 from test_extraction_external_provenance_cli import _root
 from test_extraction_postverification_external_handoff import _run_bound_then_handoff
 
