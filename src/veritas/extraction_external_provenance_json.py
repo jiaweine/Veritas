@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from ._strict_json import load_strict_json_object, require_exact_object_keys
 from .extraction_external_provenance import (
     ExtractionExternalProvenanceStatement,
     ExtractionExternalTrustRoot,
@@ -55,8 +55,8 @@ _STATEMENT_KEYS = frozenset(
 
 
 def load_extraction_external_trust_root(path: str | Path) -> ExtractionExternalTrustRoot:
-    payload = _load_strict_json_file(path, label="external trust-root manifest")
-    _require_exact_object_keys(payload, _TRUST_ROOT_KEYS, label="external trust-root manifest")
+    payload = load_strict_json_object(path, label="external trust-root manifest")
+    require_exact_object_keys(payload, _TRUST_ROOT_KEYS, label="external trust-root manifest")
     return ExtractionExternalTrustRoot(
         issuer=payload["issuer"],
         runner_identity=payload["runner_identity"],
@@ -71,14 +71,14 @@ def load_extraction_external_trust_root(path: str | Path) -> ExtractionExternalT
 def load_extraction_signed_external_provenance(
     path: str | Path,
 ) -> ExtractionSignedExternalProvenance:
-    payload = _load_strict_json_file(path, label="signed external provenance")
-    _require_exact_object_keys(
+    payload = load_strict_json_object(path, label="signed external provenance")
+    require_exact_object_keys(
         payload,
         _SIGNED_PROVENANCE_KEYS,
         label="signed external provenance",
     )
     statement_payload = payload["statement"]
-    _require_exact_object_keys(
+    require_exact_object_keys(
         statement_payload,
         _STATEMENT_KEYS,
         label="external provenance statement",
@@ -136,53 +136,3 @@ def extraction_signed_external_provenance_payload(
         "statement": asdict(signed_provenance.statement),
         "signature_hex": signed_provenance.signature_hex,
     }
-
-
-def _load_strict_json_file(path: str | Path, *, label: str) -> dict[str, Any]:
-    source_path = Path(path)
-    raw = source_path.read_bytes()
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ValueError(f"{label} must be UTF-8 JSON") from exc
-    try:
-        payload = json.loads(
-            text,
-            object_pairs_hook=_reject_duplicate_object_keys,
-            parse_constant=_reject_json_constant,
-        )
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{label} must contain valid JSON") from exc
-    if not isinstance(payload, dict):
-        raise TypeError(f"{label} root must be an object")
-    return payload
-
-
-def _reject_duplicate_object_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate object key is not allowed: {key!r}")
-        result[key] = value
-    return result
-
-
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"non-standard JSON numeric constant is not allowed: {value}")
-
-
-def _require_exact_object_keys(
-    value: object,
-    expected: frozenset[str],
-    *,
-    label: str,
-) -> None:
-    if not isinstance(value, dict):
-        raise TypeError(f"{label} must be an object")
-    actual = frozenset(value)
-    if actual != expected:
-        missing = tuple(sorted(expected - actual))
-        unknown = tuple(sorted(actual - expected))
-        raise ValueError(
-            f"{label} keys differ from schema; missing={missing!r}, unknown={unknown!r}"
-        )
