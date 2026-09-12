@@ -20,6 +20,7 @@ Veritas extracts reported statistical objects from research papers, checks numer
 - **Deterministic statistical checks** — rounding-aware regression arithmetic, sample accounting, correlations, grouped summaries, ANOVA, meta-analysis, SEM, standardized regression, DID, IV, RDD, and experimental checks.
 - **Evidence-linked claims** — `Claim → Estimate → Sample → Data → Code → Assumption` identity graphs keep findings tied to the objects they depend on.
 - **Reproducibility workflows** — isolated R/Python runner contracts, environment capture, publication-object matching, provenance DAGs, and attested reproduction findings.
+- **Replication agent bridge** — optional ACP integration keeps code-capable agents in a separate replication workspace instead of granting shell access to paper-audit threads.
 - **Research-design checks** — preregistration and PAP comparison, sample lineage, survey-integrity signals, and provenance/randomization checks.
 - **Locked evaluation** — calibration scopes, held-out TEST sealing, execution attestations, release bindings, cold verification, and archive-receipt binding for real-paper extraction evidence.
 
@@ -69,6 +70,19 @@ Open `http://127.0.0.1:8765`, upload a PDF, inspect detected source structure, a
 
 The browser is a control surface: extraction and detector work stays in the Python backend, and source locations flow back into the Evidence Inspector. See [`docs/HARNESS.md`](docs/HARNESS.md).
 
+### Connect a replication agent
+
+Code-capable agents are optional and stay outside normal paper-audit threads. Veritas exposes an ACP client adapter for a dedicated replication workspace:
+
+```bash
+python -m pip install -e ".[replication]"
+export VERITAS_REPLICATION_AGENT="my-acp-agent"
+veritas-replication --workspace ./reproduction \
+  "Run the project tests and identify the command that reproduces Table 4."
+```
+
+The adapter defaults to denying ACP permission requests and forwards non-basic environment variables only when explicitly configured. The workspace path is not itself a sandbox; process and filesystem isolation belong to the selected agent runtime. See [`docs/REPLICATION_AGENT_BACKENDS.md`](docs/REPLICATION_AGENT_BACKENDS.md).
+
 ## How it works
 
 ```mermaid
@@ -115,7 +129,7 @@ python scripts/benchmark_real_pdf_promotion.py
 For the full test suite:
 
 ```bash
-python -m pip install -e ".[dev,pdf,attestation,web]"
+python -m pip install -e ".[dev,pdf,attestation,web,replication]"
 ruff check src tests
 pytest -q
 ```
@@ -125,15 +139,17 @@ pytest -q
 | Path | Purpose |
 | --- | --- |
 | [`src/veritas/`](src/veritas/) | Core audit, extraction, detector, reproduction, provenance, and harness library |
-| [`src/veritas/harness/`](src/veritas/harness/) | Local agent threads, API, tool orchestration, and web UI |
+| [`src/veritas/harness/`](src/veritas/harness/) | Local audit threads, API, paper-tool orchestration, and web UI |
+| [`src/veritas/replication/`](src/veritas/replication/) | Optional ACP adapter for code-capable replication agents |
 | [`scripts/`](scripts/) | Benchmark, evidence-building, and verification CLIs |
 | [`benchmark/`](benchmark/) | Benchmark corpora plus frozen evidence and execution manifests |
 | [`docs/`](docs/) | Methods, detector notes, evidence protocols, and operator runbooks |
-| [`tests/`](tests/) | Unit, regression, fail-closed, harness, and workflow contract tests |
+| [`tests/`](tests/) | Unit, regression, fail-closed, harness, replication, and workflow contract tests |
 
 ## Documentation
 
 - [`docs/HARNESS.md`](docs/HARNESS.md) — Research Audit Harness architecture and local workflow
+- [`docs/REPLICATION_AGENT_BACKENDS.md`](docs/REPLICATION_AGENT_BACKENDS.md) — ACP replication agents, backend choices, and safety boundaries
 - [`docs/METHODS.md`](docs/METHODS.md) — audit model and methodology
 - [`docs/DETECTOR_CARDS.md`](docs/DETECTOR_CARDS.md) — detector scope and assumptions
 - [`docs/EXTRACTION.md`](docs/EXTRACTION.md) — extraction architecture
