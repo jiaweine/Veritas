@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from test_extraction_external_provenance_cli import _archived_fixture, _root, _write_json
@@ -31,7 +30,6 @@ from veritas.extraction_calibration_archive import (
 from veritas.extraction_evidence_plan_json import load_extraction_evidence_plan
 from veritas.extraction_evidence_workflow import (
     build_extraction_split_target_manifest,
-    load_extraction_sampling_frame,
     load_extraction_seed_manifest,
 )
 from veritas.extraction_execution_evidence import (
@@ -150,12 +148,10 @@ def _write_attestations(
 def _bound_fixture(tmp_path: Path):
     fixture = _archived_fixture(tmp_path)
     base_args = fixture["args"]
-    sampling_path = Path(_arg(base_args, "--sampling-frame"))
     seed_path = Path(_arg(base_args, "--seed-manifest"))
     evidence_plan_path = Path(_arg(base_args, "--evidence-plan"))
     execution_plan_path = Path(_arg(base_args, "--execution-plan"))
 
-    sampling_frame = load_extraction_sampling_frame(sampling_path)
     seed_manifest = load_extraction_seed_manifest(seed_path)
     plan, grid = load_extraction_evidence_plan(evidence_plan_path)
     bundle = load_extraction_release_evidence_bundle(fixture["bundle_path"])
