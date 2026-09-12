@@ -57,14 +57,14 @@ The response stream is NDJSON. Every event has an `event_id`, `audit_id`, `kind`
 
 The default Veritas agent is a **research audit agent**, not a general coding agent. Its tool surface is centered on papers and evidence: parse, locate, audit, reproduce, and verify provenance.
 
-A code-capable agent belongs in a separate **Replication workspace** where source trees can be isolated, commands can require approval, and proposed changes can be reviewed as diffs. That workspace can reuse the same thread/event protocol without giving normal paper-audit threads filesystem mutation privileges.
-
-This keeps the product model simple:
+Code execution belongs in a separate **Replication workspace** where source trees can be isolated, commands can require approval, and proposed changes can be reviewed as diffs. Veritas now provides an optional ACP client adapter for that layer; see [`REPLICATION_AGENT_BACKENDS.md`](REPLICATION_AGENT_BACKENDS.md).
 
 ```text
-Audit thread       → evidence tools → read/verify
-Replication thread → sandbox tools  → execute/propose/review
+Audit thread       → evidence tools → read / verify
+Replication thread → ACP agent      → execute / propose / review
 ```
+
+The ACP adapter does not make the current paper-audit browser code-capable. Browser replication panels, interactive permission cards, terminal views, and diff review are separate product surfaces built on top of that adapter.
 
 ## API
 
