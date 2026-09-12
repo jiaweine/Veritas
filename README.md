@@ -8,7 +8,6 @@ Turn papers and research artifacts into inspectable, reproducible audit evidence
 
 [![CI](https://github.com/jiaweine/Veritas/actions/workflows/ci.yml/badge.svg)](https://github.com/jiaweine/Veritas/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
-![Version](https://img.shields.io/badge/version-0.15.0-111827)
 
 </div>
 
@@ -76,7 +75,7 @@ flowchart LR
 
 ## Real-paper evidence workflow
 
-Veritas v0.15 includes a locked workflow for evaluating extraction on real papers:
+The v0.15 evidence workflow provides a locked protocol for evaluating extraction on real papers:
 
 ```text
 sampling → independent review → DEVELOPMENT calibration → sealed TEST
@@ -128,6 +127,6 @@ pytest -q
 
 ## Research status
 
-Veritas v0.15 is research software. Current public real-PDF benchmarks run under benchmark/research calibration; production-authorized hard findings require the locked held-out certification path for the exact deployed pipeline.
+Veritas is research software. Current public real-PDF benchmarks run under benchmark/research calibration; production-authorized hard findings require the locked held-out certification path for the exact deployed pipeline.
 
 Findings are designed to support expert review and reproducibility work, not to serve as determinations of research misconduct.
