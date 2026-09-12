@@ -114,7 +114,7 @@ class HarnessStore:
         if not isinstance(value, dict) or value.get("audit_id") != audit_id:
             raise ValueError("audit metadata is invalid")
         if not isinstance(value.get("events"), list):
-            raise ValueError("audit metadata events must be an array")
+            raise TypeError("audit metadata events must be an array")
         return value
 
     def _write_record(self, record: dict[str, Any]) -> None:

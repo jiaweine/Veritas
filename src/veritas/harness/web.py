@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
+from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -55,8 +56,8 @@ def create_app(
 
     @app.post("/api/audits")
     async def create_audit(
-        file: UploadFile = File(...),
-        title: str = Form(""),
+        file: Annotated[UploadFile, File()],
+        title: Annotated[str, Form()] = "",
     ) -> dict[str, object]:
         payload = await file.read()
         if len(payload) > 80 * 1024 * 1024:
@@ -92,10 +93,7 @@ def create_app(
 
         def stream() -> Iterator[bytes]:
             for event in runtime.stream_message(audit_id, request.message):
-                yield (
-                    json.dumps(event, ensure_ascii=False, sort_keys=True)
-                    + "\n"
-                ).encode("utf-8")
+                yield (json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
 

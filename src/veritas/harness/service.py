@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from .models import HarnessEvent
 from .planner import help_text, parse_command
@@ -163,9 +164,12 @@ class AuditHarness:
             self.store.set_latest_result(audit_id, result)
 
             counts = result.get("counts", {})
-            tool_status = "success" if result["status"] == "verified" else (
-                "danger" if result["status"] == "contradiction" else "review"
-            )
+            if result["status"] == "verified":
+                tool_status = "success"
+            elif result["status"] == "contradiction":
+                tool_status = "danger"
+            else:
+                tool_status = "review"
             detail = self._result_detail(result)
             finished = HarnessEvent(
                 audit_id=audit_id,
@@ -200,7 +204,7 @@ class AuditHarness:
             )
             self.store.append_event(final)
             yield final.to_dict()
-        except Exception as exc:
+        except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
             self.store.set_status(audit_id, "error")
             event = HarnessEvent(
                 audit_id=audit_id,
