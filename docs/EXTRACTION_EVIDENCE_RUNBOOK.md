@@ -14,18 +14,17 @@ The repository orchestration baseline is now `main`, but the frozen v0.15 execut
 Before any held-out TEST outcome is inspected:
 
 - exact sampling-frame, seed, evidence-plan, execution-plan, publication/input, source-tree, parser-registry,
-  numerical-runtime, execution-command, and blinded packet identities must already be fixed under the original
+  numerical-runtime, execution-command, and blinded-packet identities must already be fixed under the original
   pre-TEST commitment;
-- any external-run trust root and trust policy must already exist in an independent historical channel before TEST;
-- any stronger commit-to-source-archive claim needs its separately pretrusted builder root/policy and preserved
-  builder history;
-- reviewer A, reviewer B, and the adjudicator must be genuinely independent people/processes. Reviewer IDs are not proof of human independence;
-- expected evidence-run id/attempt/commit and optional build-run id/attempt must come from an independently
-  selected expected run context, not from the signed envelope;
+- any external-run trust root and trust policy must already exist in an **independent historical channel before TEST**;
+- reviewer A, reviewer B, and the adjudicator must be genuinely independent people/processes. Reviewer IDs are
+  **not proof of human independence**;
+- expected evidence-run id/attempt/commit and optional source-build run context must come from an independently
+  **selected expected run context, not from the signed envelope**;
 - `production_authorized` remains false throughout this workflow.
 
-Repository Git history, CI history, signatures, and structurally valid receipts can support the package, but are
-not substitutes for those external facts.
+Git history, CI history, signatures, and structurally valid receipts can support the package, but cannot create
+those external facts.
 
 ## 1. Persist strict reviewer submissions and adjudication
 
@@ -44,8 +43,8 @@ python scripts/build_extraction_review_record.py \
   --output evidence/review-records/<target-id>.json
 ```
 
-Archive the review-record SHA-256 alongside independently maintained reviewer/adjudicator provenance. Do not
-synthesize missing reviewers or treat A/B agreement as a substitute for adjudication.
+Archive the review-record SHA-256 with independently maintained reviewer/adjudicator provenance. Do not synthesize
+missing reviewers or treat A/B agreement as a substitute for adjudication.
 
 ## 2. Derive DEVELOPMENT and TEST membership mechanically
 
@@ -61,14 +60,13 @@ python scripts/build_extraction_split_manifests.py \
   --output-dir evidence/splits
 ```
 
-The command writes `development-target-manifest.json`, `test-target-manifest.json`, and
-`split-derivation.json`. The derivation records reviewed-gold/split-lock identities, exact manifest file hashes,
-review-record hashes, assignments, and memberships. Do not hand-author split membership.
+The derivation records reviewed-gold/split-lock identities, exact manifest bytes, review-record hashes,
+assignments, and memberships. Do not hand-author split membership.
 
 ## 3. Pin evidence-run trust before TEST
 
-The evidence-run root supplied here must already be governed and historically archived outside the evidence run.
-Build the policy from concrete artifacts:
+The evidence-run root must already be governed and historically archived outside the evidence run. Build the trust
+policy from concrete frozen artifacts:
 
 ```bash
 python scripts/build_extraction_external_trust_policy.py \
@@ -86,26 +84,14 @@ python scripts/build_extraction_external_trust_policy.py \
   --output external/evidence-run-trust-policy.json
 ```
 
-Archive policy bytes and the printed SHA-256 through the independent historical channel before TEST.
-
-For a stronger commit-to-source-archive claim, precommit the separate builder policy before TEST:
-
-```bash
-python scripts/build_extraction_source_archive_trust_policy.py \
-  --policy-id '<source-archive-policy-id>' \
-  --source-commit-sha d6ffdf7debd63281e0db5934e3d4b7ebafb98311 \
-  --execution-plan benchmark/extraction/extraction_execution_plan_v0.15.json \
-  --source-tree evidence/execution/source-tree.tar \
-  --trust-root external/source-archive-trust-root.json \
-  --output external/source-archive-trust-policy.json
-```
-
-A valid signature proves only that the holder of the pretrusted key signed the exact relation. External governance
-must still establish who controlled that key and what the trusted workflow actually did.
+For a stronger commit-to-source-archive claim, separately precommit the source-archive trust root/policy and
+preserve independently governed builder history. A signature proves possession of a key, not independent control
+or workflow semantics.
 
 ## 4. Run every precommitted threshold on DEVELOPMENT
 
-The threshold runner accepts a blinded packet and a derived split manifest. It does not read reviewed gold:
+Run the full frozen grid against the mechanically derived DEVELOPMENT manifest. The threshold runner sees the
+blinded packet and split manifest, not reviewed gold:
 
 ```bash
 python scripts/run_extraction_evidence_threshold.py \
@@ -120,7 +106,7 @@ python scripts/run_extraction_evidence_threshold.py \
   --output evidence/predictions/development/nc-005.json
 ```
 
-Repeat for the complete frozen grid. For every prediction artifact, archive the strict execution attestation:
+Repeat for every frozen threshold. Build one strict execution-attestation archive for each prediction artifact:
 
 ```bash
 python scripts/build_extraction_execution_attestation.py \
@@ -133,13 +119,11 @@ python scripts/build_extraction_execution_attestation.py \
   --output evidence/attestations/development/nc-005.json
 ```
 
-The attestation builder recovers the numeric threshold from the frozen grid. It does not accept a caller-supplied
-numeric threshold.
+The attestation builder recovers the numeric threshold from the frozen grid rather than accepting a retyped value.
 
 ## 5. Freeze DEVELOPMENT and lock TEST before touching TEST outcomes
 
-Evaluate the complete DEVELOPMENT grid, under the already frozen pilot policy, without providing any TEST
-prediction or metric:
+Create the DEVELOPMENT-only calibration freeze:
 
 ```bash
 python scripts/freeze_extraction_development_threshold.py \
@@ -156,12 +140,8 @@ python scripts/freeze_extraction_development_threshold.py \
   --output evidence/calibration/development-calibration-freeze.json
 ```
 
-This command mechanically rebuilds reviewed gold and the DEVELOPMENT split, requires every precommitted threshold,
-checks the threshold embedded in every prediction resolution, recomputes reports, applies the frozen policy, and
-writes the DEVELOPMENT-only selected threshold, observations, report hashes, prediction byte/semantic hashes, and
-selectivity curve.
-
-Then bind that frozen decision to the untouched TEST manifest:
+Then bind the frozen decision to the untouched TEST manifest. This command accepts no TEST prediction or TEST
+performance value:
 
 ```bash
 python scripts/build_extraction_test_evaluation_lock.py \
@@ -171,10 +151,7 @@ python scripts/build_extraction_test_evaluation_lock.py \
   --output evidence/calibration/test-evaluation-lock.json
 ```
 
-The lock command accepts no TEST prediction or TEST performance value.
-
-Historical timing requires one more external archive event. Build the post-DEVELOPMENT / pre-TEST handoff, chaining
-it to the verified binding from the original pre-TEST archive:
+Before TEST is opened, build a second external handoff chaining to the original verified pre-TEST archive binding:
 
 ```bash
 python scripts/build_extraction_development_freeze_external_handoff.py \
@@ -194,45 +171,25 @@ python scripts/build_extraction_development_freeze_external_handoff.py \
   --output external/post-development-pretest-handoff.json
 ```
 
-The independent archive must preserve those exact bytes and issue a second receipt before any TEST prediction is
-opened. Verify the externally supplied receipt with the existing generic verifier:
-
-```bash
-python scripts/verify_extraction_pretest_external_archive_receipt.py \
-  --receipt external/post-development-pretest-receipt.json \
-  --handoff external/post-development-pretest-handoff.json \
-  --expected-handoff-sha256 '<independently-recorded-handoff-sha256>' \
-  --expected-source-commit-sha d6ffdf7debd63281e0db5934e3d4b7ebafb98311 \
-  --expected-custodian-identity '<independently-selected-custodian>' \
-  --expected-archive-channel-identity '<independently-selected-channel>' \
-  --expected-archive-record-id '<independently-selected-record-id>' \
-  --output external/post-development-pretest-verified-binding.json
-```
-
-The second receipt binds exact bytes and external record context. Repository verification still does not establish
-that the channel was actually independently controlled or historically append-only.
+The independent archive must preserve those exact bytes and issue a second receipt before TEST. Verify it using
+independently selected custodian/channel/record expectations, never values copied from the receipt itself.
 
 **TEST must not feed back** into threshold selection, parser routing, promotion logic, publication/input selection,
 source commit choice, execution-plan changes, trust-root selection, or trust-policy construction.
 
-See `docs/EXTRACTION_DEVELOPMENT_FREEZE.md` for the detailed temporal-boundary procedure.
+See `docs/EXTRACTION_DEVELOPMENT_FREEZE.md` for the detailed temporal boundary.
 
 ## 6. Run the untouched TEST grid
 
 Only after the DEVELOPMENT freeze, TEST evaluation lock, and second independent archive/receipt exist, run the
-same complete threshold grid against:
+same complete threshold grid against `evidence/splits/test-target-manifest.json`. Archive exact canonical TEST
+prediction bytes and one execution attestation per threshold. TEST may populate the precommitted report; it may
+not change upstream choices.
 
-```text
---target-manifest evidence/splits/test-target-manifest.json
-```
+## 7. Build a release bundle mechanically bound to the frozen calibration chain
 
-Archive exact canonical TEST prediction bytes and one execution attestation per TEST threshold. TEST may evaluate
-the already frozen decision and populate the precommitted evidence report; it may not change upstream choices.
-
-## 7. Build the release-evidence bundle
-
-Once review records, DEVELOPMENT/TEST predictions, execution IDs, and the frozen policy are archived, build the
-canonical bundle:
+Release assembly must not retype policy values or numeric thresholds. Supply only threshold IDs, execution IDs,
+and prediction paths; the builder recovers policy and threshold values from the frozen artifacts:
 
 ```bash
 python scripts/build_extraction_release_bundle.py \
@@ -241,25 +198,55 @@ python scripts/build_extraction_release_bundle.py \
   --release-artifact-root evidence/predictions \
   --input-artifact-manifest benchmark/extraction/extraction_input_artifact_manifest_v0.15.json \
   --input-artifact-root evidence/input-artifacts \
-  --development-run nc-005 0.005 '<execution-id>' development/nc-005.json \
-  --development-run nc-010 0.010 '<execution-id>' development/nc-010.json \
-  --development-run nc-020 0.020 '<execution-id>' development/nc-020.json \
-  --test-run nc-005 0.005 '<execution-id>' test/nc-005.json \
-  --test-run nc-010 0.010 '<execution-id>' test/nc-010.json \
-  --test-run nc-020 0.020 '<execution-id>' test/nc-020.json \
-  --min-selective-coverage '<precommitted-value>' \
-  --min-accepted-full-accuracy '<precommitted-value>' \
-  --max-critical-family-wrong-accept-upper-bound 0.80 \
-  --output evidence/release/release-evidence-bundle.json
+  --evidence-plan benchmark/extraction/evidence_plan_v0.15.json \
+  --pilot-threshold-policy benchmark/extraction/pretest_pilot_threshold_policy_v0.15.json \
+  --development-freeze evidence/calibration/development-calibration-freeze.json \
+  --development-manifest evidence/splits/development-target-manifest.json \
+  --test-evaluation-lock evidence/calibration/test-evaluation-lock.json \
+  --test-manifest evidence/splits/test-target-manifest.json \
+  --development-run nc-005 '<execution-id>' development/nc-005.json \
+  --development-run nc-010 '<execution-id>' development/nc-010.json \
+  --development-run nc-020 '<execution-id>' development/nc-020.json \
+  --test-run nc-005 '<execution-id>' test/nc-005.json \
+  --test-run nc-010 '<execution-id>' test/nc-010.json \
+  --test-run nc-020 '<execution-id>' test/nc-020.json \
+  --output evidence/release/release-evidence-bundle.json \
+  --calibration-binding-output evidence/release/release-calibration-binding.json
 ```
 
-Use exact frozen policy values; do not choose them from TEST. The v0.15 `0.80` family upper-bound limit is a
-non-production pilot policy, not a production safety target.
+The builder derives `ExtractionThresholdPolicy` from the DEVELOPMENT freeze and numeric thresholds from the
+precommitted evidence-plan grid. There are no release-stage `--min-selective-coverage`,
+`--min-accepted-full-accuracy`, `--max-critical-family-wrong-accept-upper-bound`, or caller-supplied run-threshold
+arguments.
 
-## 8. Cold rebuild and verify external provenance
+The separate strict `release-calibration-binding.json` commits both semantic and exact-file SHA-256 identities for
+the release bundle, pilot policy, DEVELOPMENT freeze, DEVELOPMENT manifest, TEST evaluation archive/lock, and TEST
+manifest. It also requires the DEVELOPMENT prediction bytes/semantics in the release artifact root to be exactly
+the predictions committed by the pre-TEST DEVELOPMENT freeze.
 
-On an independent verifier, supply archived source evidence, exact publication/execution bytes, pre-TEST
-policy/root, signed provenance, and expected run context chosen independently of the signed envelope:
+## 8. Verify the release/calibration binding, then cold-rebuild external provenance
+
+The calibration preflight is mandatory for the v0.15 bound-release path. Run it on the independent verifier before
+external provenance verification:
+
+```bash
+python scripts/verify_extraction_release_calibration_binding.py \
+  --release-bundle evidence/release/release-evidence-bundle.json \
+  --release-calibration-binding evidence/release/release-calibration-binding.json \
+  --release-artifact-root evidence/predictions \
+  --evidence-plan benchmark/extraction/evidence_plan_v0.15.json \
+  --pilot-threshold-policy benchmark/extraction/pretest_pilot_threshold_policy_v0.15.json \
+  --development-freeze evidence/calibration/development-calibration-freeze.json \
+  --development-manifest evidence/splits/development-target-manifest.json \
+  --test-evaluation-lock evidence/calibration/test-evaluation-lock.json \
+  --test-manifest evidence/splits/test-target-manifest.json \
+  --output evidence/release/release-calibration-verification.json
+```
+
+Do not proceed unless that command succeeds. It recalculates the binding from the exact supplied bytes rather than
+trusting hashes copied from the sidecar.
+
+Then perform the existing cold rebuild and external-provenance verification:
 
 ```bash
 python scripts/verify_extraction_external_provenance.py \
@@ -285,16 +272,17 @@ python scripts/verify_extraction_external_provenance.py \
   --output evidence/release/cold-verification.json
 ```
 
-For the stronger source-archive claim, provide the complete optional source-archive verification chain; partial
-chains must fail closed. Cold reconstruction remains authoritative: it reopens canonical prediction artifacts,
-recomputes reports, re-derives the DEVELOPMENT threshold, and reconstructs the TEST lock rather than trusting
-archive summaries.
+Cold reconstruction remains authoritative: it reopens canonical prediction artifacts, recomputes reports,
+re-derives the DEVELOPMENT threshold, and reconstructs the TEST lock. The binding preflight additionally proves
+that those reconstructed inputs are the exact policy/freeze/lock/manifests assembled around the release bundle.
+For a stronger source-archive claim, also provide the complete optional source-archive verification chain; partial
+chains must fail closed.
 
 ## 9. What closes issue #26
 
-Repository-side success is necessary but not sufficient. The milestone closes only when the archived evidence
-supports the external facts software cannot create: genuine reviewer/adjudicator independence, historical pre-TEST
-trust/policy and post-DEVELOPMENT freeze existence, untouched TEST handling, independently controlled expected run
-context, any claimed institutional key/workflow ownership, and the complete cold-verifiable evidence package.
+Repository-side success is necessary but not sufficient. The milestone closes only when archived evidence supports
+the external facts software cannot create: genuine reviewer/adjudicator independence, historical pre-TEST trust
+and post-DEVELOPMENT freeze existence, untouched TEST handling, independently controlled expected run context,
+any claimed institutional key/workflow ownership, and the complete cold-verifiable evidence package.
 
 A green CI run, a Git commit, or a structurally valid receipt alone is not that evidence.
