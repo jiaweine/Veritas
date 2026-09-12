@@ -410,7 +410,7 @@ def test_bound_external_provenance_cli_rejects_pilot_policy_exact_byte_drift(
         fixture["args"], cwd=_root(), check=False, capture_output=True, text=True
     )
     assert result.returncode != 0
-    assert "pilot threshold policy exact bytes differ" in result.stderr
+    assert "different pilot-policy bytes" in result.stderr
     assert not fixture["output_path"].exists()
 
 
