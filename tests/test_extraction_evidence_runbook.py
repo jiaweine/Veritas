@@ -19,6 +19,14 @@ def test_extraction_evidence_runbook_preserves_external_authority_boundaries() -
         "There are no release-stage `--min-selective-coverage`",
         "caller-supplied",
         "execution-id arguments",
+        "final repository-side v0.15 release check",
+        "scripts/build_extraction_postverification_external_handoff.py",
+        "repository_side_postverification_external_archive_handoff_ready_awaiting_independent_archive",
+        "does **not** provide a command that generates the custodian receipt",
+        "scripts/verify_extraction_postverification_external_archive_receipt.py",
+        "verified-postverification-archive-receipt-binding.json",
+        "`independent_control_established=false`",
+        "`historical_channel_semantics_established=false`",
         "A green CI run, a Git commit, or a structurally valid receipt alone is not that evidence",
     ):
         assert phrase in text
@@ -39,3 +47,26 @@ def test_extraction_evidence_runbook_preserves_external_authority_boundaries() -
     assert "--test-run nc-005 '<execution-id>'" not in release_section
     assert "--development-run nc-005 0.005" not in release_section
     assert "--test-run nc-005 0.005" not in release_section
+
+    bound_verification = text.index("scripts/verify_bound_extraction_external_provenance.py")
+    handoff = text.index("scripts/build_extraction_postverification_external_handoff.py")
+    receipt_verification = text.index(
+        "scripts/verify_extraction_postverification_external_archive_receipt.py"
+    )
+    closure = text.index("## 10. What closes issue #26")
+    assert bound_verification < handoff < receipt_verification < closure
+
+    postverification_section = text.split(
+        "## 9. Archive the post-verification replay set and verify the external receipt",
+        maxsplit=1,
+    )[1].split("## 10.", maxsplit=1)[0]
+    assert "--bound-verification evidence/release/bound-cold-verification.json" in (
+        postverification_section
+    )
+    assert "--expected-handoff-sha256 '<independently-recorded-handoff-sha256>'" in (
+        postverification_section
+    )
+    assert "--expected-custodian-identity '<independently-expected-custodian>'" in (
+        postverification_section
+    )
+    assert "production_authorized=false" in postverification_section
