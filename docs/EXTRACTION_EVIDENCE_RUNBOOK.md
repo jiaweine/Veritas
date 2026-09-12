@@ -120,6 +120,8 @@ python scripts/build_extraction_execution_attestation.py \
 ```
 
 The attestation builder recovers the numeric threshold from the frozen grid rather than accepting a retyped value.
+Its strict archive binds execution id, execution plan, split, target manifest, exact prediction bytes, prediction
+semantics, isolation flags, and successful exit status.
 
 ## 5. Freeze DEVELOPMENT and lock TEST before touching TEST outcomes
 
@@ -179,17 +181,22 @@ source commit choice, execution-plan changes, trust-root selection, or trust-pol
 
 See `docs/EXTRACTION_DEVELOPMENT_FREEZE.md` for the detailed temporal boundary.
 
-## 6. Run the untouched TEST grid
+## 6. Run the untouched TEST grid and attest each execution
 
 Only after the DEVELOPMENT freeze, TEST evaluation lock, and second independent archive/receipt exist, run the
 same complete threshold grid against `evidence/splits/test-target-manifest.json`. Archive exact canonical TEST
-prediction bytes and one execution attestation per threshold. TEST may populate the precommitted report; it may
-not change upstream choices.
+prediction bytes and immediately build one strict execution attestation for every TEST threshold using the frozen
+execution plan, evidence plan, TEST manifest, exact prediction artifact, threshold id, and real execution id.
 
-## 7. Build a release bundle mechanically bound to the frozen calibration chain
+TEST may populate the precommitted report; it may not change upstream choices. Preserve the TEST attestation files
+with the release evidence. Release assembly will derive execution ids from these files and will not accept a
+separately retyped execution id.
 
-Release assembly must not retype policy values or numeric thresholds. Supply only threshold IDs, execution IDs,
-and prediction paths; the builder recovers policy and threshold values from the frozen artifacts:
+## 7. Build a release bundle bound to calibration and execution attestations
+
+Release assembly must not retype policy values, numeric thresholds, or execution ids. Supply the exact execution
+plan and one prediction path plus strict attestation file for every threshold; the builder derives policy from the
+DEVELOPMENT freeze, thresholds from the evidence-plan grid, and execution ids from the attestations:
 
 ```bash
 python scripts/build_extraction_release_bundle.py \
@@ -199,35 +206,40 @@ python scripts/build_extraction_release_bundle.py \
   --input-artifact-manifest benchmark/extraction/extraction_input_artifact_manifest_v0.15.json \
   --input-artifact-root evidence/input-artifacts \
   --evidence-plan benchmark/extraction/evidence_plan_v0.15.json \
+  --execution-plan benchmark/extraction/extraction_execution_plan_v0.15.json \
   --pilot-threshold-policy benchmark/extraction/pretest_pilot_threshold_policy_v0.15.json \
   --development-freeze evidence/calibration/development-calibration-freeze.json \
   --development-manifest evidence/splits/development-target-manifest.json \
   --test-evaluation-lock evidence/calibration/test-evaluation-lock.json \
   --test-manifest evidence/splits/test-target-manifest.json \
-  --development-run nc-005 '<execution-id>' development/nc-005.json \
-  --development-run nc-010 '<execution-id>' development/nc-010.json \
-  --development-run nc-020 '<execution-id>' development/nc-020.json \
-  --test-run nc-005 '<execution-id>' test/nc-005.json \
-  --test-run nc-010 '<execution-id>' test/nc-010.json \
-  --test-run nc-020 '<execution-id>' test/nc-020.json \
+  --development-run nc-005 development/nc-005.json evidence/attestations/development/nc-005.json \
+  --development-run nc-010 development/nc-010.json evidence/attestations/development/nc-010.json \
+  --development-run nc-020 development/nc-020.json evidence/attestations/development/nc-020.json \
+  --test-run nc-005 test/nc-005.json evidence/attestations/test/nc-005.json \
+  --test-run nc-010 test/nc-010.json evidence/attestations/test/nc-010.json \
+  --test-run nc-020 test/nc-020.json evidence/attestations/test/nc-020.json \
   --output evidence/release/release-evidence-bundle.json \
-  --calibration-binding-output evidence/release/release-calibration-binding.json
+  --calibration-binding-output evidence/release/release-calibration-binding.json \
+  --execution-binding-output evidence/release/release-execution-binding.json
 ```
 
-The builder derives `ExtractionThresholdPolicy` from the DEVELOPMENT freeze and numeric thresholds from the
-precommitted evidence-plan grid. There are no release-stage `--min-selective-coverage`,
-`--min-accepted-full-accuracy`, `--max-critical-family-wrong-accept-upper-bound`, or caller-supplied run-threshold
-arguments.
+There are no release-stage `--min-selective-coverage`, `--min-accepted-full-accuracy`,
+`--max-critical-family-wrong-accept-upper-bound`, caller-supplied numeric run-threshold, or caller-supplied
+execution-id arguments.
 
-The separate strict `release-calibration-binding.json` commits both semantic and exact-file SHA-256 identities for
-the release bundle, pilot policy, DEVELOPMENT freeze, DEVELOPMENT manifest, TEST evaluation archive/lock, and TEST
-manifest. It also requires the DEVELOPMENT prediction bytes/semantics in the release artifact root to be exactly
-the predictions committed by the pre-TEST DEVELOPMENT freeze.
+`release-calibration-binding.json` commits the exact release bundle to the pilot policy, DEVELOPMENT freeze,
+selected threshold, DEVELOPMENT manifest, TEST evaluation archive/lock, TEST manifest, and frozen DEVELOPMENT
+prediction bytes/semantics.
 
-## 8. Verify the release/calibration binding, then cold-rebuild external provenance
+`release-execution-binding.json` separately commits the exact release bundle and execution plan to the sorted
+DEVELOPMENT/TEST attestation sets. Each threshold row binds execution id, attestation semantic/file SHA-256, and
+prediction byte/semantic SHA-256. The builder reopens release prediction artifacts and requires exact agreement
+with each attestation.
 
-The calibration preflight is mandatory for the v0.15 bound-release path. Run it on the independent verifier before
-external provenance verification:
+## 8. Verify both release bindings, then cold-rebuild external provenance
+
+Both preflights are mandatory for the v0.15 bound-release path. First reconstruct the calibration binding from
+exact supplied bytes:
 
 ```bash
 python scripts/verify_extraction_release_calibration_binding.py \
@@ -243,8 +255,27 @@ python scripts/verify_extraction_release_calibration_binding.py \
   --output evidence/release/release-calibration-verification.json
 ```
 
-Do not proceed unless that command succeeds. It recalculates the binding from the exact supplied bytes rather than
-trusting hashes copied from the sidecar.
+Then independently reconstruct the execution-attestation binding:
+
+```bash
+python scripts/verify_extraction_release_execution_binding.py \
+  --release-bundle evidence/release/release-evidence-bundle.json \
+  --release-execution-binding evidence/release/release-execution-binding.json \
+  --release-artifact-root evidence/predictions \
+  --execution-plan benchmark/extraction/extraction_execution_plan_v0.15.json \
+  --development-manifest evidence/splits/development-target-manifest.json \
+  --test-manifest evidence/splits/test-target-manifest.json \
+  --development-attestation nc-005 evidence/attestations/development/nc-005.json \
+  --development-attestation nc-010 evidence/attestations/development/nc-010.json \
+  --development-attestation nc-020 evidence/attestations/development/nc-020.json \
+  --test-attestation nc-005 evidence/attestations/test/nc-005.json \
+  --test-attestation nc-010 evidence/attestations/test/nc-010.json \
+  --test-attestation nc-020 evidence/attestations/test/nc-020.json \
+  --output evidence/release/release-execution-verification.json
+```
+
+Do not proceed unless both commands succeed. They recalculate their bindings instead of trusting hashes copied from
+sidecars.
 
 Then perform the existing cold rebuild and external-provenance verification:
 
@@ -273,8 +304,11 @@ python scripts/verify_extraction_external_provenance.py \
 ```
 
 Cold reconstruction remains authoritative: it reopens canonical prediction artifacts, recomputes reports,
-re-derives the DEVELOPMENT threshold, and reconstructs the TEST lock. The binding preflight additionally proves
-that those reconstructed inputs are the exact policy/freeze/lock/manifests assembled around the release bundle.
+re-derives the DEVELOPMENT threshold, reconstructs the TEST lock, and verifies the attested release. The two
+preflight bindings additionally prove that the release package uses the exact frozen calibration chain and the
+exact DEV/TEST execution-attestation chain supplied for verification. They do not establish who controlled those
+runs or whether an external institution governed them.
+
 For a stronger source-archive claim, also provide the complete optional source-archive verification chain; partial
 chains must fail closed.
 
