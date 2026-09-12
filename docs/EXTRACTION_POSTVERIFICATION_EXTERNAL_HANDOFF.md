@@ -9,7 +9,7 @@ independently controlled custodian preserve so that the final bound verification
 
 ## Temporal and authority boundary
 
-This handoff is created **after** `verify_bound_extraction_external_provenance.py` succeeds. It is therefore a
+This handoff is created after `verify_bound_extraction_external_provenance.py` succeeds. It is therefore a
 new post-verification archive event. It must not be described as though the original external Ed25519 statement
 had historically signed the later release calibration or release execution sidecars.
 
