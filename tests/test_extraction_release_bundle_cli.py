@@ -13,6 +13,8 @@ from veritas.extraction_calibration_archive import (
     ExtractionDevelopmentCalibrationObservationArchive,
     ExtractionTestEvaluationArchive,
     development_calibration_freeze_json_payload,
+)
+from veritas.extraction_calibration_archive import (
     test_evaluation_archive_json_payload as _test_evaluation_archive_json_payload,
 )
 from veritas.extraction_evidence_workflow import extraction_evidence_plan_payload
