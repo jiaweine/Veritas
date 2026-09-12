@@ -72,7 +72,8 @@ class EchoAgent(Agent):
     async def prompt(self, session_id: str, prompt: list[object], **_: Any) -> PromptResponse:
         text = getattr(prompt[0], "text", "")
         message = AgentMessageChunk(
-            content=TextContentBlock(text=f"cwd={self._cwd}; prompt={text}")
+            session_update="agent_message_chunk",
+            content=TextContentBlock(type="text", text=f"cwd={self._cwd}; prompt={text}"),
         )
         await self._conn.session_update(session_id=session_id, update=message)
         return PromptResponse(stop_reason="end_turn")

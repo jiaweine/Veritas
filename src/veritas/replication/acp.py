@@ -242,7 +242,7 @@ class AcpTurnRunner:
             prompt_task = asyncio.create_task(
                 connection.prompt(
                     session_id=session.session_id,
-                    prompt=[TextContentBlock(text=prompt.strip())],
+                    prompt=[TextContentBlock(type="text", text=prompt.strip())],
                 )
             )
 
