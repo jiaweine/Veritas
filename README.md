@@ -15,6 +15,7 @@ Veritas extracts reported statistical objects from research papers, checks numer
 
 ## Highlights
 
+- **Research Audit Harness** — a conversation-oriented local workspace with persistent audit threads, structured tool events, and a source-first Evidence Inspector.
 - **Paper-native extraction** — dual native-PDF parsing with geometry fallback and precise page/table/row/column provenance.
 - **Deterministic statistical checks** — rounding-aware regression arithmetic, sample accounting, correlations, grouped summaries, ANOVA, meta-analysis, SEM, standardized regression, DID, IV, RDD, and experimental checks.
 - **Evidence-linked claims** — `Claim → Estimate → Sample → Data → Code → Assumption` identity graphs keep findings tied to the objects they depend on.
@@ -52,6 +53,21 @@ print(summary.verification_coverage)
 print(summary.review_priority)
 print(summary.findings)
 ```
+
+### Launch the Research Audit Harness
+
+```bash
+python -m pip install -e ".[web,pdf]"
+veritas-harness
+```
+
+Open `http://127.0.0.1:8765`, upload a PDF, inspect detected source structure, and run a regression check from the conversation:
+
+```text
+/audit row="Treatment" table=2 page=1
+```
+
+The browser is a control surface: extraction and detector work stays in the Python backend, and source locations flow back into the Evidence Inspector. See [`docs/HARNESS.md`](docs/HARNESS.md).
 
 ## How it works
 
@@ -99,7 +115,7 @@ python scripts/benchmark_real_pdf_promotion.py
 For the full test suite:
 
 ```bash
-python -m pip install -e ".[dev,pdf,attestation]"
+python -m pip install -e ".[dev,pdf,attestation,web]"
 ruff check src tests
 pytest -q
 ```
@@ -108,14 +124,16 @@ pytest -q
 
 | Path | Purpose |
 | --- | --- |
-| [`src/veritas/`](src/veritas/) | Core audit, extraction, detector, reproduction, and provenance library |
+| [`src/veritas/`](src/veritas/) | Core audit, extraction, detector, reproduction, provenance, and harness library |
+| [`src/veritas/harness/`](src/veritas/harness/) | Local agent threads, API, tool orchestration, and web UI |
 | [`scripts/`](scripts/) | Benchmark, evidence-building, and verification CLIs |
 | [`benchmark/`](benchmark/) | Benchmark corpora plus frozen evidence and execution manifests |
 | [`docs/`](docs/) | Methods, detector notes, evidence protocols, and operator runbooks |
-| [`tests/`](tests/) | Unit, regression, fail-closed, and workflow contract tests |
+| [`tests/`](tests/) | Unit, regression, fail-closed, harness, and workflow contract tests |
 
 ## Documentation
 
+- [`docs/HARNESS.md`](docs/HARNESS.md) — Research Audit Harness architecture and local workflow
 - [`docs/METHODS.md`](docs/METHODS.md) — audit model and methodology
 - [`docs/DETECTOR_CARDS.md`](docs/DETECTOR_CARDS.md) — detector scope and assumptions
 - [`docs/EXTRACTION.md`](docs/EXTRACTION.md) — extraction architecture
