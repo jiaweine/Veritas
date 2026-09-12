@@ -249,7 +249,7 @@ class AcpTurnRunner:
             while not prompt_task.done() or not queue.empty():
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=0.1)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
                 yield event
 
