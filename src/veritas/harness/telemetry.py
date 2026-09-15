@@ -5,6 +5,7 @@ import os
 import threading
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version
+from importlib.util import find_spec
 from typing import Any
 
 from .models import HarnessEvent
@@ -22,6 +23,31 @@ def _enabled() -> bool:
         "true",
         "yes",
         "on",
+    }
+
+
+def _observability_dependencies_available() -> bool:
+    try:
+        return (
+            find_spec("opentelemetry.sdk") is not None
+            and find_spec("opentelemetry.exporter.otlp.proto.http.trace_exporter") is not None
+        )
+    except ModuleNotFoundError:
+        return False
+
+
+def telemetry_capability() -> dict[str, object]:
+    return {
+        "enabled": _enabled(),
+        "dependencies_available": _observability_dependencies_available(),
+        "protocol": "otlp/http-protobuf",
+        "endpoint_configured": bool(
+            os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+            or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+        ),
+        "metadata_only": True,
+        "raw_prompts_exported": False,
+        "evidence_text_exported": False,
     }
 
 
