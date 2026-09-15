@@ -19,4 +19,4 @@ jobs:
       - name: Print Ruff import fix
         run: |
           ruff check --select I001 --fix src/veritas/harness/web.py
-          sed -n '1,28p' src/veritas/harness/web.py
+          git diff -- src/veritas/harness/web.py
