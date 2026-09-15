@@ -1,0 +1,12 @@
+{
+  "name": "Veritas Research Audit",
+  "short_name": "Veritas",
+  "description": "Evidence-first research auditing with inspectable provenance.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#f6f7f9",
+  "icons": [
+    {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}
