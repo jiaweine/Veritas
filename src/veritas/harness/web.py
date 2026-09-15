@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .run_views import project_run_detail
 from .service import AuditHarness
 
 MAX_UPLOAD_BYTES = 80 * 1024 * 1024
@@ -45,7 +46,7 @@ def create_app(
 
     app = FastAPI(
         title="Veritas Research Audit Harness",
-        version="0.3.0",
+        version="0.4.0",
         docs_url="/api/docs",
         redoc_url=None,
     )
@@ -82,6 +83,13 @@ def create_app(
     @app.get("/api/v1/runs")
     def runs() -> list[dict[str, object]]:
         return runtime.runs()
+
+    @app.get("/api/v1/runs/{run_id}")
+    def run_detail(run_id: str) -> dict[str, object]:
+        detail = project_run_detail(runtime.list_audits(), run_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
+        return detail
 
     @app.get("/api/v1/search")
     def search(
