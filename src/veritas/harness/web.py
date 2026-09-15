@@ -6,7 +6,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -14,8 +15,18 @@ from pydantic import BaseModel
 from .service import AuditHarness
 
 
+MAX_UPLOAD_BYTES = 80 * 1024 * 1024
+
+
 class MessageRequest(BaseModel):
     message: str
+
+
+def _cors_origins() -> list[str]:
+    configured = os.environ.get("VERITAS_CORS_ORIGINS", "").strip()
+    if not configured:
+        return []
+    return [value.strip() for value in configured.split(",") if value.strip()]
 
 
 def create_app(
@@ -24,30 +35,65 @@ def create_app(
     harness: AuditHarness | None = None,
 ) -> FastAPI:
     resolved_data_dir = Path(
-        data_dir
-        or os.environ.get("VERITAS_HARNESS_DATA", "~/.veritas/harness")
+        data_dir or os.environ.get("VERITAS_HARNESS_DATA", "~/.veritas/harness")
     ).expanduser()
     runtime = harness or AuditHarness(resolved_data_dir)
     static_dir = Path(__file__).with_name("static")
 
     app = FastAPI(
         title="Veritas Research Audit Harness",
-        version="0.1.0",
+        version="0.2.0",
         docs_url="/api/docs",
         redoc_url=None,
     )
     app.state.harness = runtime
+
+    origins = _cors_origins()
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Content-Type", "Accept"],
+        )
+
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
-        return {"status": "ok", "service": "veritas-harness"}
+        return {"status": "ok", "service": "veritas-harness", "api_version": "v1"}
+
+    @app.get("/api/v1/capabilities")
+    def capabilities() -> dict[str, object]:
+        return runtime.capabilities()
+
+    @app.get("/api/v1/overview")
+    def overview() -> dict[str, object]:
+        return runtime.overview()
+
+    @app.get("/api/v1/findings")
+    def findings() -> list[dict[str, object]]:
+        return runtime.findings()
+
+    @app.get("/api/v1/runs")
+    def runs() -> list[dict[str, object]]:
+        return runtime.runs()
+
+    @app.get("/api/v1/search")
+    def search(
+        q: Annotated[str, Query(min_length=1, max_length=200)],
+        limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    ) -> list[dict[str, object]]:
+        return runtime.search(q, limit=limit)
 
     @app.get("/api/audits")
+    @app.get("/api/v1/audits")
     def list_audits() -> list[dict[str, object]]:
         return runtime.list_audits()
 
     @app.get("/api/audits/{audit_id}")
+    @app.get("/api/v1/audits/{audit_id}")
     def get_audit(audit_id: str) -> dict[str, object]:
         try:
             return runtime.get_audit(audit_id)
@@ -55,12 +101,13 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/audits")
+    @app.post("/api/v1/audits")
     async def create_audit(
         file: Annotated[UploadFile, File()],
         title: Annotated[str, Form()] = "",
     ) -> dict[str, object]:
         payload = await file.read()
-        if len(payload) > 80 * 1024 * 1024:
+        if len(payload) > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="PDF exceeds the 80 MiB local harness limit")
         try:
             return runtime.create_audit(
@@ -72,6 +119,7 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/audits/{audit_id}/paper")
+    @app.get("/api/v1/audits/{audit_id}/paper")
     def paper(audit_id: str) -> FileResponse:
         try:
             path = runtime.paper_path(audit_id)
@@ -85,7 +133,10 @@ def create_app(
         )
 
     @app.post("/api/audits/{audit_id}/messages")
+    @app.post("/api/v1/audits/{audit_id}/messages")
     def send_message(audit_id: str, request: MessageRequest) -> StreamingResponse:
+        if not request.message.strip():
+            raise HTTPException(status_code=422, detail="message must not be empty")
         try:
             runtime.get_audit(audit_id)
         except (FileNotFoundError, ValueError) as exc:
@@ -96,6 +147,14 @@ def create_app(
                 yield (json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    def manifest() -> FileResponse:
+        return FileResponse(static_dir / "manifest.webmanifest", media_type="application/manifest+json")
+
+    @app.get("/sw.js", include_in_schema=False)
+    def service_worker() -> FileResponse:
+        return FileResponse(static_dir / "sw.js", media_type="application/javascript")
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
