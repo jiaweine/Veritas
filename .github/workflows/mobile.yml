@@ -5,10 +5,12 @@ on:
     branches: [main, "feat/**"]
     paths:
       - "mobile/**"
+      - "src/veritas/harness/static/**"
       - ".github/workflows/mobile.yml"
   pull_request:
     paths:
       - "mobile/**"
+      - "src/veritas/harness/static/**"
       - ".github/workflows/mobile.yml"
 
 permissions:
@@ -25,6 +27,10 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
+      - name: Check workbench JavaScript syntax
+        run: |
+          node --check ../src/veritas/harness/static/app.js
+          node --check ../src/veritas/harness/static/reproduction.js
       - name: Install mobile dependencies
         run: npm install --no-audit --no-fund
       - name: Validate Expo dependency set
