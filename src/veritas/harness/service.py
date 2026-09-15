@@ -175,6 +175,8 @@ class AuditHarness:
                     continue
                 payload = event.get("payload") or {}
                 result = payload.get("result") or {}
+                if not result:
+                    continue
                 runs.append(
                     {
                         "run_id": event.get("event_id"),
