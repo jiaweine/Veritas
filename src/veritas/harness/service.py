@@ -12,7 +12,12 @@ from .tools import PaperToolbox
 
 
 class AuditHarness:
-    """Conversation-oriented orchestration around deterministic Veritas tools."""
+    """Conversation-oriented orchestration around deterministic Veritas tools.
+
+    The product API intentionally stays thin: the existing evidence and detector
+    code remains authoritative, while this class exposes derived views for web
+    and mobile clients without duplicating audit logic in the UI.
+    """
 
     def __init__(
         self,
@@ -68,6 +73,179 @@ class AuditHarness:
 
     def paper_path(self, audit_id: str) -> Path:
         return self.store.get_pdf_path(audit_id)
+
+    def overview(self) -> dict[str, Any]:
+        audits = self.store.list_audits()
+        total_pages = 0
+        running = 0
+        verified = 0
+        needs_review = 0
+        contradictions = 0
+        coverage_values: list[float] = []
+        recent_activity: list[dict[str, Any]] = []
+        coverage_series: list[dict[str, Any]] = []
+
+        for audit in audits:
+            summary = audit.get("paper_summary") or {}
+            total_pages += int(summary.get("pages") or 0)
+            if audit.get("status") == "running":
+                running += 1
+
+            result = audit.get("latest_result") or {}
+            counts = result.get("counts") or {}
+            verified += int(counts.get("verified") or 0)
+            needs_review += int(counts.get("needs_review") or 0)
+            contradictions += int(counts.get("contradictions") or 0)
+            if result:
+                coverage = float(result.get("verification_coverage") or 0.0)
+                coverage_values.append(coverage)
+                coverage_series.append(
+                    {
+                        "audit_id": audit.get("audit_id"),
+                        "title": audit.get("title"),
+                        "coverage": coverage,
+                        "updated_at": audit.get("updated_at"),
+                    }
+                )
+
+            for event in reversed((audit.get("events") or [])[-4:]):
+                if len(recent_activity) >= 8:
+                    break
+                recent_activity.append(
+                    {
+                        "audit_id": audit.get("audit_id"),
+                        "audit_title": audit.get("title"),
+                        "event_id": event.get("event_id"),
+                        "kind": event.get("kind"),
+                        "title": event.get("title"),
+                        "detail": event.get("detail"),
+                        "status": event.get("status"),
+                        "created_at": event.get("created_at"),
+                    }
+                )
+
+        total_checks = verified + needs_review + contradictions
+        verification_rate = (verified / total_checks) if total_checks else 0.0
+        mean_coverage = (sum(coverage_values) / len(coverage_values)) if coverage_values else 0.0
+        coverage_series = list(reversed(coverage_series[:12]))
+        recent_activity.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+
+        return {
+            "audits_total": len(audits),
+            "audits_running": running,
+            "papers_pages": total_pages,
+            "checks_total": total_checks,
+            "checks_verified": verified,
+            "checks_review": needs_review,
+            "checks_contradictions": contradictions,
+            "verification_rate": verification_rate,
+            "mean_coverage": mean_coverage,
+            "findings_open": contradictions,
+            "coverage_series": coverage_series,
+            "recent_activity": recent_activity[:8],
+            "updated_at": audits[0].get("updated_at") if audits else None,
+        }
+
+    def findings(self) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for audit in self.store.list_audits():
+            result = audit.get("latest_result") or {}
+            source = result.get("source") or {}
+            for index, finding in enumerate(result.get("findings") or []):
+                items.append(
+                    {
+                        "finding_id": f'{audit["audit_id"]}:finding:{index}',
+                        "audit_id": audit["audit_id"],
+                        "audit_title": audit.get("title"),
+                        "title": finding.get("title") or "Finding",
+                        "explanation": finding.get("explanation") or "",
+                        "severity": finding.get("severity") or "contradiction",
+                        "source": finding.get("source") or source,
+                        "updated_at": audit.get("updated_at"),
+                    }
+                )
+        items.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
+        return items
+
+    def runs(self) -> list[dict[str, Any]]:
+        runs: list[dict[str, Any]] = []
+        for audit in self.store.list_audits():
+            for event in audit.get("events") or []:
+                if event.get("kind") != "tool":
+                    continue
+                payload = event.get("payload") or {}
+                result = payload.get("result") or {}
+                runs.append(
+                    {
+                        "run_id": event.get("event_id"),
+                        "audit_id": audit.get("audit_id"),
+                        "audit_title": audit.get("title"),
+                        "tool": payload.get("tool") or "audit.tool",
+                        "task": event.get("title"),
+                        "status": event.get("status"),
+                        "evidence": bool(result.get("source")),
+                        "coverage": float(result.get("verification_coverage") or 0.0),
+                        "counts": result.get("counts") or {},
+                        "created_at": event.get("created_at"),
+                    }
+                )
+        runs.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+        return runs
+
+    def search(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
+        needle = query.strip().casefold()
+        if not needle:
+            return []
+        results: list[dict[str, Any]] = []
+        for audit in self.store.list_audits():
+            audit_text = " ".join(
+                str(value or "")
+                for value in (audit.get("title"), audit.get("filename"), audit.get("audit_id"))
+            ).casefold()
+            if needle in audit_text:
+                results.append(
+                    {
+                        "kind": "audit",
+                        "id": audit.get("audit_id"),
+                        "audit_id": audit.get("audit_id"),
+                        "title": audit.get("title"),
+                        "detail": audit.get("filename"),
+                        "status": audit.get("status"),
+                    }
+                )
+            for event in audit.get("events") or []:
+                haystack = f'{event.get("title", "")} {event.get("detail", "")}'.casefold()
+                if needle in haystack:
+                    results.append(
+                        {
+                            "kind": "event",
+                            "id": event.get("event_id"),
+                            "audit_id": audit.get("audit_id"),
+                            "title": event.get("title"),
+                            "detail": event.get("detail"),
+                            "status": event.get("status"),
+                        }
+                    )
+                if len(results) >= limit:
+                    return results[:limit]
+        return results[:limit]
+
+    @staticmethod
+    def capabilities() -> dict[str, Any]:
+        return {
+            "api_version": "v1",
+            "streaming": "ndjson",
+            "max_upload_bytes": 80 * 1024 * 1024,
+            "clients": ["web", "pwa", "expo"],
+            "features": {
+                "pdf_upload": True,
+                "evidence_inspector": True,
+                "findings": True,
+                "runs": True,
+                "command_palette": True,
+                "offline_shell": True,
+            },
+        }
 
     def stream_message(self, audit_id: str, message: str) -> Iterator[dict[str, Any]]:
         record = self.store.get_audit(audit_id)
