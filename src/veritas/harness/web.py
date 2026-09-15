@@ -14,7 +14,6 @@ from pydantic import BaseModel
 
 from .service import AuditHarness
 
-
 MAX_UPLOAD_BYTES = 80 * 1024 * 1024
 
 
