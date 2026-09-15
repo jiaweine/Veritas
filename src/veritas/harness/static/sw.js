@@ -1,5 +1,12 @@
-const CACHE = "veritas-shell-v2";
-const SHELL = ["/", "/static/styles.css", "/static/app.js", "/static/icon.svg", "/manifest.webmanifest"];
+const CACHE = "veritas-shell-v3";
+const SHELL = [
+  "/",
+  "/static/styles.css",
+  "/static/app.js",
+  "/static/reproduction.js",
+  "/static/icon.svg",
+  "/manifest.webmanifest",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
