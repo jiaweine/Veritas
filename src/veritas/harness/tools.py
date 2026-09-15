@@ -6,12 +6,14 @@ from typing import Any
 
 from veritas.audit import AuditEngine
 from veritas.models import RegressionResult
-from veritas.pdf_native import NativePDFSnapshot, parse_pdf_dual
+from veritas.pdf_native import NativePDFSnapshot
 from veritas.pdf_regression import (
     RegressionLocator,
     extract_regression_table,
     parse_reported_number,
 )
+
+from .parser_stack import parse_product_pdf
 
 
 def _jsonable(value: object) -> Any:
@@ -40,7 +42,7 @@ class PaperToolbox:
     """Adapter from the web harness to Veritas' deterministic paper tooling."""
 
     def parse(self, pdf_bytes: bytes, *, artifact_id: str) -> tuple[NativePDFSnapshot, ...]:
-        return tuple(parse_pdf_dual(pdf_bytes, artifact_id=artifact_id))
+        return parse_product_pdf(pdf_bytes, artifact_id=artifact_id)
 
     def describe(
         self,
