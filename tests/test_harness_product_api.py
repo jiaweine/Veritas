@@ -76,6 +76,21 @@ def test_product_api_overview_search_runs_and_pwa(tmp_path, monkeypatch) -> None
     assert detector_run["artifact_id"].startswith("paper-")
     assert len(detector_run["parsers"]) >= 2
 
+    detail_response = client.get(f'/api/v1/runs/{detector_run["run_id"]}')
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["run_id"] == detector_run["run_id"]
+    assert detail["run_kind"] == "detector"
+    assert detail["tool"] == "audit.regression"
+    assert detail["artifact_id"] == detector_run["artifact_id"]
+    assert detail["duration_ms"] >= 0
+    assert detail["evidence"] is True
+    assert [event["payload"]["phase"] for event in detail["events"] if event["kind"] == "tool"] == [
+        "start",
+        "finish",
+    ]
+    assert client.get("/api/v1/runs/run_missing").status_code == 404
+
     updated = client.get("/api/v1/overview").json()
     assert updated["checks_total"] > 0
     assert updated["checks_verified"] > 0
@@ -152,6 +167,13 @@ def test_replication_stream_is_correlated_and_server_configured(tmp_path, monkey
     assert replication_run["run_kind"] == "replication"
     assert replication_run["phase"] == "finish"
     assert replication_run["evidence"] is False
+
+    detail = client.get(f"/api/v1/runs/{run_id}").json()
+    assert detail["run_kind"] == "replication"
+    assert detail["tool"] == "replication.acp"
+    assert detail["duration_ms"] >= 0
+    assert detail["evidence"] is False
+    assert [event["kind"] for event in detail["events"]] == ["tool", "replication", "tool"]
 
 
 def test_empty_message_is_rejected(tmp_path) -> None:
