@@ -82,7 +82,16 @@ class HarnessStore:
             record["events"].append(event.to_dict())
             record["updated_at"] = utc_now_iso()
             self._write_record(record)
-            return record
+
+        # Observability is best-effort and happens only after the local append is
+        # durable. Exporting must never be able to change the audit result.
+        try:
+            from .telemetry import export_terminal_run
+
+            export_terminal_run(record, event)
+        except (ImportError, RuntimeError, TypeError, ValueError):
+            pass
+        return record
 
     def set_status(self, audit_id: str, status: str) -> dict[str, Any]:
         with self._lock:
