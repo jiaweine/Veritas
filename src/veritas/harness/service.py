@@ -1,9 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+import os
+from collections.abc import AsyncIterator, Iterator
 from hashlib import sha256
 from pathlib import Path
+from time import perf_counter
 from typing import Any
+from uuid import uuid4
+
+from veritas.replication import (
+    AcpTurnRunner,
+    PermissionPolicy,
+    ReplicationDependencyError,
+    agent_from_environment,
+)
 
 from .models import HarnessEvent
 from .planner import help_text, parse_command
@@ -175,19 +185,26 @@ class AuditHarness:
                     continue
                 payload = event.get("payload") or {}
                 result = payload.get("result") or {}
-                if not result:
+                phase = payload.get("phase")
+                if not result and phase not in {"finish", "error"}:
                     continue
                 runs.append(
                     {
-                        "run_id": event.get("event_id"),
+                        "run_id": payload.get("run_id") or event.get("event_id"),
                         "audit_id": audit.get("audit_id"),
                         "audit_title": audit.get("title"),
                         "tool": payload.get("tool") or "audit.tool",
+                        "run_kind": payload.get("run_kind") or "audit",
                         "task": event.get("title"),
+                        "phase": phase or "finish",
                         "status": event.get("status"),
                         "evidence": bool(result.get("source")),
                         "coverage": float(result.get("verification_coverage") or 0.0),
                         "counts": result.get("counts") or {},
+                        "duration_ms": payload.get("duration_ms"),
+                        "artifact_id": payload.get("artifact_id"),
+                        "parsers": payload.get("parsers") or [],
+                        "error_type": payload.get("error_type"),
                         "created_at": event.get("created_at"),
                     }
                 )
@@ -232,8 +249,8 @@ class AuditHarness:
                     return results[:limit]
         return results[:limit]
 
-    @staticmethod
-    def capabilities() -> dict[str, Any]:
+    def capabilities(self) -> dict[str, Any]:
+        replication = self.replication_capability()
         return {
             "api_version": "v1",
             "streaming": "ndjson",
@@ -246,8 +263,141 @@ class AuditHarness:
                 "runs": True,
                 "command_palette": True,
                 "offline_shell": True,
+                "replication_agent": replication["configured"],
             },
+            "replication": replication,
         }
+
+    def replication_capability(self) -> dict[str, Any]:
+        agent = agent_from_environment()
+        policy, policy_valid = self._replication_policy()
+        return {
+            "configured": agent is not None,
+            "agent": agent.name if agent is not None else None,
+            "permission_policy": policy.value,
+            "permission_policy_valid": policy_valid,
+            "workspace_is_security_boundary": False,
+            "client_supplied_commands": False,
+        }
+
+    async def stream_replication(
+        self,
+        audit_id: str,
+        prompt: str,
+    ) -> AsyncIterator[dict[str, Any]]:
+        record = self.store.get_audit(audit_id)
+        clean_prompt = prompt.strip()
+        if not clean_prompt:
+            raise ValueError("replication prompt must be non-empty")
+        agent = agent_from_environment()
+        if agent is None:
+            raise RuntimeError("replication agent is not configured")
+
+        policy, _ = self._replication_policy()
+        runner = AcpTurnRunner(agent, permission_policy=policy)
+        workspace = self._replication_workspace(audit_id)
+        run_id = f"run_{uuid4().hex[:12]}"
+        started = perf_counter()
+        artifact_id = str((record.get("paper_summary") or {}).get("artifact_id") or "")
+        prompt_digest = sha256(clean_prompt.encode("utf-8")).hexdigest()
+        start = HarnessEvent(
+            audit_id=audit_id,
+            kind="tool",
+            title="Replication agent run",
+            detail=f"Starting {agent.name} in the isolated audit workspace.",
+            status="running",
+            payload={
+                "tool": "replication.acp",
+                "run_kind": "replication",
+                "run_id": run_id,
+                "phase": "start",
+                "artifact_id": artifact_id,
+                "agent": agent.name,
+                "permission_policy": policy.value,
+                "prompt_sha256": prompt_digest,
+                "prompt_chars": len(clean_prompt),
+                "workspace_is_security_boundary": False,
+            },
+        )
+        self.store.append_event(start)
+        yield start.to_dict()
+
+        event_count = 0
+        try:
+            async for agent_event in runner.stream_turn(workspace, clean_prompt):
+                event_count += 1
+                mapped = HarnessEvent(
+                    audit_id=audit_id,
+                    kind="replication",
+                    title=str(agent_event.get("title") or "Replication update"),
+                    detail=str(agent_event.get("detail") or "")[:12000],
+                    status=str(agent_event.get("status") or "info"),
+                    payload={
+                        "tool": "replication.acp",
+                        "run_kind": "replication",
+                        "run_id": run_id,
+                        "phase": "update",
+                        "agent_event": agent_event,
+                    },
+                )
+                self.store.append_event(mapped)
+                yield mapped.to_dict()
+
+            duration_ms = round((perf_counter() - started) * 1000, 3)
+            result = {
+                "status": "completed",
+                "agent": agent.name,
+                "events": event_count,
+                "verification_coverage": 0.0,
+                "counts": {},
+            }
+            finished = HarnessEvent(
+                audit_id=audit_id,
+                kind="tool",
+                title="Replication run completed",
+                detail=f"{event_count} structured agent events captured.",
+                status="success",
+                payload={
+                    "tool": "replication.acp",
+                    "run_kind": "replication",
+                    "run_id": run_id,
+                    "phase": "finish",
+                    "duration_ms": duration_ms,
+                    "artifact_id": artifact_id,
+                    "agent": agent.name,
+                    "permission_policy": policy.value,
+                    "result": result,
+                },
+            )
+            self.store.append_event(finished)
+            yield finished.to_dict()
+        except (OSError, RuntimeError, TypeError, ValueError, ReplicationDependencyError) as exc:
+            duration_ms = round((perf_counter() - started) * 1000, 3)
+            failed = HarnessEvent(
+                audit_id=audit_id,
+                kind="tool",
+                title="Replication run failed",
+                detail=f"{type(exc).__name__}: {exc}",
+                status="danger",
+                payload={
+                    "tool": "replication.acp",
+                    "run_kind": "replication",
+                    "run_id": run_id,
+                    "phase": "error",
+                    "duration_ms": duration_ms,
+                    "artifact_id": artifact_id,
+                    "agent": agent.name,
+                    "permission_policy": policy.value,
+                    "error_type": type(exc).__name__,
+                    "result": {
+                        "status": "error",
+                        "verification_coverage": 0.0,
+                        "counts": {},
+                    },
+                },
+            )
+            self.store.append_event(failed)
+            yield failed.to_dict()
 
     def stream_message(self, audit_id: str, message: str) -> Iterator[dict[str, Any]]:
         record = self.store.get_audit(audit_id)
@@ -305,6 +455,11 @@ class AuditHarness:
             return
 
         self.store.set_status(audit_id, "running")
+        run_id = f"run_{uuid4().hex[:12]}"
+        started = perf_counter()
+        paper_summary = record.get("paper_summary") or {}
+        artifact_id = str(paper_summary.get("artifact_id") or "")
+        parsers = list(paper_summary.get("parser_snapshots") or [])
         start = HarnessEvent(
             audit_id=audit_id,
             kind="tool",
@@ -317,6 +472,11 @@ class AuditHarness:
             status="running",
             payload={
                 "tool": "audit.regression",
+                "run_kind": "detector",
+                "run_id": run_id,
+                "phase": "start",
+                "artifact_id": artifact_id,
+                "parsers": parsers,
                 "row_label": command.row_label,
                 "table_label": command.table_label,
                 "expected_page": command.expected_page,
@@ -329,13 +489,12 @@ class AuditHarness:
             pdf_bytes = self.store.get_pdf_path(audit_id).read_bytes()
             snapshots = self._snapshot_cache.get(audit_id)
             if snapshots is None:
-                artifact_id = str(record["paper_summary"]["artifact_id"])
                 snapshots = self.toolbox.parse(pdf_bytes, artifact_id=artifact_id)
                 self._snapshot_cache[audit_id] = snapshots
 
             result = self.toolbox.audit_regression(
                 pdf_bytes,
-                artifact_id=str(record["paper_summary"]["artifact_id"]),
+                artifact_id=artifact_id,
                 row_label=str(command.row_label),
                 table_label=command.table_label,
                 expected_page=command.expected_page,
@@ -357,7 +516,16 @@ class AuditHarness:
                 title="Regression consistency checked",
                 detail=detail,
                 status=tool_status,
-                payload={"tool": "audit.regression", "result": result},
+                payload={
+                    "tool": "audit.regression",
+                    "run_kind": "detector",
+                    "run_id": run_id,
+                    "phase": "finish",
+                    "duration_ms": round((perf_counter() - started) * 1000, 3),
+                    "artifact_id": artifact_id,
+                    "parsers": parsers,
+                    "result": result,
+                },
             )
             self.store.append_event(finished)
             yield finished.to_dict()
@@ -369,7 +537,11 @@ class AuditHarness:
                     title=str(finding.get("title", "Finding")),
                     detail=str(finding.get("explanation", "")),
                     status="danger",
-                    payload={"finding": finding, "source": result.get("source", {})},
+                    payload={
+                        "run_id": run_id,
+                        "finding": finding,
+                        "source": result.get("source", {}),
+                    },
                 )
                 self.store.append_event(finding_event)
                 yield finding_event.to_dict()
@@ -380,22 +552,68 @@ class AuditHarness:
                 title=self._result_title(result),
                 detail=self._assistant_detail(result, counts),
                 status=tool_status,
-                payload={"result": result},
+                payload={"run_id": run_id, "result": result},
             )
             self.store.append_event(final)
             yield final.to_dict()
         except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
             self.store.set_status(audit_id, "error")
+            failed = HarnessEvent(
+                audit_id=audit_id,
+                kind="tool",
+                title="Regression audit failed",
+                detail=f"{type(exc).__name__}: {exc}",
+                status="danger",
+                payload={
+                    "tool": "audit.regression",
+                    "run_kind": "detector",
+                    "run_id": run_id,
+                    "phase": "error",
+                    "duration_ms": round((perf_counter() - started) * 1000, 3),
+                    "artifact_id": artifact_id,
+                    "parsers": parsers,
+                    "error_type": type(exc).__name__,
+                    "result": {
+                        "status": "error",
+                        "verification_coverage": 0.0,
+                        "counts": {},
+                    },
+                },
+            )
+            self.store.append_event(failed)
+            yield failed.to_dict()
             event = HarnessEvent(
                 audit_id=audit_id,
                 kind="assistant_message",
                 title="Audit could not complete",
                 detail=f"{type(exc).__name__}: {exc}",
                 status="danger",
-                payload={"error_type": type(exc).__name__},
+                payload={"run_id": run_id, "error_type": type(exc).__name__},
             )
             self.store.append_event(event)
             yield event.to_dict()
+
+    def _replication_workspace(self, audit_id: str) -> Path:
+        source = self.store.get_pdf_path(audit_id)
+        workspace = source.parent / "replication-workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
+        destination = workspace / "paper.pdf"
+        source_bytes = source.read_bytes()
+        if not destination.is_file() or destination.read_bytes() != source_bytes:
+            destination.write_bytes(source_bytes)
+        try:
+            destination.chmod(0o444)
+        except OSError:
+            pass
+        return workspace
+
+    @staticmethod
+    def _replication_policy() -> tuple[PermissionPolicy, bool]:
+        raw = os.environ.get("VERITAS_REPLICATION_PERMISSION_POLICY", "deny").strip().casefold()
+        try:
+            return PermissionPolicy(raw), True
+        except ValueError:
+            return PermissionPolicy.DENY, False
 
     @staticmethod
     def _result_detail(result: dict[str, Any]) -> str:
