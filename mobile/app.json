@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "Veritas Audit",
+    "slug": "veritas-audit",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {"supportsTablet": true, "bundleIdentifier": "org.veritas.audit"},
+    "android": {"package": "org.veritas.audit", "edgeToEdgeEnabled": true},
+    "plugins": ["expo-document-picker"]
+  }
+}
