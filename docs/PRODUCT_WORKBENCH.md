@@ -21,26 +21,67 @@ These choices mirror the supplied GrowthEvo design package: information-dense co
 - Audits, findings, evidence, runs, reproduction, benchmark, and settings surfaces.
 - Three-column audit workbench with paper structure, PDF evidence viewer, latest detector result, findings, and trace.
 - Collapsible Audit Agent sidecar and `⌘K` command palette.
+- Live Reproduction control surface that streams structured ACP events when a server-side agent is configured.
 - Mobile responsive layout, bottom navigation, installable web app manifest, and offline shell cache. API/PDF responses are deliberately excluded from the service-worker cache.
 
 ### Backend API
 
-New derived, read-oriented endpoints:
+The product API adds versioned views while preserving the existing local Harness contract:
 
 ```text
-GET /api/v1/capabilities
-GET /api/v1/overview
-GET /api/v1/findings
-GET /api/v1/runs
-GET /api/v1/search?q=...
-GET /api/v1/audits
-GET /api/v1/audits/{id}
-GET /api/v1/audits/{id}/paper
+GET  /api/v1/capabilities
+GET  /api/v1/overview
+GET  /api/v1/findings
+GET  /api/v1/runs
+GET  /api/v1/search?q=...
+GET  /api/v1/audits
+GET  /api/v1/audits/{id}
+GET  /api/v1/audits/{id}/paper
 POST /api/v1/audits
 POST /api/v1/audits/{id}/messages
+POST /api/v1/audits/{id}/replication
 ```
 
 The old `/api/audits*` contract is preserved. Mobile/browser cross-origin access can be enabled explicitly with `VERITAS_CORS_ORIGINS`.
+
+### Trace contract
+
+Detector and replication executions use a shared run envelope. Completed or failed runs exposed by `/api/v1/runs` include:
+
+- stable `run_id` shared by the start/update/finish events;
+- `run_kind` (`detector` or `replication`);
+- `phase` (`start`, `update`, `finish`, or `error` where applicable);
+- wall-clock `duration_ms` on terminal tool events;
+- immutable paper `artifact_id`;
+- parser snapshot metadata for deterministic detector runs;
+- evidence linkage and verification coverage when the underlying tool produces evidence;
+- a persisted error type for failed tool runs.
+
+The start trace stores only a hash and length of a reproduction prompt, not the raw prompt. Structured ACP updates are still persisted because they are the inspectable execution trace.
+
+### ACP reproduction boundary
+
+Veritas reuses the repository's existing Agent Client Protocol replication adapter instead of introducing a second execution engine. The browser or mobile client supplies only a reproduction **goal**. It cannot supply an executable command.
+
+Server-side configuration:
+
+```text
+VERITAS_REPLICATION_AGENT="<server-selected ACP command>"
+VERITAS_REPLICATION_AGENT_NAME="Optional display name"
+VERITAS_REPLICATION_FORWARD_ENV="OPTIONAL,EXPLICIT,VARIABLES"
+VERITAS_REPLICATION_PERMISSION_POLICY="deny|allow_once"
+```
+
+Security behavior is fail-closed:
+
+- no `VERITAS_REPLICATION_AGENT` → the replication endpoint returns HTTP 503;
+- permission policy defaults to `deny`;
+- an invalid permission-policy value also falls back to `deny` and is exposed as invalid in capabilities;
+- `allow_once` can only select an explicit `allow_once` option offered by the ACP agent;
+- the audit metadata file is not exposed to the replication workspace; only a copy of the immutable paper is staged there;
+- the local workspace is **not** claimed to be a security sandbox. The selected ACP agent/runtime remains responsible for its execution isolation.
+
+The Reproduction UI reads `/api/v1/capabilities`, shows this boundary explicitly, and streams NDJSON events into a live trace. The same terminal events appear in `/api/v1/runs`.
 
 ### Native mobile
 
@@ -52,6 +93,8 @@ The old `/api/audits*` contract is preserved. Mobile/browser cross-origin access
 - native PDF document picker + upload;
 - audit detail and run trace;
 - deterministic Harness command composer.
+
+The native client shares `/api/v1` with the web client rather than embedding the web product in a WebView.
 
 ## Reference implementations and research considered
 
@@ -78,9 +121,22 @@ Recent research reinforced the evidence-first and trace-first choices:
 
 The repository already ships a zero-build FastAPI/static Harness. Replacing it with a Node build would increase installation and deployment complexity without improving the underlying audit engine. This change therefore implements the product layer as a high-quality dependency-free web client and a separate Expo mobile client. The `/api/v1` boundary makes a future React/shadcn/TanStack client possible without another backend migration.
 
+## Validation gates
+
+The branch keeps the repository's existing release gates and adds client-side checks:
+
+- `ruff check src tests`;
+- full `pytest` suite, including product API and streamed fake-ACP lifecycle coverage;
+- PDF regression benchmark;
+- PDF geometry holdout;
+- adversarial extraction fail-closed benchmark;
+- Expo dependency compatibility check;
+- mobile TypeScript `tsc --noEmit`;
+- Node syntax checks for the dependency-free web modules.
+
 ## Next integration points
 
 - Add an optional Docling/MinerU parser adapter behind the existing independent parser interfaces and evaluate it against locked parser fixtures before enabling it by default.
-- Emit richer span records (latency, detector version, parser version, policy result) from the Harness, then optionally export them via OpenTelemetry/Langfuse adapters.
-- Run reproduction jobs in an isolated runtime (OpenHands-compatible or repository replication bridge) and stream structured execution traces back into `/api/v1/runs`.
+- Export the now-correlated run/span records through optional OpenTelemetry/Langfuse adapters without making hosted observability mandatory.
+- Add repository/code/data artifact intake to the reproduction workspace through existing provenance and security primitives rather than expanding the browser's authority.
 - Add benchmark comparison views only after benchmark runs are available; never fabricate benchmark scores in the product UI.
