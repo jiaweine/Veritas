@@ -12,8 +12,10 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .parser_stack import parser_stack_capability
 from .run_views import project_run_detail
 from .service import AuditHarness
+from .telemetry import telemetry_capability
 
 MAX_UPLOAD_BYTES = 80 * 1024 * 1024
 
@@ -70,7 +72,10 @@ def create_app(
 
     @app.get("/api/v1/capabilities")
     def capabilities() -> dict[str, object]:
-        return runtime.capabilities()
+        value = dict(runtime.capabilities())
+        value["parser_stack"] = parser_stack_capability()
+        value["observability"] = telemetry_capability()
+        return value
 
     @app.get("/api/v1/overview")
     def overview() -> dict[str, object]:
