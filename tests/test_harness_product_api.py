@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pymupdf
 from fastapi.testclient import TestClient
 
@@ -87,6 +89,69 @@ def test_product_api_overview_search_runs_and_pwa(tmp_path, monkeypatch) -> None
     assert client.get("/manifest.webmanifest").status_code == 200
     assert client.get("/sw.js").status_code == 200
     assert "Research Audit Workbench" in client.get("/").text
+
+
+def test_replication_stream_is_correlated_and_server_configured(tmp_path, monkeypatch) -> None:
+    class FakeRunner:
+        def __init__(self, agent, *, permission_policy) -> None:
+            self.agent = agent
+            self.permission_policy = permission_policy
+
+        async def stream_turn(self, workspace, prompt):
+            assert workspace.name == "replication-workspace"
+            assert (workspace / "paper.pdf").is_file()
+            assert prompt == "Reproduce the reported main result."
+            yield {
+                "event_id": "rep_evt_test",
+                "kind": "agent_update",
+                "title": "plan",
+                "detail": "Inspect the paper and reproduce the target result.",
+                "status": "running",
+                "payload": {"step": 1},
+                "created_at": "2026-09-15T00:00:00Z",
+            }
+
+    monkeypatch.setenv("VERITAS_REPLICATION_AGENT", "fake-agent --stdio")
+    monkeypatch.setenv("VERITAS_REPLICATION_AGENT_NAME", "CI fake agent")
+    monkeypatch.delenv("VERITAS_REPLICATION_PERMISSION_POLICY", raising=False)
+    monkeypatch.setattr("veritas.harness.service.AcpTurnRunner", FakeRunner)
+
+    client = TestClient(create_app(tmp_path))
+    created = client.post(
+        "/api/v1/audits",
+        data={"title": "Replication paper"},
+        files={"file": ("replication.pdf", _make_pdf(), "application/pdf")},
+    ).json()
+    audit_id = created["audit_id"]
+
+    caps = client.get("/api/v1/capabilities").json()
+    assert caps["replication"]["configured"] is True
+    assert caps["replication"]["agent"] == "CI fake agent"
+    assert caps["replication"]["permission_policy"] == "deny"
+
+    prompt = "Reproduce the reported main result."
+    response = client.post(
+        f"/api/v1/audits/{audit_id}/replication",
+        json={"prompt": prompt},
+    )
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+    assert [event["kind"] for event in events] == ["tool", "replication", "tool"]
+    run_ids = {event["payload"]["run_id"] for event in events}
+    assert len(run_ids) == 1
+    run_id = run_ids.pop()
+    assert run_id.startswith("run_")
+    assert events[0]["payload"]["phase"] == "start"
+    assert events[-1]["payload"]["phase"] == "finish"
+    assert events[-1]["payload"]["duration_ms"] >= 0
+    assert prompt not in json.dumps(events[0], ensure_ascii=False)
+
+    runs = client.get("/api/v1/runs").json()
+    replication_run = next(run for run in runs if run["run_id"] == run_id)
+    assert replication_run["tool"] == "replication.acp"
+    assert replication_run["run_kind"] == "replication"
+    assert replication_run["phase"] == "finish"
+    assert replication_run["evidence"] is False
 
 
 def test_empty_message_is_rejected(tmp_path) -> None:
