@@ -1,8 +1,21 @@
 from __future__ import annotations
 
 import os
+from importlib.util import find_spec
 
 from veritas.pdf_native import NativePDFSnapshot, parse_pdf_dual
+
+
+def parser_stack_capability() -> dict[str, object]:
+    requested = os.environ.get("VERITAS_PDF_THIRD_PARSER", "").strip().casefold()
+    return {
+        "baseline": ["pymupdf_native", "pdfplumber_native"],
+        "baseline_families": ["mupdf_native", "pdfminer_native"],
+        "third_parser": requested or None,
+        "third_parser_enabled": bool(requested),
+        "docling_available": find_spec("docling") is not None,
+        "consensus_policy_changed": False,
+    }
 
 
 def parse_product_pdf(
