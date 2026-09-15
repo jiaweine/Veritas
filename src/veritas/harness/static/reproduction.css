@@ -1,0 +1,61 @@
+[data-reproduction-surface] .field select,
+[data-reproduction-surface] .field textarea {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+  outline: none;
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+[data-reproduction-surface] .field select {
+  min-height: 38px;
+  padding: 0 34px 0 10px;
+  appearance: auto;
+}
+
+[data-reproduction-surface] .field textarea {
+  min-height: 122px;
+  padding: 10px 11px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+[data-reproduction-surface] .field select:focus,
+[data-reproduction-surface] .field textarea:focus {
+  border-color: #aeb9ff;
+  box-shadow: 0 0 0 3px rgba(83,104,245,.08);
+  background: #fdfdff;
+}
+
+[data-reproduction-surface] #replication-timeline {
+  min-height: 180px;
+  scrollbar-gutter: stable;
+}
+
+[data-reproduction-surface] #replication-timeline .status-row {
+  align-items: flex-start;
+}
+
+[data-reproduction-surface] #replication-timeline .status-copy small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+[data-reproduction-surface] .panel-body > .primary-button {
+  min-width: 142px;
+}
+
+@media (max-width: 880px) {
+  [data-reproduction-surface] .field textarea {
+    min-height: 108px;
+  }
+
+  [data-reproduction-surface] .panel-body > .primary-button {
+    width: 100%;
+  }
+}
