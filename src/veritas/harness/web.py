@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Annotated
 
@@ -19,6 +19,10 @@ MAX_UPLOAD_BYTES = 80 * 1024 * 1024
 
 class MessageRequest(BaseModel):
     message: str
+
+
+class ReplicationRequest(BaseModel):
+    prompt: str
 
 
 def _cors_origins() -> list[str]:
@@ -41,7 +45,7 @@ def create_app(
 
     app = FastAPI(
         title="Veritas Research Audit Harness",
-        version="0.2.0",
+        version="0.3.0",
         docs_url="/api/docs",
         redoc_url=None,
     )
@@ -143,6 +147,29 @@ def create_app(
 
         def stream() -> Iterator[bytes]:
             for event in runtime.stream_message(audit_id, request.message):
+                yield (json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+
+        return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+    @app.post("/api/v1/audits/{audit_id}/replication")
+    async def run_replication(
+        audit_id: str,
+        request: ReplicationRequest,
+    ) -> StreamingResponse:
+        if not request.prompt.strip():
+            raise HTTPException(status_code=422, detail="replication prompt must not be empty")
+        try:
+            runtime.get_audit(audit_id)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if not runtime.replication_capability()["configured"]:
+            raise HTTPException(
+                status_code=503,
+                detail="replication agent is not configured on the Veritas server",
+            )
+
+        async def stream() -> AsyncIterator[bytes]:
+            async for event in runtime.stream_replication(audit_id, request.prompt):
                 yield (json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
