@@ -20,6 +20,9 @@ pdf = [
   "PyMuPDF==1.28.2",
   "pdfplumber==0.11.10",
 ]
+docling = [
+  "docling-slim[format-pdf,models-local]>=2.118,<3",
+]
 attestation = [
   "cryptography>=46,<51",
 ]
