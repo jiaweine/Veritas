@@ -1,6 +1,6 @@
 # Veritas Research Audit Harness
 
-The Research Audit Harness is the conversational interface for Veritas. It keeps the paper, the agent run, deterministic checks, and source evidence in one workspace.
+The Research Audit Harness is the product interface for Veritas. It keeps the paper, deterministic checks, evidence, findings, reproduction artifacts, and inspectable run traces in one local-first workspace.
 
 ## Run locally
 
@@ -13,30 +13,41 @@ Open `http://127.0.0.1:8765`.
 
 Audit data is stored under `~/.veritas/harness` by default. Set `VERITAS_HARNESS_DATA` or pass `--data-dir` to use another local workspace.
 
-## Workspace model
+## Product surfaces
 
-The UI follows a three-pane research workflow:
+The UI is not chat-first. It follows an evidence-native product model:
 
-- **Audits** — persistent paper threads and run state.
-- **Conversation** — user instructions plus structured tool events and findings.
-- **Evidence Inspector** — the source PDF, detected tables, findings, and parser provenance.
+- **Overview** — real workspace KPIs, verification coverage, activity, attention queue, and recent audits.
+- **Audits** — persistent paper workspaces and run state.
+- **Findings** — contradiction objects linked to a paper and its source.
+- **Evidence** — source-linked result inventory.
+- **Agent runs** — structured detector/reproduction traces, timing, parser metadata, evidence linkage, and failure state.
+- **Reproduction** — immutable code/data/environment artifact intake plus a server-selected ACP agent running in a per-run workspace.
+- **Benchmarks** — the repository's actual release-gate/probe inventory; no fabricated benchmark scores.
+- **Audit workbench** — paper structure, PDF evidence viewer, detector result, findings, and trace in one three-column workspace.
+- **Audit Agent sidecar** — deterministic command surface that can stay compact until collaboration is needed.
+- **`⌘K` command palette** — jump to product surfaces, papers, and matching audit events.
 
-The browser does not execute Veritas algorithms directly. It talks to the Python harness API, and the harness calls the existing extraction and detector library.
+The browser does not execute Veritas algorithms or uploaded research artifacts directly. It talks to the Python harness API, and the harness calls the existing extraction, detector, and optional reproduction layers.
 
 ```text
-Browser
+Web / PWA / Expo mobile
   │
-  ├── upload / message stream
+  ├── bounded upload / query / NDJSON streams
   ▼
-Harness API
+Versioned Harness API (/api/v1)
   │
-  ├── thread + event store
+  ├── audit + event store
+  ├── derived product views
+  ├── immutable paper / reproduction artifacts
   ├── paper tools
-  │     ├── dual PDF parsing
+  │     ├── independent PDF parsing
   │     ├── regression table extraction
   │     └── source localization
-  └── AuditEngine
-        └── deterministic detector results
+  ├── AuditEngine
+  │     └── deterministic detector results
+  └── optional ACP reproduction adapter
+        └── per-run workspace + structured trace
 ```
 
 ## Commands
@@ -51,22 +62,45 @@ A regression row can be audited directly:
 
 `table` and `page` are optional when the row label is unique enough to resolve safely.
 
-The response stream is NDJSON. Every event has an `event_id`, `audit_id`, `kind`, status, timestamp, and optional structured payload. The UI renders tool events directly instead of turning tool execution into prose.
+The response stream is NDJSON. Every event has an `event_id`, `audit_id`, `kind`, status, timestamp, and optional structured payload. Detector and reproduction executions share a stable `run_id`, so the UI can reopen one correlated start/update/finish-or-error trace instead of reconstructing execution from prose.
 
-## Agent boundary
+## Agent and reproduction boundary
 
 The default Veritas agent is a **research audit agent**, not a general coding agent. Its tool surface is centered on papers and evidence: parse, locate, audit, reproduce, and verify provenance.
 
-Code execution belongs in a separate **Replication workspace** where source trees can be isolated, commands can require approval, and proposed changes can be reviewed as diffs. Veritas now provides an optional ACP client adapter for that layer; see [`REPLICATION_AGENT_BACKENDS.md`](REPLICATION_AGENT_BACKENDS.md).
+Code execution belongs in a separate **Replication workspace**. Veritas provides an optional ACP client adapter for that layer; see [`REPLICATION_AGENT_BACKENDS.md`](REPLICATION_AGENT_BACKENDS.md).
 
 ```text
-Audit thread       → evidence tools → read / verify
-Replication thread → ACP agent      → execute / propose / review
+Audit workbench       → evidence tools → read / verify
+Replication workspace → ACP agent      → execute / inspect trace
 ```
 
-The ACP adapter does not make the current paper-audit browser code-capable. Browser replication panels, interactive permission cards, terminal views, and diff review are separate product surfaces built on top of that adapter.
+The browser or mobile client supplies only a reproduction **goal**. It never supplies the executable ACP command. The server operator selects the agent and permission policy.
+
+### Immutable reproduction artifacts
+
+A paper can have append-only reproduction attachments such as source code, data, environment files, or archives. The product clients can upload and inspect these artifacts even when no ACP agent is configured.
+
+For every attachment Veritas stores:
+
+- a generated `attachment_id`;
+- a sanitized basename rather than a client path;
+- SHA-256;
+- byte size and media type;
+- creation time;
+- the original bytes under the audit directory.
+
+The web process does **not** unpack, import, or execute uploaded artifacts. Paper and attachment reads re-check the stored SHA-256. Integrity failures fail closed.
+
+Before a reproduction run, Veritas preflights the immutable paper and every attachment. Only after that succeeds may the harness create a new `replication-workspaces/<run_id>` directory. The workspace receives read-only copies of `paper.pdf`, the hash-verified attachments, and an `artifacts.json` provenance manifest. `audit.json` is not staged.
+
+If preflight fails—for example because a local file was modified outside Veritas—the ACP runner is not started, no reproduction workspace is created, and Veritas persists a correlated `start → error` run with `stage=workspace_prepare`. The raw reproduction prompt is not persisted; the start event stores only its SHA-256 and character count.
+
+The local workspace is **not** presented as a security sandbox. The configured ACP agent/runtime remains responsible for process, filesystem, network, and dependency isolation.
 
 ## API
+
+Legacy routes remain supported:
 
 - `GET /api/health`
 - `GET /api/audits`
@@ -75,4 +109,49 @@ The ACP adapter does not make the current paper-audit browser code-capable. Brow
 - `GET /api/audits/{audit_id}/paper`
 - `POST /api/audits/{audit_id}/messages`
 
+Versioned product routes:
+
+- `GET /api/v1/capabilities`
+- `GET /api/v1/overview`
+- `GET /api/v1/findings`
+- `GET /api/v1/benchmarks`
+- `GET /api/v1/runs`
+- `GET /api/v1/runs/{run_id}`
+- `GET /api/v1/search?q=...`
+- `GET /api/v1/audits`
+- `POST /api/v1/audits`
+- `GET /api/v1/audits/{audit_id}`
+- `GET /api/v1/audits/{audit_id}/paper`
+- `GET /api/v1/audits/{audit_id}/attachments`
+- `POST /api/v1/audits/{audit_id}/attachments`
+- `GET /api/v1/audits/{audit_id}/attachments/{attachment_id}`
+- `POST /api/v1/audits/{audit_id}/messages`
+- `POST /api/v1/audits/{audit_id}/replication`
+
+Paper and attachment uploads are limited to 80 MiB per file. The API consumes upload streams in bounded chunks and rejects an over-limit payload before handing it to the audit/artifact store.
+
 Interactive regression audits run in `interactive_research` scope and report the exact source location, parser candidates, consensus values, detector checks, and findings returned by Veritas.
+
+`GET /api/v1/benchmarks` describes the benchmark/probe commands wired to the repository CI. It deliberately does not invent scores or claim result persistence that does not exist.
+
+## PWA and mobile
+
+The web client ships an installable manifest and an offline **application shell**. Audit API responses, PDFs, attachments, and other `/api/` data are never cached by the service worker.
+
+The native client lives in `mobile/` and shares `/api/v1`. It includes PDF upload, reproduction artifact intake, ACP execution controls, persisted run history, and correlated run detail without embedding the web product in a WebView.
+
+For a physical phone, point the app at an address reachable from the device:
+
+```bash
+cd mobile
+npm install
+EXPO_PUBLIC_VERITAS_API_URL=http://192.168.1.20:8765 npm start
+```
+
+For browser-origin clients hosted on another origin, CORS is opt-in:
+
+```bash
+VERITAS_CORS_ORIGINS=http://localhost:8081,http://127.0.0.1:8081 veritas-harness
+```
+
+See [`PRODUCT_WORKBENCH.md`](PRODUCT_WORKBENCH.md) for the design rationale, research references, parser/observability policy, and future integration points.

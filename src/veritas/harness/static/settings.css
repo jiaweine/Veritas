@@ -1,0 +1,29 @@
+.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.settings-card { min-width: 0; }
+.settings-body { display: grid; gap: 14px; }
+.settings-copy { margin: 0; color: var(--text-soft); font-size: 9px; line-height: 1.55; }
+.settings-list { display: grid; gap: 0; }
+.settings-capability-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid #eef0f3; }
+.settings-capability-row:last-child { border-bottom: 0; }
+.settings-capability-row > div:first-child { min-width: 0; }
+.settings-capability-row > div:last-child { flex: 0 1 auto; text-align: right; }
+.settings-capability-row strong { display: block; color: var(--text); font-size: 9px; font-weight: 680; }
+.settings-capability-row small { display: block; margin-top: 3px; color: var(--text-faint); font-size: 7.5px; line-height: 1.45; }
+.settings-chip { display: inline-flex; align-items: center; min-height: 22px; padding: 0 7px; margin: 2px 2px 2px 0; border: 1px solid var(--line); border-radius: 999px; background: #fafbfc; color: #697385; font: 7.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.settings-privacy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.settings-privacy-grid > div { padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: #fbfcfd; }
+.settings-privacy-grid span { display: block; color: var(--text-faint); font-size: 7.5px; }
+.settings-privacy-grid strong { display: block; margin-top: 4px; color: var(--text); font-size: 9px; }
+.settings-actions { display: flex; justify-content: flex-end; }
+.settings-mobile-card { margin-top: 10px; }
+.settings-loading { min-height: 220px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--text-soft); font-size: 10px; }
+
+@media (max-width: 880px) {
+  .settings-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .settings-capability-row { align-items: flex-start; }
+  .settings-capability-row > div:last-child { max-width: 52%; }
+  .settings-privacy-grid { grid-template-columns: 1fr; }
+}
