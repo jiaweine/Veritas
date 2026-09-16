@@ -40,6 +40,13 @@ type HarnessEvent = {
   };
 };
 
+type ParserRef = string | {
+  parser_id?: string;
+  parser?: string;
+  name?: string;
+  version?: string;
+};
+
 type RunSummary = {
   run_id: string;
   audit_id: string;
@@ -54,7 +61,7 @@ type RunSummary = {
   counts?: { verified?: number; needs_review?: number; contradictions?: number };
   duration_ms?: number | null;
   artifact_id?: string | null;
-  parsers?: Array<string | { parser_id?: string; parser?: string; name?: string; version?: string }>;
+  parsers?: ParserRef[];
   error_type?: string | null;
   created_at?: string;
 };
@@ -108,9 +115,8 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
 }
 
-function parserLabel(parser: RunSummary["parsers"] extends Array<infer Item> ? Item : never) {
+function parserLabel(parser: ParserRef) {
   if (typeof parser === "string") return parser;
-  if (!parser) return "parser";
   const name = parser.parser_id || parser.parser || parser.name || "parser";
   return parser.version ? `${name} ${parser.version}` : name;
 }
