@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -87,6 +87,13 @@ def create_app(
             allow_methods=["GET", "POST", "OPTIONS"],
             allow_headers=["Content-Type", "Accept"],
         )
+
+    @app.middleware("http")
+    async def no_store_api_responses(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
