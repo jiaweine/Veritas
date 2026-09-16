@@ -114,7 +114,7 @@ class BenchmarkResultStore:
         except (OSError, json.JSONDecodeError) as exc:
             raise ValueError(f"invalid benchmark result file: {path.name}") from exc
         if not isinstance(payload, dict):
-            raise ValueError(f"invalid benchmark result object: {path.name}")
+            raise TypeError(f"invalid benchmark result object: {path.name}")
         if payload.get("schema_version") != BENCHMARK_RESULT_SCHEMA_VERSION:
             raise ValueError(f"unsupported benchmark result schema: {path.name}")
         result_id = payload.get("result_id")
@@ -145,7 +145,7 @@ class BenchmarkResultStore:
         if not normalized:
             raise ValueError("recorded_at must not be empty")
         try:
-            parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(normalized)
         except ValueError as exc:
             raise ValueError("recorded_at must be an ISO-8601 timestamp") from exc
         if parsed.tzinfo is None:
