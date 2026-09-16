@@ -16,6 +16,23 @@
 .benchmark-command > span, .benchmark-source > span:first-child { color: var(--text-faint); font-size: 6.8px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
 .benchmark-command code { display: block; padding: 7px; border-radius: 7px; background: #f1f3f6; color: #576172; font: 7px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: normal; overflow-wrap: anywhere; }
 .benchmark-source > span:last-child { color: #737d8d; font-size: 7px; overflow-wrap: anywhere; }
+.benchmark-result { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); display: grid; gap: 5px; }
+.benchmark-result > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.benchmark-result span:first-child { color: var(--text-faint); font-size: 6.8px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; }
+.benchmark-result > strong { color: var(--text); font: 8px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.benchmark-result > small { color: var(--text-soft); font-size: 7px; line-height: 1.45; }
+.benchmark-result.empty > strong { color: var(--text-soft); }
+.benchmark-result code { font-size: 6.8px; }
+.benchmark-history { padding: 10px; }
+.benchmark-history-head, .benchmark-history-row { display: grid; grid-template-columns: minmax(180px, 2fr) .7fr .9fr .8fr 1.2fr; gap: 10px; align-items: center; }
+.benchmark-history-head { padding: 0 9px 6px; color: var(--text-faint); font-size: 6.6px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; }
+.benchmark-history-row { padding: 9px; border-top: 1px solid var(--line); color: var(--text-soft); font-size: 7.5px; }
+.benchmark-history-row:first-child { border-top: 0; }
+.benchmark-history-row strong { display: block; color: var(--text); font-size: 8px; }
+.benchmark-history-row small { display: block; margin-top: 3px; color: var(--text-faint); font-size: 6.8px; }
+.benchmark-history-empty { padding: 18px; text-align: center; }
+.benchmark-history-empty strong { color: var(--text); font-size: 9px; }
+.benchmark-history-empty p { max-width: 560px; margin: 6px auto 0; color: var(--text-soft); font-size: 8px; line-height: 1.55; }
 .benchmark-policy { padding: 13px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .benchmark-policy strong { display: block; color: var(--text); font-size: 10px; }
 .benchmark-policy p { max-width: 760px; margin: 5px 0 0; color: var(--text-soft); font-size: 8.5px; line-height: 1.55; }
@@ -24,10 +41,15 @@
 @media (max-width: 1180px) {
   .benchmark-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .benchmark-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .benchmark-history-head, .benchmark-history-row { grid-template-columns: minmax(160px, 2fr) .7fr .9fr 1.2fr; }
+  .benchmark-history-head > :nth-child(4), .benchmark-history-row > :nth-child(4) { display: none; }
 }
 
 @media (max-width: 680px) {
   .benchmark-summary-grid, .benchmark-grid { grid-template-columns: 1fr; }
   .benchmark-card p { min-height: auto; }
   .benchmark-policy { align-items: flex-start; flex-direction: column; }
+  .benchmark-history-head { display: none; }
+  .benchmark-history-row { grid-template-columns: 1fr auto; gap: 7px; }
+  .benchmark-history-row > :nth-child(3), .benchmark-history-row > :nth-child(4), .benchmark-history-row > :nth-child(5) { grid-column: 1 / -1; display: block; }
 }
