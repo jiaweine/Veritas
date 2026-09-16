@@ -21,6 +21,7 @@ from .telemetry import telemetry_capability
 
 MAX_UPLOAD_BYTES = 80 * 1024 * 1024
 MAX_ATTACHMENT_BYTES = 80 * 1024 * 1024
+_UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 
 class MessageRequest(BaseModel):
@@ -36,6 +37,23 @@ def _cors_origins() -> list[str]:
     if not configured:
         return []
     return [value.strip() for value in configured.split(",") if value.strip()]
+
+
+async def _read_upload_limited(
+    file: UploadFile,
+    *,
+    max_bytes: int,
+    limit_detail: str,
+) -> bytes:
+    payload = bytearray()
+    while True:
+        chunk = await file.read(_UPLOAD_CHUNK_BYTES)
+        if not chunk:
+            break
+        payload.extend(chunk)
+        if len(payload) > max_bytes:
+            raise HTTPException(status_code=413, detail=limit_detail)
+    return bytes(payload)
 
 
 def create_app(
@@ -130,9 +148,11 @@ def create_app(
         file: Annotated[UploadFile, File()],
         title: Annotated[str, Form()] = "",
     ) -> dict[str, object]:
-        payload = await file.read()
-        if len(payload) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="PDF exceeds the 80 MiB local harness limit")
+        payload = await _read_upload_limited(
+            file,
+            max_bytes=MAX_UPLOAD_BYTES,
+            limit_detail="PDF exceeds the 80 MiB local harness limit",
+        )
         try:
             return runtime.create_audit(
                 title=title,
@@ -172,12 +192,11 @@ def create_app(
             runtime.get_audit(audit_id)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        payload = await file.read()
-        if len(payload) > MAX_ATTACHMENT_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail="attachment exceeds the 80 MiB local harness limit",
-            )
+        payload = await _read_upload_limited(
+            file,
+            max_bytes=MAX_ATTACHMENT_BYTES,
+            limit_detail="attachment exceeds the 80 MiB local harness limit",
+        )
         try:
             return runtime.add_attachment(
                 audit_id,
