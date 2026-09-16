@@ -132,7 +132,7 @@ def create_app(
     def benchmarks() -> dict[str, object]:
         try:
             results = benchmark_results.list_results(limit=None)
-        except ValueError as exc:
+        except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return benchmark_catalog(results=results)
 
@@ -143,7 +143,7 @@ def create_app(
     ) -> dict[str, object]:
         try:
             results = benchmark_results.list_results(benchmark_id=benchmark_id, limit=limit)
-        except ValueError as exc:
+        except (TypeError, ValueError) as exc:
             detail = str(exc)
             status_code = 404 if detail.startswith("unknown benchmark id:") else 409
             raise HTTPException(status_code=status_code, detail=detail) from exc
