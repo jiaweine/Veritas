@@ -12,7 +12,9 @@ def test_benchmark_catalog_matches_repository_release_gate_shape() -> None:
     catalog = benchmark_catalog()
     suites = catalog["suites"]
 
-    assert catalog["result_persistence"] is False
+    assert catalog["result_persistence"] is True
+    assert catalog["results_available"] is False
+    assert catalog["result_count"] == 0
     assert catalog["scores_available"] is False
     assert catalog["source_of_truth"] == ".github/workflows/ci.yml"
     assert catalog["gating_count"] == 3
@@ -28,6 +30,7 @@ def test_benchmark_catalog_matches_repository_release_gate_shape() -> None:
     assert by_id["real-pdf-smoke"]["gating"] is False
     assert by_id["real-pdf-fail-closed"]["gating"] is False
     assert by_id["real-pdf-promotion"]["gating"] is False
+    assert all(item["latest_result"] is None for item in suites)
 
 
 def test_benchmark_catalog_commands_are_present_in_ci_workflow() -> None:
@@ -48,5 +51,7 @@ def test_benchmark_catalog_is_exposed_without_synthetic_scores(tmp_path) -> None
     assert response.status_code == 200
     catalog = response.json()
     assert catalog["scores_available"] is False
+    assert catalog["result_persistence"] is True
+    assert catalog["results_available"] is False
     assert catalog["gating_count"] == 3
     assert all("score" not in suite for suite in catalog["suites"])
