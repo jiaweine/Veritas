@@ -12,6 +12,7 @@ This document records the product-layer architecture introduced in the research 
 6. **Web and mobile share one versioned contract.** `/api/v1` is the compatibility boundary; legacy `/api/*` routes remain available.
 7. **Optional capabilities cannot silently weaken evidence policy.** Third-party parsing, reproduction agents, and hosted observability are explicit opt-ins with fail-closed defaults.
 8. **Execution artifacts are immutable inputs.** Research code/data/environment files are hashed, preflighted, and copied into a new workspace per reproduction run; the product UI never treats upload as permission to execute.
+9. **Benchmark execution is provenance, not a dashboard score.** Benchmark result envelopes preserve the exact suite, command, status, commit, timing, source, and scalar metrics without inventing a normalized global score or trend.
 
 These choices mirror the supplied GrowthEvo design package: information-dense cockpit pages, compact/sidecar/workbench Agent modes, a global command palette, evidence-native objects, and a Harness trace rather than an opaque chat transcript.
 
@@ -27,7 +28,7 @@ These choices mirror the supplied GrowthEvo design package: information-dense co
 - Immutable reproduction artifact intake for code, data, environment files, and archives, with SHA-256/size manifest and original-byte download.
 - Correlated Agent Runs inspector that resolves a `run_id` into start/update/finish events, timing, evidence, parser metadata, and failure state.
 - Live Settings capability surface for parser policy, ACP execution boundaries, API contract, and OTLP export state without exposing collector URLs or secrets.
-- Benchmark surface backed by the repository's real CI command inventory rather than fabricated scores.
+- Benchmark surface backed by the repository's real CI command inventory and explicitly ingested versioned result envelopes rather than fabricated scores.
 - Mobile responsive layout, bottom navigation, installable web app manifest, and offline shell cache. `/api/` responses and PDFs are deliberately excluded from the service-worker cache.
 - Reproduction controls freeze the selected paper/artifact target while an artifact upload or ACP run is active so the visible target matches the server snapshot.
 
@@ -36,10 +37,13 @@ These choices mirror the supplied GrowthEvo design package: information-dense co
 The product API adds versioned views while preserving the existing local Harness contract:
 
 ```text
+GET  /api/v1/health
 GET  /api/v1/capabilities
 GET  /api/v1/overview
 GET  /api/v1/findings
 GET  /api/v1/benchmarks
+GET  /api/v1/benchmark-results
+GET  /api/v1/benchmark-results/{result_id}
 GET  /api/v1/runs
 GET  /api/v1/runs/{run_id}
 GET  /api/v1/search?q=...
@@ -77,11 +81,35 @@ The start trace stores only a hash and length of a reproduction prompt, not the 
 
 Workspace-preparation integrity errors are also represented as persisted runs. A failed paper/attachment preflight produces a correlated `start → error` trace with `stage=workspace_prepare`; the ACP runner is not invoked and no run workspace is created.
 
-### Benchmark inventory
+### Benchmark inventory and result persistence
 
-`GET /api/v1/benchmarks` exposes the benchmark/probe commands actually wired to `.github/workflows/ci.yml`. The current catalog distinguishes release-gating benchmarks from diagnostic non-gating probes and is regression-tested against the workflow so product copy cannot silently drift from CI.
+`GET /api/v1/benchmarks` exposes the benchmark/probe commands actually wired to `.github/workflows/ci.yml`. The catalog distinguishes release-gating benchmarks from diagnostic non-gating probes and is regression-tested against the workflow so product copy cannot silently drift from CI.
 
-The endpoint explicitly reports that benchmark scores/result persistence are unavailable. The product therefore shows the real gate inventory and purpose without synthesizing trend lines or pretending that a historical result store exists.
+Benchmark execution results use a separate **Benchmark Result Envelope v1**. They are not inferred from the existence of a benchmark script or from an old benchmark artifact. An operator explicitly imports an envelope with:
+
+```text
+veritas-benchmark-result ./benchmark-result.json
+```
+
+The result contract is intentionally narrow and versioned. It accepts:
+
+- `schema_version="1"`;
+- a known `benchmark_id` and the exact catalog command;
+- status `passed|failed|error|skipped`;
+- source `ci|operator`;
+- timezone-aware start and finish timestamps;
+- a full Git commit SHA for CI-sourced results;
+- an optional absolute HTTP(S) run URL;
+- an optional bounded summary;
+- a flat map of bounded JSON-scalar metrics.
+
+Unknown envelope fields are rejected rather than silently discarded. Nested metric payloads, non-finite numbers, command drift, malformed commit ids, and timezone-free timestamps fail closed. The source file is bounded to 1 MiB.
+
+Validated envelopes are canonicalized and content-addressed as `bmr_<hash>`. Re-ingesting the same semantic result is idempotent. Stored records add source/payload SHA-256 values, ingestion time, derived duration, and catalog-derived title/kind/gating metadata. Reads recompute the canonical payload hash and derived metadata so local tampering fails closed instead of being hidden.
+
+`GET /api/v1/benchmark-results` exposes the append-only local result history and supports an optional `benchmark_id` filter. `GET /api/v1/benchmark-results/{result_id}` returns one validated result. `GET /api/v1/benchmarks` reports `result_count`, `results_available`, and the actual latest result per suite.
+
+This persistence layer does **not** automatically scrape GitHub Actions history or turn a single old SSRN/reproduction JSON into a current product score. CI or another operator still has to intentionally emit and ingest envelopes. The UI shows recorded status/provenance/scalar metrics as-is; `scores_available` remains false and no cross-suite score/trend is synthesized.
 
 ### Parser stack and optional Docling adapter
 
@@ -146,9 +174,9 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
 
 A terminal detector or reproduction event is exported only **after** the local event append is durable. Export errors are best-effort and cannot change a detector verdict or local run state.
 
-The OTLP span payload is intentionally metadata-only. It may include run/audit/tool identity, duration, artifact identity, parser ids, evidence page/table locator, verification coverage, check counts, and error type. It does not export the PDF, raw reproduction prompt, evidence quote/text, arbitrary ACP message payload, or collector endpoint through the product API.
+The OTLP span payload is intentionally metadata-only. It may include run/audit/tool identity, duration, artifact identity, parser ids, evidence page/table locator, verification coverage, check counts, and error type. It does not export the PDF, raw reproduction prompt, evidence quote/text, arbitrary ACP message payload, audit titles, or collector endpoint through the product API.
 
-`/api/v1/capabilities` exposes whether export is enabled, whether the optional dependencies and endpoint are configured, and the metadata-only privacy contract. The live Settings surface renders those facts without revealing secrets.
+`/api/v1/capabilities` exposes whether export is requested, whether the optional dependencies and endpoint are configured, whether export is actually active, and the metadata-only privacy contract. The live Settings surface renders those facts without revealing secrets.
 
 ### Native mobile
 
@@ -197,7 +225,7 @@ The repository already ships a zero-build FastAPI/static Harness. Replacing it w
 The branch keeps the repository's existing release gates and adds product/client checks:
 
 - `ruff check src tests`;
-- full `pytest` suite, including product API, parser-stack, metadata-only telemetry, run-detail, fake-ACP lifecycle, immutable-artifact tamper/preflight, and bounded-upload regression coverage;
+- full `pytest` suite, including product API, benchmark-result persistence/tamper/CLI coverage, parser-stack, metadata-only telemetry, run-detail, fake-ACP lifecycle, immutable-artifact tamper/preflight, and bounded-upload regression coverage;
 - PDF regression benchmark;
 - PDF geometry holdout;
 - adversarial extraction fail-closed benchmark;
@@ -209,7 +237,7 @@ The branch keeps the repository's existing release gates and adds product/client
 ## Next integration points
 
 - Evaluate the optional Docling snapshot on locked extraction fixtures and real-PDF holdouts before considering any promotion-policy change.
-- Add durable, versioned benchmark-result persistence before adding comparison/trend views; never fabricate benchmark scores in the product UI.
+- Have CI emit Benchmark Result Envelope v1 artifacts and define an explicit ingestion/promotion workflow for long-lived product installations; do not silently scrape or reinterpret historical result files.
 - Define retention/cleanup policy for completed reproduction workspaces so long-running local installations do not accumulate execution outputs indefinitely.
 - Add a Langfuse-specific adapter only if needed; OTLP remains the vendor-neutral optional observability boundary.
 - Add native incremental NDJSON consumption when React Native's supported fetch/runtime surface provides a stable streaming reader across target platforms.

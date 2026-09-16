@@ -12,8 +12,11 @@ def test_benchmark_catalog_matches_repository_release_gate_shape() -> None:
     catalog = benchmark_catalog()
     suites = catalog["suites"]
 
-    assert catalog["result_persistence"] is False
+    assert catalog["result_persistence"] is True
+    assert catalog["results_available"] is False
+    assert catalog["result_count"] == 0
     assert catalog["scores_available"] is False
+    assert catalog["result_schema_version"] == "1"
     assert catalog["source_of_truth"] == ".github/workflows/ci.yml"
     assert catalog["gating_count"] == 3
     assert catalog["non_gating_count"] == 4
@@ -47,6 +50,9 @@ def test_benchmark_catalog_is_exposed_without_synthetic_scores(tmp_path) -> None
 
     assert response.status_code == 200
     catalog = response.json()
+    assert catalog["result_persistence"] is True
+    assert catalog["results_available"] is False
+    assert catalog["result_count"] == 0
     assert catalog["scores_available"] is False
     assert catalog["gating_count"] == 3
     assert all("score" not in suite for suite in catalog["suites"])

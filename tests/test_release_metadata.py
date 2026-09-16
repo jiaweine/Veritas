@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import veritas
+from veritas.harness import benchmark_cli
 from veritas.harness import cli as harness_cli
 from veritas.harness.web import create_app
 from veritas.replication import cli as replication_cli
@@ -40,7 +41,7 @@ def test_health_routes_and_capabilities_share_package_version(tmp_path) -> None:
 
 @pytest.mark.parametrize(
     "build_parser",
-    [harness_cli.build_parser, replication_cli.build_parser],
+    [harness_cli.build_parser, replication_cli.build_parser, benchmark_cli.build_parser],
 )
 def test_cli_version_exits_without_running_product(build_parser, capsys) -> None:
     parser = build_parser()

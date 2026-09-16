@@ -13,7 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ..version import package_version
-from .benchmark_catalog import benchmark_catalog
+from .benchmark_catalog import benchmark_catalog, benchmark_definition
+from .benchmark_results import BenchmarkResultStore
 from .parser_stack import parser_stack_capability
 from .replication_guard import stream_replication_guarded
 from .run_views import project_run_detail
@@ -67,6 +68,7 @@ def create_app(
         data_dir or os.environ.get("VERITAS_HARNESS_DATA", "~/.veritas/harness")
     ).expanduser()
     runtime = harness or AuditHarness(resolved_data_dir)
+    benchmark_results = BenchmarkResultStore(resolved_data_dir)
     static_dir = Path(__file__).with_name("static")
     product_version = package_version()
 
@@ -77,6 +79,7 @@ def create_app(
         redoc_url=None,
     )
     app.state.harness = runtime
+    app.state.benchmark_results = benchmark_results
 
     origins = _cors_origins()
     if origins:
@@ -127,7 +130,43 @@ def create_app(
 
     @app.get("/api/v1/benchmarks")
     def benchmarks() -> dict[str, object]:
-        return benchmark_catalog()
+        try:
+            return benchmark_catalog(benchmark_results.list_results(limit=None))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"benchmark result store integrity error: {exc}",
+            ) from exc
+
+    @app.get("/api/v1/benchmark-results")
+    def list_benchmark_results(
+        benchmark_id: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
+        limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    ) -> list[dict[str, object]]:
+        if benchmark_id is not None:
+            try:
+                benchmark_definition(benchmark_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            return benchmark_results.list_results(benchmark_id=benchmark_id, limit=limit)
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"benchmark result store integrity error: {exc}",
+            ) from exc
+
+    @app.get("/api/v1/benchmark-results/{result_id}")
+    def get_benchmark_result(result_id: str) -> dict[str, object]:
+        try:
+            return benchmark_results.get_result(result_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"benchmark result store integrity error: {exc}",
+            ) from exc
 
     @app.get("/api/v1/runs")
     def runs() -> list[dict[str, object]]:
