@@ -2,35 +2,130 @@
 
 # Veritas
 
-**Evidence-first auditing for empirical social science.**
+**Evidence-first research auditing, from paper to reproducible trace.**
 
-Turn papers and research artifacts into inspectable, reproducible audit evidence.
+Upload a paper, inspect source-linked findings, attach reproduction artifacts, and follow every detector or agent run through one local-first workbench.
 
 [![CI](https://github.com/jiaweine/Veritas/actions/workflows/ci.yml/badge.svg)](https://github.com/jiaweine/Veritas/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
 </div>
 
-Veritas extracts reported statistical objects from research papers, checks numerical and methodological consistency with deterministic detectors, links findings back to source evidence, and carries the result through reproducibility and provenance workflows.
+Veritas is an evidence-first research audit system for empirical social science. It combines a deterministic Python verification core with a Web/PWA Research Audit Workbench, a versioned FastAPI product API, optional ACP reproduction agents, and a native Expo mobile client.
 
-## Highlights
+The product is built around inspectable audit objects rather than chat transcripts: papers, findings, evidence locations, run traces, parser provenance, immutable reproduction artifacts, benchmark gates, and attested outputs remain first-class data.
 
-- **Research Audit Harness** — a conversation-oriented local workspace with persistent audit threads, structured tool events, and a source-first Evidence Inspector.
+## Product surfaces
+
+- **Research Audit Workbench** — dense local cockpit for Audits, Findings, Evidence, Agent Runs, Reproduction, Benchmarks, and Settings.
+- **Source-first paper workbench** — PDF evidence viewer, detected structure, findings, and correlated tool traces stay linked to page/table/row provenance.
+- **Versioned product API** — `/api/v1` endpoints serve audits, findings, runs, run detail, search, capabilities, benchmarks, immutable attachments, and reproduction streams.
+- **Native mobile client** — Expo / React Native app shares the same `/api/v1` contract; no WebView product shell.
+- **Replication agent bridge** — optional ACP integration runs against a per-run workspace with hash-verified paper/artifact copies and fail-closed permission defaults.
+- **Optional parser and telemetry adapters** — Docling can add an observational third parser snapshot; OTLP export is metadata-only and opt-in.
+
+## Research core
+
 - **Paper-native extraction** — dual native-PDF parsing with geometry fallback and precise page/table/row/column provenance.
 - **Deterministic statistical checks** — rounding-aware regression arithmetic, sample accounting, correlations, grouped summaries, ANOVA, meta-analysis, SEM, standardized regression, DID, IV, RDD, and experimental checks.
 - **Evidence-linked claims** — `Claim → Estimate → Sample → Data → Code → Assumption` identity graphs keep findings tied to the objects they depend on.
 - **Reproducibility workflows** — isolated R/Python runner contracts, environment capture, publication-object matching, provenance DAGs, and attested reproduction findings.
-- **Replication agent bridge** — optional ACP integration keeps code-capable agents in a separate replication workspace instead of granting shell access to paper-audit threads.
 - **Research-design checks** — preregistration and PAP comparison, sample lineage, survey-integrity signals, and provenance/randomization checks.
 - **Locked evaluation** — calibration scopes, held-out TEST sealing, execution attestations, release bindings, cold verification, and archive-receipt binding for real-paper extraction evidence.
 
-## Quick start
+## Quick start: Research Audit Workbench
 
 ```bash
 git clone https://github.com/jiaweine/Veritas.git
 cd Veritas
 python -m venv .venv
 source .venv/bin/activate
+python -m pip install -e ".[web,pdf]"
+veritas-harness
+```
+
+Open `http://127.0.0.1:8765` and upload a PDF. The product stores local audit records under `~/.veritas/harness` by default.
+
+Useful operator endpoints:
+
+```bash
+veritas-harness --version
+curl http://127.0.0.1:8765/api/v1/health
+```
+
+Interactive API documentation is available at `http://127.0.0.1:8765/api/docs`.
+
+The legacy `/api/health` route is retained for compatibility; new integrations should use `/api/v1/health` and the `/api/v1` product contract.
+
+### Run a detector from the workbench
+
+From an audit thread, a deterministic regression check can be requested with:
+
+```text
+/audit row="Treatment" table=2 page=1
+```
+
+The browser is a control surface: extraction and detector work remains in the Python backend, and source locations flow back into the Evidence Inspector and correlated run trace. See [`docs/HARNESS.md`](docs/HARNESS.md) and [`docs/PRODUCT_WORKBENCH.md`](docs/PRODUCT_WORKBENCH.md).
+
+## Native mobile
+
+The `mobile/` client is a native Expo application using the same versioned API as the Web/PWA product.
+
+```bash
+cd mobile
+npm install
+EXPO_PUBLIC_VERITAS_API_URL=http://127.0.0.1:8765 npx expo start
+```
+
+For a physical device, point `EXPO_PUBLIC_VERITAS_API_URL` at a network-reachable Veritas server URL rather than the device's own loopback address.
+
+The mobile client supports cockpit/audit views, findings, PDF upload, immutable reproduction artifacts, ACP reproduction, persisted run history, and correlated run detail.
+
+## Optional reproduction agent
+
+Code-capable agents are optional and stay outside normal paper-audit threads. Veritas exposes an ACP client adapter for a dedicated replication workspace:
+
+```bash
+python -m pip install -e ".[web,pdf,replication]"
+export VERITAS_REPLICATION_AGENT="my-acp-agent"
+veritas-harness
+```
+
+You can also run a direct ACP turn from the CLI:
+
+```bash
+veritas-replication --workspace ./reproduction \
+  "Run the project tests and identify the command that reproduces Table 4."
+```
+
+The browser/mobile client submits a reproduction goal, never a server executable command. The adapter defaults to denying ACP permission requests. Each accepted product run gets a fresh workspace containing read-only, hash-verified copies of the paper and attached artifacts plus an `artifacts.json` manifest. The workspace path is not itself a security sandbox; process and filesystem isolation belong to the selected agent runtime. See [`docs/REPLICATION_AGENT_BACKENDS.md`](docs/REPLICATION_AGENT_BACKENDS.md).
+
+## Optional Docling parser
+
+The locked baseline remains PyMuPDF + pdfplumber. Docling is an optional observational third parser and does not silently change the two-family promotion rule.
+
+```bash
+python -m pip install -e ".[web,pdf,docling]"
+export VERITAS_PDF_THIRD_PARSER=docling
+veritas-harness
+```
+
+## Optional OTLP observability
+
+OTLP export is opt-in and occurs only after local audit events are appended. Exported spans are metadata-only: PDF bytes, audit titles, raw prompts, evidence text, arbitrary ACP messages, collector URLs, and secrets are not exported as span attributes.
+
+```bash
+python -m pip install -e ".[web,pdf,observability]"
+export VERITAS_OTEL_EXPORT=true
+# Configure the standard OTEL exporter environment for your collector.
+veritas-harness
+```
+
+## Python library quick start
+
+Install the research core plus PDF and attestation support:
+
+```bash
 python -m pip install -e ".[pdf,attestation]"
 ```
 
@@ -55,34 +150,6 @@ print(summary.review_priority)
 print(summary.findings)
 ```
 
-### Launch the Research Audit Harness
-
-```bash
-python -m pip install -e ".[web,pdf]"
-veritas-harness
-```
-
-Open `http://127.0.0.1:8765`, upload a PDF, inspect detected source structure, and run a regression check from the conversation:
-
-```text
-/audit row="Treatment" table=2 page=1
-```
-
-The browser is a control surface: extraction and detector work stays in the Python backend, and source locations flow back into the Evidence Inspector. See [`docs/HARNESS.md`](docs/HARNESS.md).
-
-### Connect a replication agent
-
-Code-capable agents are optional and stay outside normal paper-audit threads. Veritas exposes an ACP client adapter for a dedicated replication workspace:
-
-```bash
-python -m pip install -e ".[replication]"
-export VERITAS_REPLICATION_AGENT="my-acp-agent"
-veritas-replication --workspace ./reproduction \
-  "Run the project tests and identify the command that reproduces Table 4."
-```
-
-The adapter defaults to denying ACP permission requests and forwards non-basic environment variables only when explicitly configured. The workspace path is not itself a sandbox; process and filesystem isolation belong to the selected agent runtime. See [`docs/REPLICATION_AGENT_BACKENDS.md`](docs/REPLICATION_AGENT_BACKENDS.md).
-
 ## How it works
 
 ```mermaid
@@ -105,7 +172,7 @@ flowchart LR
 
 ## Real-paper evidence workflow
 
-The v0.15 evidence workflow provides a locked protocol for evaluating extraction on real papers:
+The v0.15 extraction-evidence protocol provides a locked process for evaluating extraction on real papers:
 
 ```text
 sampling → independent review → DEVELOPMENT calibration → sealed TEST
@@ -117,16 +184,20 @@ The canonical operator sequence is documented in [`docs/EXTRACTION_EVIDENCE_RUNB
 
 ## Benchmarks
 
-The repository includes regression, geometry-holdout, adversarial, and real-PDF promotion checks:
+The repository includes three release-gating checks plus four non-gating probes reflected by the product benchmark inventory:
 
 ```bash
 python scripts/benchmark_pdf_regression.py
 python scripts/benchmark_pdf_geometry_holdout.py
 python scripts/benchmark_extraction_adversarial.py
+
+python scripts/probe_bmc_grouped_headers.py
+python scripts/smoke_real_pdf.py
+python scripts/smoke_real_pdf_fail_closed.py
 python scripts/benchmark_real_pdf_promotion.py
 ```
 
-For the full test suite:
+For the full CI dependency set and test suite:
 
 ```bash
 python -m pip install -e ".[dev,pdf,attestation,web,replication]"
@@ -138,17 +209,19 @@ pytest -q
 
 | Path | Purpose |
 | --- | --- |
-| [`src/veritas/`](src/veritas/) | Core audit, extraction, detector, reproduction, provenance, and harness library |
-| [`src/veritas/harness/`](src/veritas/harness/) | Local audit threads, API, paper-tool orchestration, and web UI |
+| [`src/veritas/`](src/veritas/) | Core audit, extraction, detector, reproduction, provenance, and product library |
+| [`src/veritas/harness/`](src/veritas/harness/) | Versioned API, local audit records, tool orchestration, PWA, and Workbench UI |
 | [`src/veritas/replication/`](src/veritas/replication/) | Optional ACP adapter for code-capable replication agents |
+| [`mobile/`](mobile/) | Native Expo / React Native client using `/api/v1` |
 | [`scripts/`](scripts/) | Benchmark, evidence-building, and verification CLIs |
 | [`benchmark/`](benchmark/) | Benchmark corpora plus frozen evidence and execution manifests |
-| [`docs/`](docs/) | Methods, detector notes, evidence protocols, and operator runbooks |
-| [`tests/`](tests/) | Unit, regression, fail-closed, harness, replication, and workflow contract tests |
+| [`docs/`](docs/) | Product architecture, methods, detector notes, evidence protocols, and runbooks |
+| [`tests/`](tests/) | Unit, regression, fail-closed, API, replication, and workflow contract tests |
 
 ## Documentation
 
-- [`docs/HARNESS.md`](docs/HARNESS.md) — Research Audit Harness architecture and local workflow
+- [`docs/PRODUCT_WORKBENCH.md`](docs/PRODUCT_WORKBENCH.md) — product architecture, workbench model, versioned API, mobile, parser stack, and observability
+- [`docs/HARNESS.md`](docs/HARNESS.md) — Research Audit Workbench backend architecture and local workflow
 - [`docs/REPLICATION_AGENT_BACKENDS.md`](docs/REPLICATION_AGENT_BACKENDS.md) — ACP replication agents, backend choices, and safety boundaries
 - [`docs/METHODS.md`](docs/METHODS.md) — audit model and methodology
 - [`docs/DETECTOR_CARDS.md`](docs/DETECTOR_CARDS.md) — detector scope and assumptions
