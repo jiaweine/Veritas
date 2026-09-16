@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import threading
-from datetime import datetime
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -127,7 +127,9 @@ class BenchmarkResultStore:
         actual = self._payload_sha256(payload)
         if not isinstance(expected, str) or expected != actual:
             raise ValueError(f"benchmark result hash mismatch: {result_id}")
-        self._normalize_timestamp(str(payload.get("recorded_at") or ""))
+        normalized_timestamp = self._normalize_timestamp(str(payload.get("recorded_at") or ""))
+        if payload.get("recorded_at") != normalized_timestamp:
+            raise ValueError(f"benchmark result timestamp is not normalized: {result_id}")
         return dict(payload)
 
     @staticmethod
@@ -150,7 +152,7 @@ class BenchmarkResultStore:
             raise ValueError("recorded_at must be an ISO-8601 timestamp") from exc
         if parsed.tzinfo is None:
             raise ValueError("recorded_at must include a timezone")
-        return normalized
+        return parsed.astimezone(UTC).isoformat()
 
     @classmethod
     def _payload_sha256(cls, payload: dict[str, Any]) -> str:
