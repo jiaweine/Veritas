@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -49,12 +49,12 @@ def _normalized_timestamp(value: object, field: str) -> tuple[str, datetime]:
         raise ValueError(f"{field} is required")
     raw = value.strip()
     try:
-        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(raw)
     except ValueError as exc:
         raise ValueError(f"{field} must be an ISO-8601 timestamp") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError(f"{field} must include a timezone offset")
-    utc = parsed.astimezone(timezone.utc)
+    utc = parsed.astimezone(UTC)
     return utc.isoformat().replace("+00:00", "Z"), utc
 
 
@@ -64,7 +64,7 @@ def _normalized_commit_sha(value: object, *, required: bool) -> str | None:
             raise ValueError("commit_sha is required for ci results")
         return None
     if not isinstance(value, str):
-        raise ValueError("commit_sha must be a string")
+        raise TypeError("commit_sha must be a string")
     normalized = value.strip().lower()
     if len(normalized) != 40 or any(char not in "0123456789abcdef" for char in normalized):
         raise ValueError("commit_sha must be a full 40-character hexadecimal Git commit")
@@ -75,7 +75,7 @@ def _normalized_run_url(value: object) -> str | None:
     if value is None or value == "":
         return None
     if not isinstance(value, str):
-        raise ValueError("run_url must be a string")
+        raise TypeError("run_url must be a string")
     normalized = value.strip()
     if len(normalized) > 1000:
         raise ValueError("run_url is too long")
@@ -89,7 +89,7 @@ def _normalized_metrics(value: object) -> dict[str, bool | int | float | str | N
     if value is None or value == "":
         return {}
     if not isinstance(value, dict):
-        raise ValueError("metrics must be an object")
+        raise TypeError("metrics must be an object")
     if len(value) > _MAX_METRICS:
         raise ValueError(f"metrics must contain at most {_MAX_METRICS} entries")
 
@@ -100,9 +100,7 @@ def _normalized_metrics(value: object) -> dict[str, bool | int | float | str | N
         metric_key = key.strip()
         if metric_key in normalized:
             raise ValueError(f"duplicate metric key after normalization: {metric_key}")
-        if isinstance(item, bool) or item is None:
-            normalized[metric_key] = item
-        elif isinstance(item, int):
+        if item is None or isinstance(item, (bool, int)):
             normalized[metric_key] = item
         elif isinstance(item, float):
             if not math.isfinite(item):
@@ -121,7 +119,7 @@ def validate_benchmark_result_payload(payload: object) -> dict[str, Any]:
     """Validate and canonicalize one Benchmark Result Envelope v1 payload."""
 
     if not isinstance(payload, dict):
-        raise ValueError("benchmark result must be a JSON object")
+        raise TypeError("benchmark result must be a JSON object")
     unknown_fields = sorted(set(payload) - _RESULT_FIELDS)
     if unknown_fields:
         raise ValueError(f"unknown benchmark result fields: {', '.join(unknown_fields)}")
@@ -157,7 +155,7 @@ def validate_benchmark_result_payload(payload: object) -> dict[str, Any]:
     if summary is None or summary == "":
         summary = None
     elif not isinstance(summary, str):
-        raise ValueError("summary must be a string")
+        raise TypeError("summary must be a string")
     else:
         summary = summary.strip()
         if not summary:
@@ -213,8 +211,8 @@ class BenchmarkResultStore:
         payload_sha256 = sha256(payload_bytes).hexdigest()
         result_id = f"bmr_{payload_sha256[:16]}"
         definition = benchmark_definition(validated["benchmark_id"])
-        started = datetime.fromisoformat(validated["started_at"].replace("Z", "+00:00"))
-        finished = datetime.fromisoformat(validated["finished_at"].replace("Z", "+00:00"))
+        started = datetime.fromisoformat(validated["started_at"])
+        finished = datetime.fromisoformat(validated["finished_at"])
         record = {
             "result_id": result_id,
             "schema_version": _RESULT_SCHEMA_VERSION,
@@ -327,13 +325,13 @@ class BenchmarkResultStore:
         if value.get("kind") != definition["kind"] or value.get("gating") != definition["gating"]:
             raise ValueError(f"benchmark result catalog metadata mismatch: {result_id}")
 
-        started = datetime.fromisoformat(validated["started_at"].replace("Z", "+00:00"))
-        finished = datetime.fromisoformat(validated["finished_at"].replace("Z", "+00:00"))
+        started = datetime.fromisoformat(validated["started_at"])
+        finished = datetime.fromisoformat(validated["finished_at"])
         expected_duration = max(0, round((finished - started).total_seconds() * 1000))
         if value.get("duration_ms") != expected_duration:
             raise ValueError(f"benchmark result duration mismatch: {result_id}")
         if not isinstance(value.get("ingested_at"), str):
-            raise ValueError(f"benchmark result ingestion metadata invalid: {result_id}")
+            raise TypeError(f"benchmark result ingestion metadata invalid: {result_id}")
         _normalized_timestamp(value["ingested_at"], "ingested_at")
         source_sha256 = value.get("source_sha256")
         if not isinstance(source_sha256, str) or len(source_sha256) != 64:
