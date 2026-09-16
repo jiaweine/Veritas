@@ -19,6 +19,7 @@ from .service import AuditHarness
 from .telemetry import telemetry_capability
 
 MAX_UPLOAD_BYTES = 80 * 1024 * 1024
+MAX_ATTACHMENT_BYTES = 80 * 1024 * 1024
 
 
 class MessageRequest(BaseModel):
@@ -49,7 +50,7 @@ def create_app(
 
     app = FastAPI(
         title="Veritas Research Audit Harness",
-        version="0.5.0",
+        version="0.6.0",
         docs_url="/api/docs",
         redoc_url=None,
     )
@@ -74,6 +75,7 @@ def create_app(
     @app.get("/api/v1/capabilities")
     def capabilities() -> dict[str, object]:
         value = dict(runtime.capabilities())
+        value["max_attachment_bytes"] = MAX_ATTACHMENT_BYTES
         value["parser_stack"] = parser_stack_capability()
         value["observability"] = telemetry_capability()
         return value
@@ -151,6 +153,51 @@ def create_app(
             media_type="application/pdf",
             filename="paper.pdf",
             content_disposition_type="inline",
+        )
+
+    @app.get("/api/v1/audits/{audit_id}/attachments")
+    def list_attachments(audit_id: str) -> list[dict[str, object]]:
+        try:
+            return runtime.list_attachments(audit_id)
+        except (FileNotFoundError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/v1/audits/{audit_id}/attachments")
+    async def add_attachment(
+        audit_id: str,
+        file: Annotated[UploadFile, File()],
+    ) -> dict[str, object]:
+        try:
+            runtime.get_audit(audit_id)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        payload = await file.read()
+        if len(payload) > MAX_ATTACHMENT_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="attachment exceeds the 80 MiB local harness limit",
+            )
+        try:
+            return runtime.add_attachment(
+                audit_id,
+                filename=file.filename or "artifact.bin",
+                payload=payload,
+                media_type=file.content_type,
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/v1/audits/{audit_id}/attachments/{attachment_id}")
+    def attachment(audit_id: str, attachment_id: str) -> FileResponse:
+        try:
+            path = runtime.store.get_attachment_path(audit_id, attachment_id)
+        except (FileNotFoundError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return FileResponse(
+            path,
+            media_type="application/octet-stream",
+            filename=path.name,
+            content_disposition_type="attachment",
         )
 
     @app.post("/api/audits/{audit_id}/messages")
