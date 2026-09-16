@@ -206,6 +206,7 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const interactionLocked = running || uploadingArtifact || loadingAttachments;
 
   useEffect(() => {
     if (!selectedAudit && audits[0]) setSelectedAudit(audits[0].audit_id);
@@ -249,7 +250,8 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
   };
 
   const attachArtifact = async () => {
-    if (!selectedAudit || uploadingArtifact) return;
+    if (!selectedAudit || interactionLocked) return;
+    const targetAuditId = selectedAudit;
     const result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
@@ -267,11 +269,11 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
 
     setUploadingArtifact(true);
     try {
-      await request(`/api/v1/audits/${encodeURIComponent(selectedAudit)}/attachments`, {
+      await request(`/api/v1/audits/${encodeURIComponent(targetAuditId)}/attachments`, {
         method: "POST",
         body,
       });
-      await refreshAttachments(selectedAudit);
+      await refreshAttachments(targetAuditId);
     } catch (error) {
       Alert.alert("Artifact upload failed", error instanceof Error ? error.message : String(error));
     } finally {
@@ -313,11 +315,12 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
 
   const run = async () => {
     const goal = prompt.trim();
-    if (!selectedAudit || !goal || running) return;
+    if (!selectedAudit || !goal || interactionLocked) return;
+    const targetAuditId = selectedAudit;
     setRunning(true);
     setEvents([]);
     try {
-      const response = await request(`/api/v1/audits/${encodeURIComponent(selectedAudit)}/replication`, {
+      const response = await request(`/api/v1/audits/${encodeURIComponent(targetAuditId)}/replication`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
         body: JSON.stringify({ prompt: goal }),
@@ -335,6 +338,7 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
   };
 
   const configured = Boolean(capability?.configured);
+  const runDisabled = !configured || !selectedAudit || !prompt.trim() || interactionLocked;
   return <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
     <Text style={styles.eyebrow}>REPRODUCIBILITY</Text>
     <Text style={styles.title}>Reproduction</Text>
@@ -355,14 +359,14 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
       <Text style={styles.cardTitle}>Paper</Text>
       <Text style={styles.selectedTitle}>{selectedTitle}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.auditChips}>
-        {audits.map((audit) => <Pressable key={audit.audit_id} onPress={() => setSelectedAudit(audit.audit_id)} style={[styles.auditChip, selectedAudit === audit.audit_id && styles.auditChipActive]}><Text numberOfLines={1} style={[styles.auditChipText, selectedAudit === audit.audit_id && styles.auditChipTextActive]}>{audit.title}</Text></Pressable>)}
+        {audits.map((audit) => <Pressable key={audit.audit_id} disabled={interactionLocked} onPress={() => setSelectedAudit(audit.audit_id)} style={[styles.auditChip, selectedAudit === audit.audit_id && styles.auditChipActive, interactionLocked && styles.runButtonDisabled]}><Text numberOfLines={1} style={[styles.auditChipText, selectedAudit === audit.audit_id && styles.auditChipTextActive]}>{audit.title}</Text></Pressable>)}
       </ScrollView>
       {!audits.length ? <Text style={styles.empty}>Upload a paper before attaching artifacts or starting a reproduction run.</Text> : null}
 
       {selectedAudit ? <View style={styles.artifactSection}>
         <View style={styles.artifactHead}>
           <View style={styles.artifactHeadCopy}><Text style={styles.artifactHeading}>Immutable artifacts</Text><Text style={styles.artifactNote}>Code, data, environment files, or archives · max {formatBytes(maxAttachmentBytes)} each</Text></View>
-          <Pressable onPress={attachArtifact} disabled={uploadingArtifact} style={[styles.attachButton, uploadingArtifact && styles.runButtonDisabled]}>{uploadingArtifact ? <ActivityIndicator size="small" color="#5368f5" /> : <Text style={styles.attachButtonText}>＋ Attach</Text>}</Pressable>
+          <Pressable onPress={attachArtifact} disabled={interactionLocked} style={[styles.attachButton, interactionLocked && styles.runButtonDisabled]}>{uploadingArtifact ? <ActivityIndicator size="small" color="#5368f5" /> : <Text style={styles.attachButtonText}>＋ Attach</Text>}</Pressable>
         </View>
         {loadingAttachments ? <View style={styles.artifactLoading}><ActivityIndicator size="small" color="#5368f5" /><Text style={styles.helper}>Loading hash manifest…</Text></View> : null}
         {!loadingAttachments && attachments.map((attachment) => <View style={styles.artifactRow} key={attachment.attachment_id}>
@@ -373,8 +377,8 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
       </View> : null}
 
       <Text style={styles.fieldLabel}>Goal</Text>
-      <TextInput value={prompt} onChangeText={setPrompt} multiline editable={!running && configured} style={styles.input} placeholder="Describe the reproduction goal…" placeholderTextColor="#9aa2b1" />
-      <Pressable onPress={run} disabled={!configured || !selectedAudit || !prompt.trim() || running} style={[styles.runButton, (!configured || !selectedAudit || !prompt.trim() || running) && styles.runButtonDisabled]}>
+      <TextInput value={prompt} onChangeText={setPrompt} multiline editable={!interactionLocked && configured} style={styles.input} placeholder="Describe the reproduction goal…" placeholderTextColor="#9aa2b1" />
+      <Pressable onPress={run} disabled={runDisabled} style={[styles.runButton, runDisabled && styles.runButtonDisabled]}>
         {running ? <ActivityIndicator color="#fff" /> : <Text style={styles.runButtonText}>Run reproduction</Text>}
       </Pressable>
       {!configured ? <Text style={styles.helper}>Configure VERITAS_REPLICATION_AGENT on the server to enable execution. Artifact intake remains available.</Text> : <Text style={styles.helper}>Each run gets a new workspace with read-only copies of the paper and hash-verified attachments. The ACP agent owns the execution sandbox.</Text>}
