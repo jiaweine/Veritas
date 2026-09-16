@@ -1,3 +1,4 @@
+import * as DocumentPicker from "expo-document-picker";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -24,6 +25,17 @@ type ReplicationCapability = {
   permission_policy_valid?: boolean;
   workspace_is_security_boundary?: boolean;
   client_supplied_commands?: boolean;
+  immutable_artifact_intake?: boolean;
+  workspace_per_run?: boolean;
+};
+
+type Attachment = {
+  attachment_id: string;
+  filename: string;
+  sha256: string;
+  size_bytes: number;
+  media_type?: string;
+  created_at?: string;
 };
 
 type HarnessEvent = {
@@ -115,6 +127,13 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
 }
 
+function formatBytes(value?: number | null) {
+  const bytes = Number(value) || 0;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KiB`;
+  return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MiB`;
+}
+
 function parserLabel(parser: ParserRef) {
   if (typeof parser === "string") return parser;
   const name = parser.parser_id || parser.parser || parser.name || "parser";
@@ -174,7 +193,11 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
 
 export default function ReplicationScreen({ audits }: { audits: AuditOption[] }) {
   const [capability, setCapability] = useState<ReplicationCapability | null>(null);
+  const [maxAttachmentBytes, setMaxAttachmentBytes] = useState(80 * 1024 * 1024);
   const [selectedAudit, setSelectedAudit] = useState<string>(audits[0]?.audit_id || "");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [uploadingArtifact, setUploadingArtifact] = useState(false);
   const [prompt, setPrompt] = useState("Reproduce the paper's main reported result and record the environment, steps, outputs, and discrepancies.");
   const [events, setEvents] = useState<HarnessEvent[]>([]);
   const [running, setRunning] = useState(false);
@@ -194,15 +217,67 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
   useEffect(() => {
     request("/api/v1/capabilities")
       .then((response) => response.json())
-      .then((value) => setCapability(value.replication || { configured: false }))
+      .then((value) => {
+        setCapability(value.replication || { configured: false });
+        setMaxAttachmentBytes(Number(value.max_attachment_bytes) || 80 * 1024 * 1024);
+      })
       .catch((error) => Alert.alert("Replication capability unavailable", String(error)));
     void refreshRuns();
   }, []);
+
+  useEffect(() => {
+    if (selectedAudit) void refreshAttachments(selectedAudit);
+    else setAttachments([]);
+  }, [selectedAudit]);
 
   const selectedTitle = useMemo(
     () => audits.find((audit) => audit.audit_id === selectedAudit)?.title || "No paper selected",
     [audits, selectedAudit],
   );
+
+  const refreshAttachments = async (auditId: string) => {
+    setLoadingAttachments(true);
+    try {
+      const next = await request(`/api/v1/audits/${encodeURIComponent(auditId)}/attachments`).then((response) => response.json()) as Attachment[];
+      setAttachments(next);
+    } catch (error) {
+      setAttachments([]);
+      Alert.alert("Artifact manifest unavailable", error instanceof Error ? error.message : String(error));
+    } finally {
+      setLoadingAttachments(false);
+    }
+  };
+
+  const attachArtifact = async () => {
+    if (!selectedAudit || uploadingArtifact) return;
+    const result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    if (asset.size != null && asset.size > maxAttachmentBytes) {
+      Alert.alert("Artifact too large", `${asset.name} exceeds the ${formatBytes(maxAttachmentBytes)} per-file limit.`);
+      return;
+    }
+
+    const body = new FormData();
+    body.append("file", {
+      uri: asset.uri,
+      name: asset.name,
+      type: asset.mimeType || "application/octet-stream",
+    } as never);
+
+    setUploadingArtifact(true);
+    try {
+      await request(`/api/v1/audits/${encodeURIComponent(selectedAudit)}/attachments`, {
+        method: "POST",
+        body,
+      });
+      await refreshAttachments(selectedAudit);
+    } catch (error) {
+      Alert.alert("Artifact upload failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setUploadingArtifact(false);
+    }
+  };
 
   const openRun = async (runId: string) => {
     setSelectedRunId(runId);
@@ -263,13 +338,15 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
   return <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
     <Text style={styles.eyebrow}>REPRODUCIBILITY</Text>
     <Text style={styles.title}>Reproduction</Text>
-    <Text style={styles.subtitle}>Run the server-selected ACP agent against a paper-specific workspace. Detector and reproduction runs share one persisted trace model.</Text>
+    <Text style={styles.subtitle}>Attach immutable research artifacts, run the server-selected ACP agent in a run-specific workspace, and inspect the same persisted trace model used by detector runs.</Text>
 
     <View style={styles.card}>
       <View style={styles.cardHead}><Text style={styles.cardTitle}>Execution boundary</Text><View style={[styles.badge, configured ? styles.badgeReady : styles.badgeReview]}><Text style={styles.badgeText}>{configured ? "configured" : "fail-closed"}</Text></View></View>
       <CapabilityRow label="Agent" value={capability?.agent || "Not configured"} />
       <CapabilityRow label="Permission" value={capability?.permission_policy || "deny"} />
       <CapabilityRow label="Client commands" value={capability?.client_supplied_commands ? "allowed" : "disabled"} />
+      <CapabilityRow label="Artifact intake" value={capability?.immutable_artifact_intake ? "immutable" : "unavailable"} />
+      <CapabilityRow label="Workspace per run" value={capability?.workspace_per_run ? "yes" : "no"} />
       <CapabilityRow label="Workspace sandbox" value={capability?.workspace_is_security_boundary ? "yes" : "agent-owned"} />
       {capability && capability.permission_policy_valid === false ? <Text style={styles.warning}>Invalid server policy detected; Veritas has fallen back to deny.</Text> : null}
     </View>
@@ -280,14 +357,27 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.auditChips}>
         {audits.map((audit) => <Pressable key={audit.audit_id} onPress={() => setSelectedAudit(audit.audit_id)} style={[styles.auditChip, selectedAudit === audit.audit_id && styles.auditChipActive]}><Text numberOfLines={1} style={[styles.auditChipText, selectedAudit === audit.audit_id && styles.auditChipTextActive]}>{audit.title}</Text></Pressable>)}
       </ScrollView>
-      {!audits.length ? <Text style={styles.empty}>Upload a paper before starting a reproduction run.</Text> : null}
+      {!audits.length ? <Text style={styles.empty}>Upload a paper before attaching artifacts or starting a reproduction run.</Text> : null}
+
+      {selectedAudit ? <View style={styles.artifactSection}>
+        <View style={styles.artifactHead}>
+          <View style={styles.artifactHeadCopy}><Text style={styles.artifactHeading}>Immutable artifacts</Text><Text style={styles.artifactNote}>Code, data, environment files, or archives · max {formatBytes(maxAttachmentBytes)} each</Text></View>
+          <Pressable onPress={attachArtifact} disabled={uploadingArtifact} style={[styles.attachButton, uploadingArtifact && styles.runButtonDisabled]}>{uploadingArtifact ? <ActivityIndicator size="small" color="#5368f5" /> : <Text style={styles.attachButtonText}>＋ Attach</Text>}</Pressable>
+        </View>
+        {loadingAttachments ? <View style={styles.artifactLoading}><ActivityIndicator size="small" color="#5368f5" /><Text style={styles.helper}>Loading hash manifest…</Text></View> : null}
+        {!loadingAttachments && attachments.map((attachment) => <View style={styles.artifactRow} key={attachment.attachment_id}>
+          <View style={styles.artifactMark}><Text style={styles.artifactMarkText}>◇</Text></View>
+          <View style={styles.artifactCopy}><Text style={styles.artifactTitle} numberOfLines={1}>{attachment.filename}</Text><Text style={styles.artifactMeta} numberOfLines={1}>{formatBytes(attachment.size_bytes)} · sha256:{attachment.sha256.slice(0, 16)}…</Text></View>
+        </View>)}
+        {!loadingAttachments && !attachments.length ? <View style={styles.artifactEmpty}><Text style={styles.empty}>No attached artifacts. Files are stored byte-for-byte with SHA256 provenance and are not unpacked or executed by the app.</Text></View> : null}
+      </View> : null}
 
       <Text style={styles.fieldLabel}>Goal</Text>
       <TextInput value={prompt} onChangeText={setPrompt} multiline editable={!running && configured} style={styles.input} placeholder="Describe the reproduction goal…" placeholderTextColor="#9aa2b1" />
       <Pressable onPress={run} disabled={!configured || !selectedAudit || !prompt.trim() || running} style={[styles.runButton, (!configured || !selectedAudit || !prompt.trim() || running) && styles.runButtonDisabled]}>
         {running ? <ActivityIndicator color="#fff" /> : <Text style={styles.runButtonText}>Run reproduction</Text>}
       </Pressable>
-      {!configured ? <Text style={styles.helper}>Configure VERITAS_REPLICATION_AGENT on the server to enable this control.</Text> : <Text style={styles.helper}>ACP permission policy defaults to deny. The local workspace is not presented as a security sandbox.</Text>}
+      {!configured ? <Text style={styles.helper}>Configure VERITAS_REPLICATION_AGENT on the server to enable execution. Artifact intake remains available.</Text> : <Text style={styles.helper}>Each run gets a new workspace with read-only copies of the paper and hash-verified attachments. The ACP agent owns the execution sandbox.</Text>}
     </View>
 
     <View style={styles.traceHead}><Text style={styles.cardTitle}>Current session trace</Text><Text style={styles.traceCount}>{events.length} events</Text></View>
@@ -329,6 +419,21 @@ const styles = StyleSheet.create({
   auditChipActive: { borderColor: "#aeb9ff", backgroundColor: "#eef0ff" },
   auditChipText: { color: "#687284", fontSize: 8.5 },
   auditChipTextActive: { color: "#4054d5", fontWeight: "700" },
+  artifactSection: { marginTop: 3, marginBottom: 14, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#e4e7ec" },
+  artifactHead: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 8 },
+  artifactHeadCopy: { flex: 1 },
+  artifactHeading: { color: "#202532", fontSize: 10, fontWeight: "800" },
+  artifactNote: { color: "#8a93a4", fontSize: 7.5, lineHeight: 11, marginTop: 3 },
+  attachButton: { minWidth: 72, minHeight: 30, paddingHorizontal: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: "#cfd4dd", borderRadius: 8, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
+  attachButtonText: { color: "#5368f5", fontSize: 8.5, fontWeight: "800" },
+  artifactLoading: { minHeight: 54, alignItems: "center", justifyContent: "center" },
+  artifactRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 9, padding: 8, marginBottom: 6, borderWidth: StyleSheet.hairlineWidth, borderColor: "#e4e7ec", borderRadius: 9, backgroundColor: "#fbfcfd" },
+  artifactMark: { width: 28, height: 28, borderRadius: 8, backgroundColor: "#eef0ff", alignItems: "center", justifyContent: "center" },
+  artifactMarkText: { color: "#5368f5", fontSize: 10, fontWeight: "800" },
+  artifactCopy: { flex: 1, minWidth: 0 },
+  artifactTitle: { color: "#242936", fontSize: 9.5, fontWeight: "700" },
+  artifactMeta: { color: "#8a93a4", fontSize: 7.5, marginTop: 3 },
+  artifactEmpty: { minHeight: 72, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: "#d8dce4", borderRadius: 9, alignItems: "center", justifyContent: "center", padding: 12 },
   fieldLabel: { color: "#596273", fontSize: 9, fontWeight: "700", marginTop: 4, marginBottom: 6 },
   input: { minHeight: 112, borderWidth: StyleSheet.hairlineWidth, borderColor: "#d8dce4", borderRadius: 10, padding: 10, color: "#151927", fontSize: 10, lineHeight: 15, textAlignVertical: "top", backgroundColor: "#fdfdfe" },
   runButton: { minHeight: 42, borderRadius: 10, backgroundColor: "#5368f5", alignItems: "center", justifyContent: "center", marginTop: 10 },
