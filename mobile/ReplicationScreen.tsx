@@ -32,11 +32,38 @@ type HarnessEvent = {
   title: string;
   detail?: string;
   status?: string;
+  created_at?: string;
   payload?: {
     run_id?: string;
     phase?: string;
     duration_ms?: number;
   };
+};
+
+type RunSummary = {
+  run_id: string;
+  audit_id: string;
+  audit_title?: string;
+  tool?: string;
+  run_kind?: string;
+  task?: string;
+  phase?: string;
+  status?: string;
+  evidence?: boolean;
+  coverage?: number;
+  counts?: { verified?: number; needs_review?: number; contradictions?: number };
+  duration_ms?: number | null;
+  artifact_id?: string | null;
+  parsers?: Array<string | { parser_id?: string; parser?: string; name?: string; version?: string }>;
+  error_type?: string | null;
+  created_at?: string;
+};
+
+type RunDetail = RunSummary & {
+  started_at?: string | null;
+  finished_at?: string | null;
+  source?: { page?: number; table?: string; row?: string };
+  events?: HarnessEvent[];
 };
 
 async function request(path: string, init?: RequestInit) {
@@ -55,7 +82,7 @@ function CapabilityRow({ label, value }: { label: string; value: string }) {
 
 function EventRow({ event }: { event: HarnessEvent }) {
   const phase = event.payload?.phase ? ` · ${event.payload.phase}` : "";
-  const duration = event.payload?.duration_ms != null ? ` · ${Math.round(event.payload.duration_ms)} ms` : "";
+  const duration = event.payload?.duration_ms != null ? ` · ${formatDuration(event.payload.duration_ms)}` : "";
   const icon = event.kind === "tool" ? "⌁" : event.kind === "replication" ? "↻" : "·";
   const danger = event.status === "danger" || event.status === "error";
   return <View style={styles.eventRow}>
@@ -63,9 +90,80 @@ function EventRow({ event }: { event: HarnessEvent }) {
     <View style={styles.eventCard}>
       <View style={styles.eventTop}><Text style={styles.eventTitle}>{event.title}</Text><Text style={[styles.eventStatus, danger && styles.eventStatusDanger]}>{event.status || "info"}</Text></View>
       {event.detail ? <Text style={styles.eventDetail}>{event.detail}</Text> : null}
-      <Text style={styles.eventMeta}>{event.kind}{phase}{duration}</Text>
+      <Text style={styles.eventMeta}>{event.kind}{phase}{duration}{event.created_at ? ` · ${formatDate(event.created_at)}` : ""}</Text>
     </View>
   </View>;
+}
+
+function formatDuration(value?: number | null) {
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  const ms = Number(value);
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  return `${(ms / 1000).toFixed(ms < 10000 ? 2 : 1)} s`;
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+}
+
+function parserLabel(parser: RunSummary["parsers"] extends Array<infer Item> ? Item : never) {
+  if (typeof parser === "string") return parser;
+  if (!parser) return "parser";
+  const name = parser.parser_id || parser.parser || parser.name || "parser";
+  return parser.version ? `${name} ${parser.version}` : name;
+}
+
+function RunRow({ run, selected, onPress }: { run: RunSummary; selected: boolean; onPress: () => void }) {
+  const icon = run.run_kind === "replication" ? "↻" : "⌁";
+  const danger = run.status === "danger" || run.status === "error";
+  return <Pressable onPress={onPress} style={[styles.runRow, selected && styles.runRowSelected]}>
+    <View style={[styles.runIcon, danger && styles.eventIconDanger]}><Text style={styles.eventIconText}>{icon}</Text></View>
+    <View style={styles.runCopy}>
+      <Text style={styles.runTitle} numberOfLines={1}>{run.task || run.tool || "Run"}</Text>
+      <Text style={styles.runMeta} numberOfLines={1}>{run.audit_title || run.audit_id} · {run.run_kind || "audit"} · {formatDuration(run.duration_ms)}</Text>
+    </View>
+    <Text style={[styles.runStatus, danger && styles.eventStatusDanger]}>{run.status || "ready"}</Text>
+  </Pressable>;
+}
+
+function RunDetailCard({ detail, loading }: { detail: RunDetail | null; loading: boolean }) {
+  if (loading) {
+    return <View style={styles.runDetailLoading}><ActivityIndicator color="#5368f5" /><Text style={styles.helper}>Loading correlated run…</Text></View>;
+  }
+  if (!detail) return <View style={styles.emptyTrace}><Text style={styles.empty}>Select a persisted run to inspect its full event chain.</Text></View>;
+
+  const counts = detail.counts || {};
+  const totalChecks = Number(counts.verified || 0) + Number(counts.needs_review || 0) + Number(counts.contradictions || 0);
+  const source = detail.source || {};
+  return <View style={styles.runDetailCard}>
+    <View style={styles.runDetailHead}>
+      <View style={styles.runDetailHeadCopy}><Text style={styles.runDetailEyebrow}>{(detail.run_kind || "run").toUpperCase()} TRACE</Text><Text style={styles.runDetailTitle}>{detail.tool || detail.task || "Run"}</Text><Text style={styles.runId}>{detail.run_id}</Text></View>
+      <Text style={[styles.runStatus, (detail.status === "danger" || detail.status === "error") && styles.eventStatusDanger]}>{detail.status || "ready"}</Text>
+    </View>
+    <View style={styles.metricGrid}>
+      <MiniMetric label="Duration" value={formatDuration(detail.duration_ms)} />
+      <MiniMetric label="Coverage" value={`${Math.round((detail.coverage || 0) * 100)}%`} />
+      <MiniMetric label="Evidence" value={detail.evidence ? "linked" : "none"} />
+      <MiniMetric label="Checks" value={String(totalChecks)} />
+    </View>
+    <View style={styles.detailList}>
+      <CapabilityRow label="Started" value={formatDate(detail.started_at)} />
+      <CapabilityRow label="Finished" value={formatDate(detail.finished_at)} />
+      <CapabilityRow label="Artifact" value={detail.artifact_id || "—"} />
+      <CapabilityRow label="Source" value={[source.table, source.row, source.page ? `page ${source.page}` : ""].filter(Boolean).join(" · ") || "none"} />
+      {detail.error_type ? <CapabilityRow label="Error" value={detail.error_type} /> : null}
+    </View>
+    {detail.parsers?.length ? <View style={styles.parserWrap}>{detail.parsers.map((parser, index) => <View style={styles.parserChip} key={`${parserLabel(parser)}-${index}`}><Text style={styles.parserText}>{parserLabel(parser)}</Text></View>)}</View> : null}
+    <View style={styles.traceHead}><Text style={styles.cardTitle}>Correlated timeline</Text><Text style={styles.traceCount}>{detail.events?.length || 0} events</Text></View>
+    {(detail.events || []).map((event) => <EventRow key={event.event_id} event={event} />)}
+    {!detail.events?.length ? <Text style={styles.empty}>No correlated events found.</Text> : null}
+  </View>;
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return <View style={styles.metric}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text></View>;
 }
 
 export default function ReplicationScreen({ audits }: { audits: AuditOption[] }) {
@@ -74,6 +172,11 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
   const [prompt, setPrompt] = useState("Reproduce the paper's main reported result and record the environment, steps, outputs, and discrepancies.");
   const [events, setEvents] = useState<HarnessEvent[]>([]);
   const [running, setRunning] = useState(false);
+  const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState<string>("");
+  const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
+  const [loadingRuns, setLoadingRuns] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
   useEffect(() => {
     if (!selectedAudit && audits[0]) setSelectedAudit(audits[0].audit_id);
@@ -87,12 +190,45 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
       .then((response) => response.json())
       .then((value) => setCapability(value.replication || { configured: false }))
       .catch((error) => Alert.alert("Replication capability unavailable", String(error)));
+    void refreshRuns();
   }, []);
 
   const selectedTitle = useMemo(
     () => audits.find((audit) => audit.audit_id === selectedAudit)?.title || "No paper selected",
     [audits, selectedAudit],
   );
+
+  const openRun = async (runId: string) => {
+    setSelectedRunId(runId);
+    setLoadingDetail(true);
+    try {
+      const detail = await request(`/api/v1/runs/${encodeURIComponent(runId)}`).then((response) => response.json()) as RunDetail;
+      setRunDetail(detail);
+    } catch (error) {
+      setRunDetail(null);
+      Alert.alert("Unable to load run", error instanceof Error ? error.message : String(error));
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const refreshRuns = async (preferredRunId?: string) => {
+    setLoadingRuns(true);
+    try {
+      const nextRuns = await request("/api/v1/runs").then((response) => response.json()) as RunSummary[];
+      setRuns(nextRuns);
+      const nextId = preferredRunId || selectedRunId || nextRuns[0]?.run_id || "";
+      if (nextId) await openRun(nextId);
+      else {
+        setSelectedRunId("");
+        setRunDetail(null);
+      }
+    } catch (error) {
+      Alert.alert("Run history unavailable", error instanceof Error ? error.message : String(error));
+    } finally {
+      setLoadingRuns(false);
+    }
+  };
 
   const run = async () => {
     const goal = prompt.trim();
@@ -108,6 +244,8 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
       const text = await response.text();
       const parsed = text.split("\n").filter(Boolean).map((line) => JSON.parse(line) as HarnessEvent);
       setEvents(parsed);
+      const terminalRunId = [...parsed].reverse().find((event) => event.kind === "tool")?.payload?.run_id;
+      await refreshRuns(terminalRunId);
     } catch (error) {
       Alert.alert("Replication run failed", error instanceof Error ? error.message : String(error));
     } finally {
@@ -119,7 +257,7 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
   return <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
     <Text style={styles.eyebrow}>REPRODUCIBILITY</Text>
     <Text style={styles.title}>Reproduction</Text>
-    <Text style={styles.subtitle}>Run the server-selected ACP agent against a paper-specific workspace. The app sends a goal, never an executable command.</Text>
+    <Text style={styles.subtitle}>Run the server-selected ACP agent against a paper-specific workspace. Detector and reproduction runs share one persisted trace model.</Text>
 
     <View style={styles.card}>
       <View style={styles.cardHead}><Text style={styles.cardTitle}>Execution boundary</Text><View style={[styles.badge, configured ? styles.badgeReady : styles.badgeReview]}><Text style={styles.badgeText}>{configured ? "configured" : "fail-closed"}</Text></View></View>
@@ -146,9 +284,20 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
       {!configured ? <Text style={styles.helper}>Configure VERITAS_REPLICATION_AGENT on the server to enable this control.</Text> : <Text style={styles.helper}>ACP permission policy defaults to deny. The local workspace is not presented as a security sandbox.</Text>}
     </View>
 
-    <View style={styles.traceHead}><Text style={styles.cardTitle}>Run trace</Text><Text style={styles.traceCount}>{events.length} events</Text></View>
+    <View style={styles.traceHead}><Text style={styles.cardTitle}>Current session trace</Text><Text style={styles.traceCount}>{events.length} events</Text></View>
     {events.map((event) => <EventRow key={event.event_id} event={event} />)}
     {!events.length ? <View style={styles.emptyTrace}><Text style={styles.empty}>No replication trace in this session.</Text></View> : null}
+
+    <View style={styles.historyHead}>
+      <View><Text style={styles.cardTitle}>Persisted runs</Text><Text style={styles.historyCopy}>Detector and reproduction traces from the shared /api/v1 contract.</Text></View>
+      <Pressable onPress={() => void refreshRuns()} disabled={loadingRuns} style={styles.refreshButton}>{loadingRuns ? <ActivityIndicator size="small" color="#5368f5" /> : <Text style={styles.refreshText}>Refresh</Text>}</Pressable>
+    </View>
+    <View style={styles.card}>
+      {runs.slice(0, 10).map((item) => <RunRow key={item.run_id} run={item} selected={selectedRunId === item.run_id} onPress={() => void openRun(item.run_id)} />)}
+      {!runs.length && !loadingRuns ? <Text style={styles.empty}>No persisted detector or reproduction runs yet.</Text> : null}
+      {loadingRuns && !runs.length ? <View style={styles.runDetailLoading}><ActivityIndicator color="#5368f5" /><Text style={styles.helper}>Loading run history…</Text></View> : null}
+    </View>
+    <RunDetailCard detail={runDetail} loading={loadingDetail} />
   </ScrollView>;
 }
 
@@ -164,9 +313,9 @@ const styles = StyleSheet.create({
   badgeReady: { backgroundColor: "#eaf8f3" },
   badgeReview: { backgroundColor: "#fff6df" },
   badgeText: { color: "#596273", fontSize: 7.5, fontWeight: "800" },
-  capabilityRow: { minHeight: 31, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#eef0f3" },
+  capabilityRow: { minHeight: 31, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#eef0f3" },
   capabilityLabel: { color: "#7c8595", fontSize: 9 },
-  capabilityValue: { color: "#202532", fontSize: 9, fontWeight: "700", maxWidth: "56%", textAlign: "right" },
+  capabilityValue: { color: "#202532", fontSize: 9, fontWeight: "700", maxWidth: "63%", textAlign: "right" },
   warning: { marginTop: 10, padding: 9, borderRadius: 8, backgroundColor: "#fff6df", color: "#8a651c", fontSize: 8.5, lineHeight: 13 },
   selectedTitle: { color: "#657082", fontSize: 9, marginTop: 6 },
   auditChips: { gap: 7, paddingVertical: 10 },
@@ -194,5 +343,31 @@ const styles = StyleSheet.create({
   eventStatusDanger: { color: "#b63e49" },
   eventDetail: { color: "#687284", fontSize: 8.5, lineHeight: 13, marginTop: 5 },
   eventMeta: { color: "#9aa2b1", fontSize: 7.5, marginTop: 6 },
-  emptyTrace: { minHeight: 100, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: "#d8dce4", borderRadius: 11, alignItems: "center", justifyContent: "center", padding: 16 },
+  emptyTrace: { minHeight: 100, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: "#d8dce4", borderRadius: 11, alignItems: "center", justifyContent: "center", padding: 16, marginBottom: 12 },
+  historyHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, marginBottom: 8 },
+  historyCopy: { color: "#8a93a4", fontSize: 8, marginTop: 3 },
+  refreshButton: { minWidth: 58, minHeight: 30, paddingHorizontal: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: "#d8dce4", borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },
+  refreshText: { color: "#5368f5", fontSize: 8.5, fontWeight: "700" },
+  runRow: { minHeight: 57, flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 8, paddingHorizontal: 8, marginBottom: 6, borderWidth: StyleSheet.hairlineWidth, borderColor: "#e4e7ec", borderRadius: 9, backgroundColor: "#fbfcfd" },
+  runRowSelected: { borderColor: "#aeb9ff", backgroundColor: "#f3f4ff" },
+  runIcon: { width: 28, height: 28, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: "#d8dce4", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
+  runCopy: { flex: 1, minWidth: 0 },
+  runTitle: { color: "#242936", fontSize: 9.5, fontWeight: "700" },
+  runMeta: { color: "#8a93a4", fontSize: 7.5, marginTop: 3 },
+  runStatus: { color: "#657082", fontSize: 7.5, fontWeight: "800" },
+  runDetailLoading: { minHeight: 84, alignItems: "center", justifyContent: "center", gap: 5 },
+  runDetailCard: { backgroundColor: "#fff", borderWidth: StyleSheet.hairlineWidth, borderColor: "#e4e7ec", borderRadius: 12, padding: 14, marginBottom: 12 },
+  runDetailHead: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 12 },
+  runDetailHeadCopy: { flex: 1 },
+  runDetailEyebrow: { color: "#5368f5", fontSize: 7.5, fontWeight: "800", letterSpacing: 0.9 },
+  runDetailTitle: { color: "#202532", fontSize: 13, fontWeight: "800", marginTop: 3 },
+  runId: { color: "#8a93a4", fontSize: 7.5, marginTop: 4 },
+  metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 10 },
+  metric: { width: "48.5%", minHeight: 58, borderRadius: 9, backgroundColor: "#f7f8fa", padding: 9 },
+  metricLabel: { color: "#8a93a4", fontSize: 7.5 },
+  metricValue: { color: "#202532", fontSize: 13, fontWeight: "800", marginTop: 4 },
+  detailList: { marginBottom: 8 },
+  parserWrap: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginBottom: 10 },
+  parserChip: { borderWidth: StyleSheet.hairlineWidth, borderColor: "#d8dce4", borderRadius: 999, backgroundColor: "#fafbfc", paddingHorizontal: 7, paddingVertical: 5 },
+  parserText: { color: "#687284", fontSize: 7.5 },
 });
