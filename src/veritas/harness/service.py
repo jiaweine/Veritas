@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import AsyncIterator, Iterator
 from hashlib import sha256
@@ -83,6 +84,34 @@ class AuditHarness:
 
     def paper_path(self, audit_id: str) -> Path:
         return self.store.get_pdf_path(audit_id)
+
+    def add_attachment(
+        self,
+        audit_id: str,
+        *,
+        filename: str,
+        payload: bytes,
+        media_type: str | None = None,
+    ) -> dict[str, Any]:
+        metadata = self.store.add_attachment(
+            audit_id,
+            filename=filename,
+            payload=payload,
+            media_type=media_type,
+        )
+        event = HarnessEvent(
+            audit_id=audit_id,
+            kind="artifact",
+            title="Reproduction artifact attached",
+            detail=f'{metadata["filename"]} · {int(metadata["size_bytes"]):,} bytes',
+            status="success",
+            payload={"attachment": metadata},
+        )
+        self.store.append_event(event)
+        return metadata
+
+    def list_attachments(self, audit_id: str) -> list[dict[str, Any]]:
+        return self.store.list_attachments(audit_id)
 
     def overview(self) -> dict[str, Any]:
         audits = self.store.list_audits()
@@ -264,6 +293,7 @@ class AuditHarness:
                 "command_palette": True,
                 "offline_shell": True,
                 "replication_agent": replication["configured"],
+                "reproduction_artifacts": True,
             },
             "replication": replication,
         }
@@ -278,6 +308,8 @@ class AuditHarness:
             "permission_policy_valid": policy_valid,
             "workspace_is_security_boundary": False,
             "client_supplied_commands": False,
+            "immutable_artifact_intake": True,
+            "workspace_per_run": True,
         }
 
     async def stream_replication(
@@ -295,16 +327,17 @@ class AuditHarness:
 
         policy, _ = self._replication_policy()
         runner = AcpTurnRunner(agent, permission_policy=policy)
-        workspace = self._replication_workspace(audit_id)
         run_id = f"run_{uuid4().hex[:12]}"
+        workspace = self._replication_workspace(audit_id, run_id)
         started = perf_counter()
         artifact_id = str((record.get("paper_summary") or {}).get("artifact_id") or "")
+        attachments = list(record.get("attachments") or [])
         prompt_digest = sha256(clean_prompt.encode("utf-8")).hexdigest()
         start = HarnessEvent(
             audit_id=audit_id,
             kind="tool",
             title="Replication agent run",
-            detail=f"Starting {agent.name} in the isolated audit workspace.",
+            detail=f"Starting {agent.name} in a run-specific audit workspace.",
             status="running",
             payload={
                 "tool": "replication.acp",
@@ -312,6 +345,7 @@ class AuditHarness:
                 "run_id": run_id,
                 "phase": "start",
                 "artifact_id": artifact_id,
+                "attachment_count": len(attachments),
                 "agent": agent.name,
                 "permission_policy": policy.value,
                 "prompt_sha256": prompt_digest,
@@ -348,6 +382,7 @@ class AuditHarness:
                 "status": "completed",
                 "agent": agent.name,
                 "events": event_count,
+                "attachments": len(attachments),
                 "verification_coverage": 0.0,
                 "counts": {},
             }
@@ -364,6 +399,7 @@ class AuditHarness:
                     "phase": "finish",
                     "duration_ms": duration_ms,
                     "artifact_id": artifact_id,
+                    "attachment_count": len(attachments),
                     "agent": agent.name,
                     "permission_policy": policy.value,
                     "result": result,
@@ -386,6 +422,7 @@ class AuditHarness:
                     "phase": "error",
                     "duration_ms": duration_ms,
                     "artifact_id": artifact_id,
+                    "attachment_count": len(attachments),
                     "agent": agent.name,
                     "permission_policy": policy.value,
                     "error_type": type(exc).__name__,
@@ -593,16 +630,63 @@ class AuditHarness:
             self.store.append_event(event)
             yield event.to_dict()
 
-    def _replication_workspace(self, audit_id: str) -> Path:
+    def _replication_workspace(self, audit_id: str, run_id: str) -> Path:
         source = self.store.get_pdf_path(audit_id)
-        workspace = source.parent / "replication-workspace"
-        workspace.mkdir(parents=True, exist_ok=True)
-        destination = workspace / "paper.pdf"
-        source_bytes = source.read_bytes()
-        if not destination.is_file() or destination.read_bytes() != source_bytes:
-            destination.write_bytes(source_bytes)
+        record = self.store.get_audit(audit_id)
+        workspace = source.parent / "replication-workspaces" / run_id
+        workspace.mkdir(parents=True, exist_ok=False)
+
+        paper_destination = workspace / "paper.pdf"
+        paper_destination.write_bytes(source.read_bytes())
         try:
-            destination.chmod(0o444)
+            paper_destination.chmod(0o444)
+        except OSError:
+            pass
+
+        attachment_manifest: list[dict[str, Any]] = []
+        attachments = list(record.get("attachments") or [])
+        if attachments:
+            attachment_root = workspace / "attachments"
+            attachment_root.mkdir(parents=True, exist_ok=True)
+            for metadata in attachments:
+                attachment_id = str(metadata["attachment_id"])
+                attachment_source = self.store.get_attachment_path(audit_id, attachment_id)
+                attachment_dir = attachment_root / attachment_id
+                attachment_dir.mkdir(parents=False, exist_ok=False)
+                attachment_destination = attachment_dir / attachment_source.name
+                attachment_destination.write_bytes(attachment_source.read_bytes())
+                try:
+                    attachment_destination.chmod(0o444)
+                except OSError:
+                    pass
+                attachment_manifest.append(
+                    {
+                        "attachment_id": attachment_id,
+                        "filename": attachment_source.name,
+                        "sha256": metadata.get("sha256"),
+                        "size_bytes": metadata.get("size_bytes"),
+                        "media_type": metadata.get("media_type"),
+                        "path": f"attachments/{attachment_id}/{attachment_source.name}",
+                    }
+                )
+
+        manifest = {
+            "schema_version": "1",
+            "run_id": run_id,
+            "paper": {
+                "filename": "paper.pdf",
+                "sha256": record.get("artifact_sha256"),
+                "artifact_id": (record.get("paper_summary") or {}).get("artifact_id"),
+            },
+            "attachments": attachment_manifest,
+        }
+        manifest_path = workspace / "artifacts.json"
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        try:
+            manifest_path.chmod(0o444)
         except OSError:
             pass
         return workspace
