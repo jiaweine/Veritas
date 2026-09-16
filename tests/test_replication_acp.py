@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -86,14 +87,28 @@ if __name__ == "__main__":
     )
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    cli_secret = "secret-cli-token"
     runner = AcpTurnRunner(
-        AgentCommand(argv=(sys.executable, str(agent_script)), name="fixture agent"),
+        AgentCommand(
+            argv=(sys.executable, str(agent_script), f"--api-token={cli_secret}"),
+            name="fixture agent",
+        ),
         permission_policy=PermissionPolicy.DENY,
     )
 
     events = asyncio.run(runner.run_turn(workspace, "check the project"))
 
     assert events[0]["kind"] == "agent"
+    assert events[0]["payload"]["agent"] == "fixture agent"
+    assert events[0]["payload"]["permission_policy"] == "deny"
+    assert events[0]["payload"]["workspace_scope"] == "run_specific"
+    assert "argv" not in events[0]["payload"]
+    assert "workspace" not in events[0]["payload"]
+    start_rendered = json.dumps(events[0], sort_keys=True)
+    assert cli_secret not in start_rendered
+    assert str(workspace.resolve()) not in start_rendered
+    assert str(agent_script.resolve()) not in start_rendered
+
     updates = [event for event in events if event["kind"] == "agent_update"]
     assert len(updates) == 1
     assert "prompt=check the project" in updates[0]["detail"]
