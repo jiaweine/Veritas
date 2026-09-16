@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from .benchmark_catalog import benchmark_catalog
 from .parser_stack import parser_stack_capability
+from .replication_guard import stream_replication_guarded
 from .run_views import project_run_detail
 from .service import AuditHarness
 from .telemetry import telemetry_capability
@@ -234,7 +235,7 @@ def create_app(
             )
 
         async def stream() -> AsyncIterator[bytes]:
-            async for event in runtime.stream_replication(audit_id, request.prompt):
+            async for event in stream_replication_guarded(runtime, audit_id, request.prompt):
                 yield (json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
