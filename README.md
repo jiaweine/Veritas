@@ -16,7 +16,7 @@ Veritas extracts reported statistical objects from research papers, checks numer
 ## Highlights
 
 - **Research Audit Workbench / PWA** — an information-dense local product with Overview, Audits, Findings, Agent Runs, Evidence, Reproduction, Benchmarks, Settings, a command palette, and an optional Agent sidecar.
-- **Versioned product API** — Web and native mobile clients share `/api/v1`, including capabilities, overview, findings, runs, search, audits, immutable attachments, and reproduction streams.
+- **Versioned product API** — Web and native mobile clients share `/api/v1`, including capabilities, overview, findings, runs, search, audits, immutable attachments, benchmark results, and reproduction streams.
 - **Native mobile client** — an Expo / React Native app for cockpit, audits, findings, native PDF upload, immutable reproduction artifacts, replication, and persisted run inspection without embedding the web UI in a WebView.
 - **Paper-native extraction** — dual native-PDF parsing with geometry fallback and precise page/table/row/column provenance.
 - **Deterministic statistical checks** — rounding-aware regression arithmetic, sample accounting, correlations, grouped summaries, ANOVA, meta-analysis, SEM, standardized regression, DID, IV, RDD, and experimental checks.
@@ -163,7 +163,13 @@ python scripts/benchmark_extraction_adversarial.py
 python scripts/benchmark_real_pdf_promotion.py
 ```
 
-The Product Workbench exposes the command inventory through `GET /api/v1/benchmarks`; it deliberately does not fabricate benchmark scores or trends when no durable result store exists.
+The Product Workbench exposes the command inventory through `GET /api/v1/benchmarks` and validated persisted envelopes through `GET /api/v1/benchmark-results`. Results are append-only local artifacts and appear only after an operator explicitly ingests a Benchmark Result Envelope v1:
+
+```bash
+veritas-benchmark-result ./benchmark-result.json
+```
+
+Persistence does not make heterogeneous metrics comparable. Veritas shows the recorded status, provenance, and scalar metrics as-is and deliberately does not synthesize a global benchmark score or trend.
 
 For the full test suite:
 
