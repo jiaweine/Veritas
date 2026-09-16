@@ -13,6 +13,21 @@ from .benchmark_catalog import benchmark_definition
 from .models import utc_now_iso
 
 _RESULT_SCHEMA_VERSION = "1"
+_RESULT_FIELDS = frozenset(
+    {
+        "schema_version",
+        "benchmark_id",
+        "command",
+        "status",
+        "source",
+        "started_at",
+        "finished_at",
+        "commit_sha",
+        "run_url",
+        "summary",
+        "metrics",
+    }
+)
 _ALLOWED_STATUSES = frozenset({"passed", "failed", "error", "skipped"})
 _ALLOWED_SOURCES = frozenset({"ci", "operator"})
 _MAX_SOURCE_BYTES = 1024 * 1024
@@ -83,6 +98,8 @@ def _normalized_metrics(value: object) -> dict[str, bool | int | float | str | N
         if not isinstance(key, str) or not key.strip() or len(key.strip()) > 128:
             raise ValueError("metric keys must be non-empty strings up to 128 characters")
         metric_key = key.strip()
+        if metric_key in normalized:
+            raise ValueError(f"duplicate metric key after normalization: {metric_key}")
         if isinstance(item, bool) or item is None:
             normalized[metric_key] = item
         elif isinstance(item, int):
@@ -105,6 +122,9 @@ def validate_benchmark_result_payload(payload: object) -> dict[str, Any]:
 
     if not isinstance(payload, dict):
         raise ValueError("benchmark result must be a JSON object")
+    unknown_fields = sorted(set(payload) - _RESULT_FIELDS)
+    if unknown_fields:
+        raise ValueError(f"unknown benchmark result fields: {', '.join(unknown_fields)}")
     if payload.get("schema_version") != _RESULT_SCHEMA_VERSION:
         raise ValueError(f"schema_version must be {_RESULT_SCHEMA_VERSION}")
 
@@ -140,7 +160,9 @@ def validate_benchmark_result_payload(payload: object) -> dict[str, Any]:
         raise ValueError("summary must be a string")
     else:
         summary = summary.strip()
-        if len(summary) > 4000:
+        if not summary:
+            summary = None
+        elif len(summary) > 4000:
             raise ValueError("summary is too long")
 
     return {
