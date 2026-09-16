@@ -85,3 +85,17 @@ def test_nonterminal_events_are_not_exported(monkeypatch) -> None:
     )
     assert telemetry.export_terminal_run({"audit_id": "audit_abc123"}, event) is False
     assert tracer.name is None
+
+
+def test_tracer_requires_explicit_collector_endpoint(monkeypatch) -> None:
+    monkeypatch.setenv("VERITAS_OTEL_EXPORT", "true")
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+    monkeypatch.setattr(telemetry, "_initialized", False)
+    monkeypatch.setattr(telemetry, "_tracer", None)
+
+    assert telemetry._get_tracer() is None
+    capability = telemetry.telemetry_capability()
+    assert capability["enabled"] is True
+    assert capability["endpoint_configured"] is False
+    assert capability["active"] is False
