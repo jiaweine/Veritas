@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Final
+
+BENCHMARK_CATALOG_SCHEMA_VERSION: Final = "1"
 
 _BENCHMARKS: Final[tuple[dict[str, object], ...]] = (
     {
@@ -69,19 +72,48 @@ _BENCHMARKS: Final[tuple[dict[str, object], ...]] = (
 )
 
 
-def benchmark_catalog() -> dict[str, object]:
-    """Return the product-visible benchmark inventory without inventing run results.
+def benchmark_suite(benchmark_id: str) -> dict[str, object] | None:
+    for item in _BENCHMARKS:
+        if item["benchmark_id"] == benchmark_id:
+            return dict(item)
+    return None
 
-    This catalog mirrors the benchmark/probe commands in the repository CI workflow.
-    It describes what is gated, not whether a particular commit passed. Durable
-    benchmark result ingestion belongs to a separate result/provenance contract.
+
+def benchmark_catalog(
+    *,
+    results: Iterable[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    """Return benchmark inventory plus real persisted execution provenance.
+
+    The catalog mirrors repository CI commands. Persisted result objects are
+    execution facts only; this function never invents benchmark scores.
     """
 
-    suites = [dict(item) for item in _BENCHMARKS]
+    result_list = [dict(item) for item in (results or [])]
+    latest_by_id: dict[str, dict[str, object]] = {}
+    for result in sorted(
+        result_list,
+        key=lambda item: (str(item.get("recorded_at") or ""), str(item.get("result_id") or "")),
+        reverse=True,
+    ):
+        benchmark_id = str(result.get("benchmark_id") or "")
+        if benchmark_id and benchmark_id not in latest_by_id:
+            latest_by_id[benchmark_id] = result
+
+    suites = []
+    for item in _BENCHMARKS:
+        suite = dict(item)
+        suite["latest_result"] = latest_by_id.get(str(item["benchmark_id"]))
+        suites.append(suite)
+
     gating = sum(bool(item["gating"]) for item in suites)
+    recorded_at = [str(item.get("recorded_at") or "") for item in result_list]
     return {
-        "schema_version": "1",
-        "result_persistence": False,
+        "schema_version": BENCHMARK_CATALOG_SCHEMA_VERSION,
+        "result_persistence": True,
+        "results_available": bool(result_list),
+        "result_count": len(result_list),
+        "latest_recorded_at": max(recorded_at) if recorded_at else None,
         "scores_available": False,
         "source_of_truth": ".github/workflows/ci.yml",
         "gating_count": gating,
