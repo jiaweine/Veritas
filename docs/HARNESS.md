@@ -1,6 +1,6 @@
 # Veritas Research Audit Harness
 
-The Research Audit Harness is the product interface for Veritas. It keeps the paper, deterministic checks, evidence, findings, reproduction artifacts, and inspectable run traces in one local-first workspace.
+The Research Audit Harness is the product interface for Veritas. It keeps the paper, deterministic checks, evidence, findings, reproduction artifacts, benchmark result envelopes, and inspectable run traces in one local-first workspace.
 
 ## Run locally
 
@@ -20,7 +20,7 @@ veritas-harness --version
 curl http://127.0.0.1:8765/api/v1/health
 ```
 
-The FastAPI application version, `/api/v1/health`, `/api/v1/capabilities`, and both Veritas CLIs resolve the installed `veritas-audit` package version from the same package metadata. Source-only checkouts that have not been installed report `0+unknown` rather than maintaining another hard-coded release number.
+The FastAPI application version, `/api/v1/health`, `/api/v1/capabilities`, and Veritas CLIs resolve the installed `veritas-audit` package version from the same package metadata. Source-only checkouts that have not been installed report `0+unknown` rather than maintaining another hard-coded release number.
 
 ## Product surfaces
 
@@ -32,7 +32,7 @@ The UI is not chat-first. It follows an evidence-native product model:
 - **Evidence** — source-linked result inventory.
 - **Agent runs** — structured detector/reproduction traces, timing, parser metadata, evidence linkage, and failure state.
 - **Reproduction** — immutable code/data/environment artifact intake plus a server-selected ACP agent running in a per-run workspace.
-- **Benchmarks** — the repository's actual release-gate/probe inventory; no fabricated benchmark scores.
+- **Benchmarks** — the repository's actual release-gate/probe inventory plus explicitly ingested, versioned result envelopes; no fabricated global scores or trends.
 - **Audit workbench** — paper structure, PDF evidence viewer, detector result, findings, and trace in one three-column workspace.
 - **Audit Agent sidecar** — deterministic command surface that can stay compact until collaboration is needed.
 - **`⌘K` command palette** — jump to product surfaces, papers, and matching audit events.
@@ -47,6 +47,7 @@ Web / PWA / Expo mobile
 Versioned Harness API (/api/v1)
   │
   ├── audit + event store
+  ├── append-only benchmark result store
   ├── derived product views
   ├── immutable paper / reproduction artifacts
   ├── paper tools
@@ -107,6 +108,43 @@ If preflight fails—for example because a local file was modified outside Verit
 
 The local workspace is **not** presented as a security sandbox. The configured ACP agent/runtime remains responsible for process, filesystem, network, and dependency isolation.
 
+## Benchmark result persistence
+
+The CI command catalog and execution results are separate objects. `GET /api/v1/benchmarks` always describes the seven repository benchmark/probe commands wired to CI. Durable results appear only after an operator explicitly ingests a **Benchmark Result Envelope v1**:
+
+```bash
+veritas-benchmark-result ./benchmark-result.json
+```
+
+The CLI uses `VERITAS_HARNESS_DATA` or `~/.veritas/harness` by default and accepts `--data-dir` for another workspace. Result files are limited to 1 MiB and must be UTF-8 JSON. The v1 envelope is strict: unknown fields, unknown benchmark ids, command drift, timezone-free timestamps, nested metric values, non-finite numbers, and malformed CI commit ids are rejected.
+
+A minimal CI-sourced envelope looks like:
+
+```json
+{
+  "schema_version": "1",
+  "benchmark_id": "pdf-regression",
+  "command": "python scripts/benchmark_pdf_regression.py",
+  "status": "passed",
+  "source": "ci",
+  "started_at": "2026-09-16T15:00:00Z",
+  "finished_at": "2026-09-16T15:00:02.500Z",
+  "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "run_url": "https://github.com/example/repo/actions/runs/123",
+  "summary": "PDF regression benchmark passed.",
+  "metrics": {
+    "cases": 4,
+    "verification_rate": 1.0
+  }
+}
+```
+
+Accepted statuses are `passed`, `failed`, `error`, and `skipped`; accepted sources are `ci` and `operator`. A `ci` envelope requires a full 40-character Git commit SHA. Metrics are deliberately limited to a flat map of JSON scalar values. This prevents an unversioned arbitrary payload from becoming a de facto second result schema.
+
+The canonicalized envelope is content-addressed as `bmr_<hash>`. Re-ingesting the same semantic envelope is idempotent. The stored record also carries the source-file SHA-256, ingestion time, derived duration, and catalog-derived title/kind/gating metadata. Records are written read-only where supported and revalidated on every read; payload or derived-metadata tampering fails closed instead of being skipped.
+
+Persistence is local-first and does **not** imply that Veritas automatically captures historical GitHub Actions runs. CI or another operator must intentionally emit and ingest envelopes. The UI shows only persisted status/provenance/scalar metrics and never collapses heterogeneous metrics into a synthetic global score or trend.
+
 ## API
 
 Legacy routes remain supported:
@@ -125,6 +163,8 @@ Versioned product routes:
 - `GET /api/v1/overview`
 - `GET /api/v1/findings`
 - `GET /api/v1/benchmarks`
+- `GET /api/v1/benchmark-results`
+- `GET /api/v1/benchmark-results/{result_id}`
 - `GET /api/v1/runs`
 - `GET /api/v1/runs/{run_id}`
 - `GET /api/v1/search?q=...`
@@ -144,11 +184,11 @@ Paper and attachment uploads are limited to 80 MiB per file. The API consumes up
 
 Interactive regression audits run in `interactive_research` scope and report the exact source location, parser candidates, consensus values, detector checks, and findings returned by Veritas.
 
-`GET /api/v1/benchmarks` describes the benchmark/probe commands wired to the repository CI. It deliberately does not invent scores or claim result persistence that does not exist.
+`GET /api/v1/benchmarks` describes the benchmark/probe commands wired to the repository CI and includes actual persisted-result availability/latest-result metadata. `GET /api/v1/benchmark-results` returns the validated append-only result history, optionally filtered by `benchmark_id`; neither endpoint synthesizes a score.
 
 ## PWA and mobile
 
-The web client ships an installable manifest and an offline **application shell**. Audit API responses, PDFs, attachments, and other `/api/` data are never cached by the service worker.
+The web client ships an installable manifest and an offline **application shell**. Audit API responses, PDFs, attachments, benchmark results, and other `/api/` data are never cached by the service worker.
 
 The native client lives in `mobile/` and shares `/api/v1`. It includes PDF upload, reproduction artifact intake, ACP execution controls, persisted run history, and correlated run detail without embedding the web product in a WebView.
 
