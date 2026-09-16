@@ -220,13 +220,12 @@ class AcpTurnRunner:
         yield ReplicationEvent(
             kind="agent",
             title=f"Starting {self.agent.name}",
-            detail=str(workspace_path),
+            detail="Run-specific workspace prepared.",
             status="running",
             payload={
                 "agent": self.agent.name,
-                "argv": list(self.agent.argv),
                 "permission_policy": self.permission_policy.value,
-                "workspace": str(workspace_path),
+                "workspace_scope": "run_specific",
                 "workspace_is_security_boundary": False,
             },
         ).to_dict()
