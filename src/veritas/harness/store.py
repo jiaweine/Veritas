@@ -78,10 +78,14 @@ class HarnessStore:
             return self._read_record(audit_id)
 
     def get_pdf_path(self, audit_id: str) -> Path:
-        path = self._audit_dir(audit_id) / "paper.pdf"
-        if not path.is_file():
-            raise FileNotFoundError(f"audit PDF not found: {audit_id}")
-        return path
+        with self._lock:
+            record = self._read_record(audit_id)
+            path = self._audit_dir(audit_id) / "paper.pdf"
+            if not path.is_file():
+                raise FileNotFoundError(f"audit PDF not found: {audit_id}")
+            if sha256(path.read_bytes()).hexdigest() != record.get("artifact_sha256"):
+                raise ValueError(f"audit PDF hash mismatch: {audit_id}")
+            return path
 
     def add_attachment(
         self,
