@@ -45,6 +45,12 @@ function formatBytes(value) {
   return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MiB`;
 }
 
+function lockControls(controls) {
+  const snapshot = controls.filter(Boolean).map((control) => [control, control.disabled]);
+  snapshot.forEach(([control]) => { control.disabled = true; });
+  return () => snapshot.forEach(([control, disabled]) => { control.disabled = disabled; });
+}
+
 function renderArtifacts(items, auditId) {
   if (!items.length) {
     return `<div class="artifact-empty"><strong>No attached artifacts</strong><small>Add code, data, environment files, or an archive. Veritas stores the original bytes immutably and does not unpack or execute them in the web process.</small></div>`;
@@ -74,7 +80,7 @@ async function loadArtifacts(auditId, listNode, countNode) {
   }
 }
 
-async function uploadArtifacts(auditId, files, listNode, countNode, button, maxBytes) {
+async function uploadArtifacts(auditId, files, listNode, countNode, button, maxBytes, locks = []) {
   const selected = [...files];
   if (!auditId || !selected.length) return;
   const oversized = selected.find((file) => file.size > maxBytes);
@@ -82,7 +88,7 @@ async function uploadArtifacts(auditId, files, listNode, countNode, button, maxB
     throw new Error(`${oversized.name} exceeds the ${formatBytes(maxBytes)} per-file limit.`);
   }
 
-  button.disabled = true;
+  const unlock = lockControls([button, ...locks]);
   const original = button.textContent;
   try {
     for (let index = 0; index < selected.length; index += 1) {
@@ -101,13 +107,13 @@ async function uploadArtifacts(auditId, files, listNode, countNode, button, maxB
     }
     await loadArtifacts(auditId, listNode, countNode);
   } finally {
-    button.disabled = false;
+    unlock();
     button.textContent = original;
   }
 }
 
-async function streamReplication(auditId, prompt, timeline, button) {
-  button.disabled = true;
+async function streamReplication(auditId, prompt, timeline, button, locks = []) {
+  const unlock = lockControls([button, ...locks]);
   button.textContent = "Running…";
   timeline.innerHTML = `<div class="status-row"><span class="status-icon running">↻</span><div class="status-copy"><strong>Opening replication stream</strong><small>Waiting for structured ACP events…</small></div></div>`;
   try {
@@ -147,7 +153,7 @@ async function streamReplication(auditId, prompt, timeline, button) {
   } catch (error) {
     timeline.innerHTML += `<div class="status-row"><span class="status-icon danger">!</span><div class="status-copy"><strong>Replication request failed</strong><small>${escapeHtml(error.message)}</small></div>${badge("danger", "error")}</div>`;
   } finally {
-    button.disabled = false;
+    unlock();
     button.textContent = "Run reproduction";
   }
 }
@@ -227,6 +233,8 @@ async function enhanceReproduction() {
     </div>`;
 
     const auditSelect = document.querySelector("#replication-audit");
+    const promptInput = document.querySelector("#replication-prompt");
+    const button = document.querySelector("#replication-run");
     const artifactList = document.querySelector("#replication-artifact-list");
     const artifactCount = document.querySelector("#replication-artifact-count");
     const artifactInput = document.querySelector("#replication-artifact-input");
@@ -246,14 +254,16 @@ async function enhanceReproduction() {
       artifactInput.addEventListener("change", async () => {
         if (!auditSelect?.value || !artifactList || !artifactInput.files?.length) return;
         if (artifactError) { artifactError.hidden = true; artifactError.textContent = ""; }
+        const targetAuditId = auditSelect.value;
         try {
           await uploadArtifacts(
-            auditSelect.value,
+            targetAuditId,
             artifactInput.files,
             artifactList,
             artifactCount,
             artifactAdd,
             maxAttachmentBytes,
+            [auditSelect, button],
           );
         } catch (error) {
           if (artifactError) {
@@ -266,18 +276,23 @@ async function enhanceReproduction() {
       });
     }
 
-    const button = document.querySelector("#replication-run");
     if (button) {
       button.addEventListener("click", async () => {
         const auditId = auditSelect?.value;
-        const prompt = document.querySelector("#replication-prompt")?.value.trim();
+        const prompt = promptInput?.value.trim();
         const timeline = document.querySelector("#replication-timeline");
         if (!auditId || !timeline) return;
         if (!prompt) {
           timeline.innerHTML = `<div class="status-row"><span class="status-icon review">!</span><div class="status-copy"><strong>Describe the reproduction goal</strong><small>The server accepts a goal/prompt, never a client-supplied executable command.</small></div>${badge("review")}</div>`;
           return;
         }
-        await streamReplication(auditId, prompt, timeline, button);
+        await streamReplication(
+          auditId,
+          prompt,
+          timeline,
+          button,
+          [auditSelect, promptInput, artifactAdd, artifactInput],
+        );
       });
     }
   } catch (error) {
