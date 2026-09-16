@@ -23,6 +23,7 @@ Veritas extracts reported statistical objects from research papers, checks numer
 - **Evidence-linked claims** — `Claim → Estimate → Sample → Data → Code → Assumption` identity graphs keep findings tied to the objects they depend on.
 - **Reproducibility workflows** — isolated R/Python runner contracts, environment capture, publication-object matching, provenance DAGs, immutable artifact intake, and attested reproduction findings.
 - **Replication agent bridge** — optional ACP integration keeps code-capable agents in a separate per-run replication workspace instead of granting shell access to paper-audit threads.
+- **Research-design checks** — preregistration and PAP comparison, sample lineage, survey-integrity signals, and provenance/randomization checks.
 - **Locked evaluation** — calibration scopes, held-out TEST sealing, execution attestations, release bindings, cold verification, and archive-receipt binding for real-paper extraction evidence.
 
 ## Quick start
