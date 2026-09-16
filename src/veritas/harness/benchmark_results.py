@@ -180,6 +180,12 @@ def validate_benchmark_result_payload(payload: object) -> dict[str, Any]:
     }
 
 
+def _record_sha256(record: dict[str, Any]) -> str:
+    value = dict(record)
+    value.pop("record_sha256", None)
+    return sha256(_canonical_json_bytes(value)).hexdigest()
+
+
 class BenchmarkResultStore:
     """Append-only local store for validated benchmark execution envelopes."""
 
@@ -230,6 +236,7 @@ class BenchmarkResultStore:
             "summary": validated["summary"],
             "metrics": validated["metrics"],
         }
+        record["record_sha256"] = _record_sha256(record)
 
         with self._lock:
             destination = self._result_path(result_id)
@@ -285,6 +292,14 @@ class BenchmarkResultStore:
         if not isinstance(value, dict) or value.get("result_id") != result_id:
             raise ValueError("benchmark result metadata is invalid")
 
+        record_sha256 = value.get("record_sha256")
+        if not isinstance(record_sha256, str) or len(record_sha256) != 64:
+            raise ValueError(f"benchmark result record hash invalid: {result_id}")
+        if any(char not in "0123456789abcdef" for char in record_sha256):
+            raise ValueError(f"benchmark result record hash invalid: {result_id}")
+        if _record_sha256(value) != record_sha256:
+            raise ValueError(f"benchmark result record hash mismatch: {result_id}")
+
         validated = validate_benchmark_result_payload(
             {
                 "schema_version": value.get("schema_version"),
@@ -302,7 +317,7 @@ class BenchmarkResultStore:
         )
         payload_sha256 = sha256(_canonical_json_bytes(validated)).hexdigest()
         if payload_sha256 != value.get("payload_sha256"):
-            raise ValueError(f"benchmark result hash mismatch: {result_id}")
+            raise ValueError(f"benchmark result payload hash mismatch: {result_id}")
         if result_id != f"bmr_{payload_sha256[:16]}":
             raise ValueError(f"benchmark result id mismatch: {result_id}")
 
