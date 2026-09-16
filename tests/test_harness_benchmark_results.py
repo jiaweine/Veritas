@@ -33,9 +33,10 @@ def _payload(**overrides: object) -> dict[str, object]:
 def test_store_ingest_is_content_addressed_and_idempotent(tmp_path: Path) -> None:
     store = BenchmarkResultStore(tmp_path)
     source = json.dumps(_payload(), indent=2).encode()
+    compact_source = json.dumps(_payload(), separators=(",", ":")).encode()
 
     first = store.ingest(_payload(), source_bytes=source)
-    second = store.ingest(_payload(), source_bytes=b'{"same":"semantics ignored after first ingest"}')
+    second = store.ingest(_payload(), source_bytes=compact_source)
 
     assert first["result_id"].startswith("bmr_")
     assert second == first
@@ -63,6 +64,9 @@ def test_store_rejects_unknown_or_mismatched_benchmark_contract(tmp_path: Path) 
         store.ingest(_payload(started_at="2026-09-16T15:00:00"))
     with pytest.raises(ValueError, match="unknown benchmark result fields"):
         store.ingest(_payload(extra_provenance="silently dropping this would be unsafe"))
+    mismatched_source = json.dumps(_payload(status="failed")).encode()
+    with pytest.raises(ValueError, match="does not match payload"):
+        store.ingest(_payload(), source_bytes=mismatched_source)
 
 
 def test_store_detects_local_result_tampering(tmp_path: Path) -> None:
