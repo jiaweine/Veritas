@@ -44,7 +44,7 @@ def _normalized_timestamp(value: object, field: str) -> tuple[str, datetime]:
 
 
 def _normalized_commit_sha(value: object, *, required: bool) -> str | None:
-    if value in {None, ""}:
+    if value is None or value == "":
         if required:
             raise ValueError("commit_sha is required for ci results")
         return None
@@ -57,7 +57,7 @@ def _normalized_commit_sha(value: object, *, required: bool) -> str | None:
 
 
 def _normalized_run_url(value: object) -> str | None:
-    if value in {None, ""}:
+    if value is None or value == "":
         return None
     if not isinstance(value, str):
         raise ValueError("run_url must be a string")
@@ -71,7 +71,7 @@ def _normalized_run_url(value: object) -> str | None:
 
 
 def _normalized_metrics(value: object) -> dict[str, bool | int | float | str | None]:
-    if value in {None, ""}:
+    if value is None or value == "":
         return {}
     if not isinstance(value, dict):
         raise ValueError("metrics must be an object")
@@ -134,7 +134,7 @@ def validate_benchmark_result_payload(payload: object) -> dict[str, Any]:
     commit_sha = _normalized_commit_sha(payload.get("commit_sha"), required=source == "ci")
     run_url = _normalized_run_url(payload.get("run_url"))
     summary = payload.get("summary")
-    if summary in {None, ""}:
+    if summary is None or summary == "":
         summary = None
     elif not isinstance(summary, str):
         raise ValueError("summary must be a string")
@@ -167,6 +167,8 @@ class BenchmarkResultStore:
         self._lock = threading.RLock()
 
     def ingest(self, payload: object, *, source_bytes: bytes | None = None) -> dict[str, Any]:
+        if source_bytes is not None and not isinstance(source_bytes, bytes):
+            raise TypeError("source_bytes must be bytes")
         if source_bytes is not None and len(source_bytes) > _MAX_SOURCE_BYTES:
             raise ValueError("benchmark result source exceeds 1 MiB")
 
@@ -279,4 +281,18 @@ class BenchmarkResultStore:
             raise ValueError(f"benchmark result title mismatch: {result_id}")
         if value.get("kind") != definition["kind"] or value.get("gating") != definition["gating"]:
             raise ValueError(f"benchmark result catalog metadata mismatch: {result_id}")
+
+        started = datetime.fromisoformat(validated["started_at"].replace("Z", "+00:00"))
+        finished = datetime.fromisoformat(validated["finished_at"].replace("Z", "+00:00"))
+        expected_duration = max(0, round((finished - started).total_seconds() * 1000))
+        if value.get("duration_ms") != expected_duration:
+            raise ValueError(f"benchmark result duration mismatch: {result_id}")
+        if not isinstance(value.get("ingested_at"), str):
+            raise ValueError(f"benchmark result ingestion metadata invalid: {result_id}")
+        _normalized_timestamp(value["ingested_at"], "ingested_at")
+        source_sha256 = value.get("source_sha256")
+        if not isinstance(source_sha256, str) or len(source_sha256) != 64:
+            raise ValueError(f"benchmark result source hash invalid: {result_id}")
+        if any(char not in "0123456789abcdef" for char in source_sha256):
+            raise ValueError(f"benchmark result source hash invalid: {result_id}")
         return value
