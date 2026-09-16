@@ -34,6 +34,25 @@ def test_benchmark_result_store_is_append_only_and_sorted(tmp_path) -> None:
     assert results[1]["payload_sha256"]
 
 
+def test_benchmark_result_store_normalizes_timezones_before_sorting(tmp_path) -> None:
+    store = BenchmarkResultStore(tmp_path / "benchmark-results")
+    earlier = store.record(
+        benchmark_id="pdf-regression",
+        exit_code=0,
+        recorded_at="2026-09-16T18:00:00+08:00",
+    )
+    later = store.record(
+        benchmark_id="pdf-regression",
+        exit_code=0,
+        recorded_at="2026-09-16T10:30:00Z",
+    )
+
+    results = store.list_results()
+    assert [item["result_id"] for item in results] == [later["result_id"], earlier["result_id"]]
+    assert earlier["recorded_at"] == "2026-09-16T10:00:00+00:00"
+    assert later["recorded_at"] == "2026-09-16T10:30:00+00:00"
+
+
 def test_benchmark_result_store_rejects_unknown_suite_and_invalid_provenance(tmp_path) -> None:
     store = BenchmarkResultStore(tmp_path / "benchmark-results")
 
