@@ -22,6 +22,10 @@ def test_api_and_evidence_responses_are_no_store(tmp_path) -> None:
     assert health.status_code == 200
     assert health.headers["cache-control"] == "no-store"
 
+    benchmark_results = client.get("/api/v1/benchmarks/results")
+    assert benchmark_results.status_code == 200
+    assert benchmark_results.headers["cache-control"] == "no-store"
+
     created = client.post(
         "/api/v1/audits",
         data={"title": "Cache policy"},
