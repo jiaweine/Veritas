@@ -43,6 +43,7 @@ def test_store_ingest_is_content_addressed_and_idempotent(tmp_path: Path) -> Non
     assert first["duration_ms"] == 2500
     assert first["source_sha256"]
     assert first["payload_sha256"]
+    assert first["record_sha256"]
     assert store.get_result(str(first["result_id"])) == first
     assert store.list_results() == [first]
 
@@ -78,7 +79,20 @@ def test_store_detects_local_result_tampering(tmp_path: Path) -> None:
     path.chmod(0o644)
     path.write_text(json.dumps(value), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="hash mismatch"):
+    with pytest.raises(ValueError, match="record hash mismatch"):
+        store.get_result(str(record["result_id"]))
+
+
+def test_store_record_hash_covers_outer_provenance(tmp_path: Path) -> None:
+    store = BenchmarkResultStore(tmp_path)
+    record = store.ingest(_payload())
+    path = store.root / f"{record['result_id']}.json"
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value["source_sha256"] = "0" * 64
+    path.chmod(0o644)
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="record hash mismatch"):
         store.get_result(str(record["result_id"]))
 
 
