@@ -195,6 +195,14 @@ class BenchmarkResultStore:
             raise ValueError("benchmark result source exceeds 1 MiB")
 
         validated = validate_benchmark_result_payload(payload)
+        if source_bytes is not None:
+            try:
+                source_payload = json.loads(source_bytes.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError("source_bytes must contain the UTF-8 JSON benchmark result") from exc
+            if validate_benchmark_result_payload(source_payload) != validated:
+                raise ValueError("source_bytes benchmark result does not match payload")
+
         payload_bytes = _canonical_json_bytes(validated)
         payload_sha256 = sha256(payload_bytes).hexdigest()
         result_id = f"bmr_{payload_sha256[:16]}"
