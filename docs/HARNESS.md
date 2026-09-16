@@ -13,6 +13,15 @@ Open `http://127.0.0.1:8765`.
 
 Audit data is stored under `~/.veritas/harness` by default. Set `VERITAS_HARNESS_DATA` or pass `--data-dir` to use another local workspace.
 
+Operator metadata is available without creating an audit:
+
+```bash
+veritas-harness --version
+curl http://127.0.0.1:8765/api/v1/health
+```
+
+The FastAPI application version, `/api/v1/health`, `/api/v1/capabilities`, and both Veritas CLIs resolve the installed `veritas-audit` package version from the same package metadata. Source-only checkouts that have not been installed report `0+unknown` rather than maintaining another hard-coded release number.
+
 ## Product surfaces
 
 The UI is not chat-first. It follows an evidence-native product model:
@@ -111,6 +120,7 @@ Legacy routes remain supported:
 
 Versioned product routes:
 
+- `GET /api/v1/health`
 - `GET /api/v1/capabilities`
 - `GET /api/v1/overview`
 - `GET /api/v1/findings`
@@ -127,6 +137,8 @@ Versioned product routes:
 - `GET /api/v1/audits/{audit_id}/attachments/{attachment_id}`
 - `POST /api/v1/audits/{audit_id}/messages`
 - `POST /api/v1/audits/{audit_id}/replication`
+
+`GET /api/v1/health` returns the stable service name, API contract version, and installed package version. The legacy `/api/health` endpoint returns the same payload for compatibility.
 
 Paper and attachment uploads are limited to 80 MiB per file. The API consumes upload streams in bounded chunks and rejects an over-limit payload before handing it to the audit/artifact store.
 
