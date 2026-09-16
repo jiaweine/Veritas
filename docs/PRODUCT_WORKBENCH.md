@@ -11,6 +11,7 @@ This document records the product-layer architecture introduced in the research 
 5. **Local-first remains the default.** The product layer does not add mandatory hosted storage or telemetry.
 6. **Web and mobile share one versioned contract.** `/api/v1` is the compatibility boundary; legacy `/api/*` routes remain available.
 7. **Optional capabilities cannot silently weaken evidence policy.** Third-party parsing, reproduction agents, and hosted observability are explicit opt-ins with fail-closed defaults.
+8. **Execution artifacts are immutable inputs.** Research code/data/environment files are hashed, preflighted, and copied into a new workspace per reproduction run; the product UI never treats upload as permission to execute.
 
 These choices mirror the supplied GrowthEvo design package: information-dense cockpit pages, compact/sidecar/workbench Agent modes, a global command palette, evidence-native objects, and a Harness trace rather than an opaque chat transcript.
 
@@ -23,9 +24,12 @@ These choices mirror the supplied GrowthEvo design package: information-dense co
 - Three-column audit workbench with paper structure, PDF evidence viewer, latest detector result, findings, and trace.
 - Collapsible Audit Agent sidecar and `⌘K` command palette.
 - Live Reproduction control surface that streams structured ACP events when a server-side agent is configured.
+- Immutable reproduction artifact intake for code, data, environment files, and archives, with SHA-256/size manifest and original-byte download.
 - Correlated Agent Runs inspector that resolves a `run_id` into start/update/finish events, timing, evidence, parser metadata, and failure state.
 - Live Settings capability surface for parser policy, ACP execution boundaries, API contract, and OTLP export state without exposing collector URLs or secrets.
-- Mobile responsive layout, bottom navigation, installable web app manifest, and offline shell cache. API/PDF responses are deliberately excluded from the service-worker cache.
+- Benchmark surface backed by the repository's real CI command inventory rather than fabricated scores.
+- Mobile responsive layout, bottom navigation, installable web app manifest, and offline shell cache. `/api/` responses and PDFs are deliberately excluded from the service-worker cache.
+- Reproduction controls freeze the selected paper/artifact target while an artifact upload or ACP run is active so the visible target matches the server snapshot.
 
 ### Backend API
 
@@ -35,18 +39,24 @@ The product API adds versioned views while preserving the existing local Harness
 GET  /api/v1/capabilities
 GET  /api/v1/overview
 GET  /api/v1/findings
+GET  /api/v1/benchmarks
 GET  /api/v1/runs
 GET  /api/v1/runs/{run_id}
 GET  /api/v1/search?q=...
 GET  /api/v1/audits
 GET  /api/v1/audits/{id}
 GET  /api/v1/audits/{id}/paper
+GET  /api/v1/audits/{id}/attachments
+GET  /api/v1/audits/{id}/attachments/{attachment_id}
 POST /api/v1/audits
+POST /api/v1/audits/{id}/attachments
 POST /api/v1/audits/{id}/messages
 POST /api/v1/audits/{id}/replication
 ```
 
 The old `/api/audits*` contract is preserved. Mobile/browser cross-origin access can be enabled explicitly with `VERITAS_CORS_ORIGINS`.
+
+Paper and reproduction-artifact uploads have explicit per-file limits. Upload bodies are consumed in bounded chunks before the harness receives them, avoiding an unnecessary all-at-once application-memory allocation for over-limit requests.
 
 ### Trace contract
 
@@ -64,6 +74,14 @@ Detector and replication executions use a shared run envelope. Completed or fail
 `GET /api/v1/runs/{run_id}` projects the persisted audit event history into one correlated run detail object so clients do not need to reconstruct trace boundaries independently.
 
 The start trace stores only a hash and length of a reproduction prompt, not the raw prompt. Structured ACP updates are still persisted because they are the inspectable execution trace.
+
+Workspace-preparation integrity errors are also represented as persisted runs. A failed paper/attachment preflight produces a correlated `start → error` trace with `stage=workspace_prepare`; the ACP runner is not invoked and no run workspace is created.
+
+### Benchmark inventory
+
+`GET /api/v1/benchmarks` exposes the benchmark/probe commands actually wired to `.github/workflows/ci.yml`. The current catalog distinguishes release-gating benchmarks from diagnostic non-gating probes and is regression-tested against the workflow so product copy cannot silently drift from CI.
+
+The endpoint explicitly reports that benchmark scores/result persistence are unavailable. The product therefore shows the real gate inventory and purpose without synthesizing trend lines or pretending that a historical result store exists.
 
 ### Parser stack and optional Docling adapter
 
@@ -104,10 +122,17 @@ Security behavior is fail-closed:
 - permission policy defaults to `deny`;
 - an invalid permission-policy value also falls back to `deny` and is exposed as invalid in capabilities;
 - `allow_once` can only select an explicit `allow_once` option offered by the ACP agent;
-- the audit metadata file is not exposed to the replication workspace; only a copy of the immutable paper is staged there;
+- uploaded reproduction artifacts are append-only and stored byte-for-byte with SHA-256 provenance;
+- client paths are reduced to sanitized basenames and server-generated attachment ids;
+- the web/mobile clients do not unpack, import, or execute attached research artifacts;
+- paper and attachment bytes are re-hashed on read using bounded chunks;
+- immutable paper and attachment hashes are preflighted before any run workspace is created;
+- each accepted run receives a new `replication-workspaces/<run_id>` directory with read-only copies of `paper.pdf`, hash-verified attachments, and an `artifacts.json` manifest;
+- `audit.json` is not exposed to the replication workspace;
+- integrity failures prevent the runner from starting and leave an inspectable persisted error run rather than an opaque stream failure;
 - the local workspace is **not** claimed to be a security sandbox. The selected ACP agent/runtime remains responsible for its execution isolation.
 
-The Reproduction UI reads `/api/v1/capabilities`, shows this boundary explicitly, and streams NDJSON events into a live trace. The same terminal events appear in `/api/v1/runs` and can be reopened through the correlated run endpoint.
+The Reproduction UI reads `/api/v1/capabilities`, shows this boundary explicitly, supports artifact preparation independently of agent configuration, and streams NDJSON events into a live trace. The same terminal events appear in `/api/v1/runs` and can be reopened through the correlated run endpoint.
 
 ### Optional OTLP observability
 
@@ -136,6 +161,7 @@ The OTLP span payload is intentionally metadata-only. It may include run/audit/t
 - audit detail and event trace;
 - deterministic Harness command composer;
 - ACP reproduction workspace with the same server-side fail-closed capability boundary;
+- immutable reproduction artifact intake via the native document picker plus SHA-256/size manifest display;
 - persisted detector/reproduction run history backed by `/api/v1/runs`;
 - correlated native run detail backed by `/api/v1/runs/{run_id}`.
 
@@ -171,7 +197,7 @@ The repository already ships a zero-build FastAPI/static Harness. Replacing it w
 The branch keeps the repository's existing release gates and adds product/client checks:
 
 - `ruff check src tests`;
-- full `pytest` suite, including product API, parser-stack, metadata-only telemetry, run-detail, and streamed fake-ACP lifecycle coverage;
+- full `pytest` suite, including product API, parser-stack, metadata-only telemetry, run-detail, fake-ACP lifecycle, immutable-artifact tamper/preflight, and bounded-upload regression coverage;
 - PDF regression benchmark;
 - PDF geometry holdout;
 - adversarial extraction fail-closed benchmark;
@@ -183,7 +209,7 @@ The branch keeps the repository's existing release gates and adds product/client
 ## Next integration points
 
 - Evaluate the optional Docling snapshot on locked extraction fixtures and real-PDF holdouts before considering any promotion-policy change.
-- Add repository/code/data artifact intake to the reproduction workspace through existing provenance and security primitives rather than expanding the browser's authority.
-- Add benchmark result persistence and comparison views only when benchmark executions have durable, versioned output objects; never fabricate benchmark scores in the product UI.
+- Add durable, versioned benchmark-result persistence before adding comparison/trend views; never fabricate benchmark scores in the product UI.
+- Define retention/cleanup policy for completed reproduction workspaces so long-running local installations do not accumulate execution outputs indefinitely.
 - Add a Langfuse-specific adapter only if needed; OTLP remains the vendor-neutral optional observability boundary.
 - Add native incremental NDJSON consumption when React Native's supported fetch/runtime surface provides a stable streaming reader across target platforms.
