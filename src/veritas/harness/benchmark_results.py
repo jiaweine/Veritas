@@ -221,9 +221,9 @@ class BenchmarkResultStore:
         self,
         *,
         benchmark_id: str | None = None,
-        limit: int = 100,
+        limit: int | None = 100,
     ) -> list[dict[str, Any]]:
-        if not 1 <= limit <= 500:
+        if limit is not None and not 1 <= limit <= 500:
             raise ValueError("limit must be between 1 and 500")
         if benchmark_id is not None:
             benchmark_definition(benchmark_id)
@@ -233,7 +233,7 @@ class BenchmarkResultStore:
         if benchmark_id is not None:
             records = [item for item in records if item["benchmark_id"] == benchmark_id]
         records.sort(key=lambda item: str(item["finished_at"]), reverse=True)
-        return records[:limit]
+        return records if limit is None else records[:limit]
 
     def get_result(self, result_id: str) -> dict[str, Any]:
         with self._lock:
