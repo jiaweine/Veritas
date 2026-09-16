@@ -22,9 +22,11 @@ def test_capabilities_disclose_safe_defaults(tmp_path, monkeypatch) -> None:
     assert payload["parser_stack"]["consensus_policy_changed"] is False
 
     assert payload["observability"]["enabled"] is False
+    assert payload["observability"]["active"] is False
     assert payload["observability"]["protocol"] == "otlp/http-protobuf"
     assert payload["observability"]["metadata_only"] is True
     assert payload["observability"]["raw_prompts_exported"] is False
+    assert payload["observability"]["audit_titles_exported"] is False
     assert payload["observability"]["evidence_text_exported"] is False
 
 
@@ -40,3 +42,16 @@ def test_capabilities_report_explicit_optional_configuration(tmp_path, monkeypat
     assert payload["parser_stack"]["consensus_policy_changed"] is False
     assert payload["observability"]["enabled"] is True
     assert payload["observability"]["endpoint_configured"] is True
+    assert payload["observability"]["active"] is payload["observability"]["dependencies_available"]
+
+
+def test_capabilities_keep_export_inactive_without_endpoint(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("VERITAS_OTEL_EXPORT", "true")
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+
+    payload = TestClient(create_app(tmp_path)).get("/api/v1/capabilities").json()
+
+    assert payload["observability"]["enabled"] is True
+    assert payload["observability"]["endpoint_configured"] is False
+    assert payload["observability"]["active"] is False
