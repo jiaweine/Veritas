@@ -12,6 +12,7 @@ This document records the product-layer architecture introduced in the research 
 6. **Web and mobile share one versioned contract.** `/api/v1` is the compatibility boundary; legacy `/api/*` routes remain available.
 7. **Optional capabilities cannot silently weaken evidence policy.** Third-party parsing, reproduction agents, and hosted observability are explicit opt-ins with fail-closed defaults.
 8. **Execution artifacts are immutable inputs.** Research code/data/environment files are hashed, preflighted, and copied into a new workspace per reproduction run; the product UI never treats upload as permission to execute.
+9. **Benchmark execution and benchmark scoring are separate facts.** Veritas may persist an explicit pass/fail execution record without inventing a score, rank, or trend that the benchmark does not define.
 
 These choices mirror the supplied GrowthEvo design package: information-dense cockpit pages, compact/sidecar/workbench Agent modes, a global command palette, evidence-native objects, and a Harness trace rather than an opaque chat transcript.
 
@@ -27,7 +28,7 @@ These choices mirror the supplied GrowthEvo design package: information-dense co
 - Immutable reproduction artifact intake for code, data, environment files, and archives, with SHA-256/size manifest and original-byte download.
 - Correlated Agent Runs inspector that resolves a `run_id` into start/update/finish events, timing, evidence, parser metadata, and failure state.
 - Live Settings capability surface for parser policy, ACP execution boundaries, API contract, and OTLP export state without exposing collector URLs or secrets.
-- Benchmark surface backed by the repository's real CI command inventory rather than fabricated scores.
+- Benchmark surface backed by the repository's real CI command inventory plus explicitly recorded execution provenance; no fabricated scores or inferred CI history.
 - Mobile responsive layout, bottom navigation, installable web app manifest, and offline shell cache. `/api/` responses and PDFs are deliberately excluded from the service-worker cache.
 - Reproduction controls freeze the selected paper/artifact target while an artifact upload or ACP run is active so the visible target matches the server snapshot.
 
@@ -36,10 +37,12 @@ These choices mirror the supplied GrowthEvo design package: information-dense co
 The product API adds versioned views while preserving the existing local Harness contract:
 
 ```text
+GET  /api/v1/health
 GET  /api/v1/capabilities
 GET  /api/v1/overview
 GET  /api/v1/findings
 GET  /api/v1/benchmarks
+GET  /api/v1/benchmarks/results
 GET  /api/v1/runs
 GET  /api/v1/runs/{run_id}
 GET  /api/v1/search?q=...
@@ -77,11 +80,25 @@ The start trace stores only a hash and length of a reproduction prompt, not the 
 
 Workspace-preparation integrity errors are also represented as persisted runs. A failed paper/attachment preflight produces a correlated `start → error` trace with `stage=workspace_prepare`; the ACP runner is not invoked and no run workspace is created.
 
-### Benchmark inventory
+### Benchmark inventory and execution provenance
 
-`GET /api/v1/benchmarks` exposes the benchmark/probe commands actually wired to `.github/workflows/ci.yml`. The current catalog distinguishes release-gating benchmarks from diagnostic non-gating probes and is regression-tested against the workflow so product copy cannot silently drift from CI.
+`GET /api/v1/benchmarks` exposes the benchmark/probe commands actually wired to `.github/workflows/ci.yml`. The catalog distinguishes release-gating benchmarks from diagnostic non-gating probes and is regression-tested against the workflow so product copy cannot silently drift from CI.
 
-The endpoint explicitly reports that benchmark scores/result persistence are unavailable. The product therefore shows the real gate inventory and purpose without synthesizing trend lines or pretending that a historical result store exists.
+Veritas also has a local, append-only benchmark execution-provenance store under the Harness data directory. It is deliberately separate from benchmark execution itself: the Web process never runs repository benchmark commands. After a known suite actually completes, an operator or CI integration can record the execution with:
+
+```text
+veritas-benchmark-result record \
+  --benchmark-id pdf-regression \
+  --exit-code 0 \
+  --commit-sha 0123456789abcdef \
+  --duration-ms 4210
+```
+
+A result object snapshots the known suite identity/command/source together with pass/fail status, exit code, optional Git commit, duration, timestamp, and a canonical payload SHA-256. Each execution gets a unique file; there is no update/delete product API. On read, Veritas verifies the stored payload checksum and fails the benchmark API closed with HTTP 409 on an inconsistent record. This checksum is a local integrity/self-consistency mechanism, not a cryptographic signature or remote attestation.
+
+`GET /api/v1/benchmarks/results` provides read-only history with bounded filtering. `GET /api/v1/benchmarks` reports the exact persisted execution count and each suite's latest recorded execution. The Benchmarks UI shows these facts and an explicit empty state when no execution has been recorded.
+
+`result_persistence=true` therefore means execution provenance is available. It does **not** mean benchmark scores exist. `scores_available` remains `false`, and the UI does not derive a score, ranking, comparison, or trend from exit codes, CI badges, or historical repository files. Those views require a dedicated versioned score/metric schema with locked semantics first.
 
 ### Parser stack and optional Docling adapter
 
@@ -197,7 +214,7 @@ The repository already ships a zero-build FastAPI/static Harness. Replacing it w
 The branch keeps the repository's existing release gates and adds product/client checks:
 
 - `ruff check src tests`;
-- full `pytest` suite, including product API, parser-stack, metadata-only telemetry, run-detail, fake-ACP lifecycle, immutable-artifact tamper/preflight, and bounded-upload regression coverage;
+- full `pytest` suite, including product API, parser-stack, metadata-only telemetry, run-detail, fake-ACP lifecycle, immutable-artifact tamper/preflight, bounded-upload, benchmark provenance/checksum, and release-metadata regression coverage;
 - PDF regression benchmark;
 - PDF geometry holdout;
 - adversarial extraction fail-closed benchmark;
@@ -209,7 +226,7 @@ The branch keeps the repository's existing release gates and adds product/client
 ## Next integration points
 
 - Evaluate the optional Docling snapshot on locked extraction fixtures and real-PDF holdouts before considering any promotion-policy change.
-- Add durable, versioned benchmark-result persistence before adding comparison/trend views; never fabricate benchmark scores in the product UI.
+- Define a dedicated, versioned benchmark score/metric schema with locked semantics before adding comparison or trend views; execution exit status alone is not a score.
 - Define retention/cleanup policy for completed reproduction workspaces so long-running local installations do not accumulate execution outputs indefinitely.
 - Add a Langfuse-specific adapter only if needed; OTLP remains the vendor-neutral optional observability boundary.
 - Add native incremental NDJSON consumption when React Native's supported fetch/runtime surface provides a stable streaming reader across target platforms.
