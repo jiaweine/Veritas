@@ -65,18 +65,27 @@ function replicationPanel(replication = {}) {
 }
 
 function observabilityPanel(observability = {}) {
+  const requested = Boolean(observability.enabled);
+  const active = Boolean(observability.active);
+  const stateBadge = active
+    ? badge("success", "OTLP active")
+    : requested
+      ? badge("review", "incomplete config")
+      : badge("review", "local only");
   return `<article class="panel settings-card">
-    <div class="panel-head"><h2>Observability export</h2>${observability.enabled ? badge("success", "OTLP enabled") : badge("review", "local only")}</div>
+    <div class="panel-head"><h2>Observability export</h2>${stateBadge}</div>
     <div class="panel-body settings-body">
-      <p class="settings-copy">Terminal detector and reproduction runs can be exported as OTLP spans after the local event is durable. Export failure never changes an audit result.</p>
+      <p class="settings-copy">Terminal detector and reproduction runs can be exported as OTLP spans after the local event is durable. Export requires both an explicit Veritas export flag and an explicit collector endpoint; export failure never changes an audit result.</p>
       <div class="settings-list">
-        ${capabilityRow("Protocol", `<strong>${escapeHtml(observability.protocol || "otlp/http-protobuf")}</strong>`, "Enable with VERITAS_OTEL_EXPORT=true")}
+        ${capabilityRow("Export request", requested ? badge("success", "requested") : badge("review", "disabled"), "VERITAS_OTEL_EXPORT=true opts in to export")}
+        ${capabilityRow("Protocol", `<strong>${escapeHtml(observability.protocol || "otlp/http-protobuf")}</strong>`, "Exporter stays inactive until all required configuration is present")}
         ${capabilityRow("Dependencies", boolBadge(observability.dependencies_available, "installed", "optional extra missing"), "Install the observability extra only when exporting traces")}
-        ${capabilityRow("Collector endpoint", boolBadge(observability.endpoint_configured, "configured", "not configured"), "Endpoint value is intentionally not disclosed through the API")}
-        ${capabilityRow("Payload policy", observability.metadata_only ? badge("success", "metadata only") : badge("danger", "expanded"), "Raw prompts and evidence text stay local")}
+        ${capabilityRow("Collector endpoint", boolBadge(observability.endpoint_configured, "configured", "required"), "Endpoint value is intentionally not disclosed through the API")}
+        ${capabilityRow("Payload policy", observability.metadata_only ? badge("success", "metadata only") : badge("danger", "expanded"), "Raw prompts, audit titles, and evidence text stay local")}
       </div>
       <div class="settings-privacy-grid">
         <div><span>Raw prompts</span><strong>${observability.raw_prompts_exported ? "exported" : "not exported"}</strong></div>
+        <div><span>Audit titles</span><strong>${observability.audit_titles_exported ? "exported" : "not exported"}</strong></div>
         <div><span>Evidence text</span><strong>${observability.evidence_text_exported ? "exported" : "not exported"}</strong></div>
       </div>
     </div>
