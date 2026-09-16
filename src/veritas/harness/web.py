@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .benchmark_catalog import benchmark_catalog
 from .parser_stack import parser_stack_capability
 from .run_views import project_run_detail
 from .service import AuditHarness
@@ -48,7 +49,7 @@ def create_app(
 
     app = FastAPI(
         title="Veritas Research Audit Harness",
-        version="0.4.0",
+        version="0.5.0",
         docs_url="/api/docs",
         redoc_url=None,
     )
@@ -84,6 +85,10 @@ def create_app(
     @app.get("/api/v1/findings")
     def findings() -> list[dict[str, object]]:
         return runtime.findings()
+
+    @app.get("/api/v1/benchmarks")
+    def benchmarks() -> dict[str, object]:
+        return benchmark_catalog()
 
     @app.get("/api/v1/runs")
     def runs() -> list[dict[str, object]]:
