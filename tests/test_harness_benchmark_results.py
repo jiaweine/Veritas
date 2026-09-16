@@ -57,8 +57,12 @@ def test_store_rejects_unknown_or_mismatched_benchmark_contract(tmp_path: Path) 
         store.ingest(_payload(commit_sha=None))
     with pytest.raises(ValueError, match="JSON scalar"):
         store.ingest(_payload(metrics={"nested": {"not": "allowed"}}))
+    with pytest.raises(ValueError, match="duplicate metric key"):
+        store.ingest(_payload(metrics={"cases": 4, " cases ": 5}))
     with pytest.raises(ValueError, match="timezone offset"):
         store.ingest(_payload(started_at="2026-09-16T15:00:00"))
+    with pytest.raises(ValueError, match="unknown benchmark result fields"):
+        store.ingest(_payload(extra_provenance="silently dropping this would be unsafe"))
 
 
 def test_store_detects_local_result_tampering(tmp_path: Path) -> None:
