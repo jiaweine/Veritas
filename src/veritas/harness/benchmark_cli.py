@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 
+from ..version import package_version
 from .benchmark_results import BenchmarkResultStore
 
 
@@ -13,10 +14,11 @@ def _store(data_dir: str | None) -> BenchmarkResultStore:
     return BenchmarkResultStore(root / "benchmark-results")
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Record or inspect durable Veritas benchmark execution provenance."
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {package_version()}")
     parser.add_argument("--data-dir", help="Harness data directory (defaults to VERITAS_HARNESS_DATA).")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -29,8 +31,11 @@ def main() -> None:
     listing = subparsers.add_parser("list", help="List persisted benchmark execution records.")
     listing.add_argument("--benchmark-id")
     listing.add_argument("--limit", type=int, default=100)
+    return parser
 
-    args = parser.parse_args()
+
+def main() -> None:
+    args = build_parser().parse_args()
     store = _store(args.data_dir)
     if args.command == "record":
         payload = store.record(
