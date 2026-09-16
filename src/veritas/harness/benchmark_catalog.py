@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from typing import Final
 
 _BENCHMARKS: Final[tuple[dict[str, object], ...]] = (
@@ -69,22 +70,45 @@ _BENCHMARKS: Final[tuple[dict[str, object], ...]] = (
 )
 
 
-def benchmark_catalog() -> dict[str, object]:
-    """Return the product-visible benchmark inventory without inventing run results.
+def benchmark_definition(benchmark_id: str) -> dict[str, object]:
+    """Return one locked product-visible benchmark definition."""
 
-    This catalog mirrors the benchmark/probe commands in the repository CI workflow.
-    It describes what is gated, not whether a particular commit passed. Durable
-    benchmark result ingestion belongs to a separate result/provenance contract.
+    for item in _BENCHMARKS:
+        if item["benchmark_id"] == benchmark_id:
+            return dict(item)
+    raise ValueError(f"unknown benchmark id: {benchmark_id}")
+
+
+def benchmark_catalog(
+    results: Iterable[Mapping[str, object]] | None = None,
+) -> dict[str, object]:
+    """Return the CI benchmark inventory plus persisted result availability.
+
+    Result persistence stores versioned execution envelopes. It deliberately does
+    not normalize heterogeneous benchmark metrics into a synthetic score or trend.
     """
 
     suites = [dict(item) for item in _BENCHMARKS]
     gating = sum(bool(item["gating"]) for item in suites)
+    persisted = [dict(item) for item in (results or ())]
+    persisted.sort(key=lambda item: str(item.get("finished_at") or ""), reverse=True)
+
+    latest_results: dict[str, dict[str, object]] = {}
+    for result in persisted:
+        benchmark_id = str(result.get("benchmark_id") or "")
+        if benchmark_id and benchmark_id not in latest_results:
+            latest_results[benchmark_id] = result
+
     return {
-        "schema_version": "1",
-        "result_persistence": False,
+        "schema_version": "2",
+        "result_schema_version": "1",
+        "result_persistence": True,
+        "results_available": bool(persisted),
+        "result_count": len(persisted),
         "scores_available": False,
         "source_of_truth": ".github/workflows/ci.yml",
         "gating_count": gating,
         "non_gating_count": len(suites) - gating,
+        "latest_results": latest_results,
         "suites": suites,
     }
