@@ -83,7 +83,7 @@ class HarnessStore:
             path = self._audit_dir(audit_id) / "paper.pdf"
             if not path.is_file():
                 raise FileNotFoundError(f"audit PDF not found: {audit_id}")
-            if sha256(path.read_bytes()).hexdigest() != record.get("artifact_sha256"):
+            if self._file_sha256(path) != record.get("artifact_sha256"):
                 raise ValueError(f"audit PDF hash mismatch: {audit_id}")
             return path
 
@@ -152,7 +152,7 @@ class HarnessStore:
             path = self._audit_dir(audit_id) / "attachments" / attachment_id / filename
             if not path.is_file():
                 raise FileNotFoundError(f"attachment payload not found: {attachment_id}")
-            if sha256(path.read_bytes()).hexdigest() != metadata.get("sha256"):
+            if self._file_sha256(path) != metadata.get("sha256"):
                 raise ValueError(f"attachment hash mismatch: {attachment_id}")
             return path
 
@@ -222,6 +222,14 @@ class HarnessStore:
             encoding="utf-8",
         )
         temporary.replace(destination)
+
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        digest = sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     @staticmethod
     def _clean_attachment_name(filename: str) -> str:
