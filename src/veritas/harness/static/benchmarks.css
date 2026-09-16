@@ -16,6 +16,16 @@
 .benchmark-command > span, .benchmark-source > span:first-child { color: var(--text-faint); font-size: 6.8px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
 .benchmark-command code { display: block; padding: 7px; border-radius: 7px; background: #f1f3f6; color: #576172; font: 7px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: normal; overflow-wrap: anywhere; }
 .benchmark-source > span:last-child { color: #737d8d; font-size: 7px; overflow-wrap: anywhere; }
+.benchmark-result-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--line); }
+.benchmark-result-head > span { color: var(--text-faint); font-size: 6.8px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.benchmark-result { margin-top: 7px; display: grid; gap: 5px; }
+.benchmark-result-row { display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 7px; align-items: baseline; }
+.benchmark-result-row > span { color: var(--text-faint); font-size: 6.8px; text-transform: uppercase; letter-spacing: .06em; }
+.benchmark-result-row > strong { min-width: 0; color: var(--text-soft); font-size: 7.2px; font-weight: 650; overflow-wrap: anywhere; }
+.benchmark-result-empty { margin-top: 7px; color: var(--text-faint); font-size: 7.2px; line-height: 1.45; }
+.benchmark-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin-top: 3px; }
+.benchmark-metrics > span { min-width: 0; padding: 6px; border-radius: 6px; background: #f5f6f8; color: var(--text-soft); font-size: 7px; overflow-wrap: anywhere; }
+.benchmark-metrics strong { display: block; margin-bottom: 2px; color: var(--text-faint); font-size: 6.4px; font-weight: 700; }
 .benchmark-policy { padding: 13px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .benchmark-policy strong { display: block; color: var(--text); font-size: 10px; }
 .benchmark-policy p { max-width: 760px; margin: 5px 0 0; color: var(--text-soft); font-size: 8.5px; line-height: 1.55; }
