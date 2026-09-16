@@ -26,6 +26,13 @@ def _enabled() -> bool:
     }
 
 
+def _endpoint_configured() -> bool:
+    return bool(
+        os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "").strip()
+        or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    )
+
+
 def _observability_dependencies_available() -> bool:
     try:
         return (
@@ -37,16 +44,18 @@ def _observability_dependencies_available() -> bool:
 
 
 def telemetry_capability() -> dict[str, object]:
+    enabled = _enabled()
+    endpoint_configured = _endpoint_configured()
+    dependencies_available = _observability_dependencies_available()
     return {
-        "enabled": _enabled(),
-        "dependencies_available": _observability_dependencies_available(),
+        "enabled": enabled,
+        "active": enabled and endpoint_configured and dependencies_available,
+        "dependencies_available": dependencies_available,
         "protocol": "otlp/http-protobuf",
-        "endpoint_configured": bool(
-            os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
-            or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
-        ),
+        "endpoint_configured": endpoint_configured,
         "metadata_only": True,
         "raw_prompts_exported": False,
+        "audit_titles_exported": False,
         "evidence_text_exported": False,
     }
 
@@ -60,7 +69,7 @@ def _package_version() -> str:
 
 def _get_tracer() -> Any | None:
     global _initialized, _tracer, _warned
-    if not _enabled():
+    if not _enabled() or not _endpoint_configured():
         return None
     if _initialized:
         return _tracer

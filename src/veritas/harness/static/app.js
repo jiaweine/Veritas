@@ -134,7 +134,7 @@ function renderMain() {
 }
 
 function sparkline(values = []) {
-  if (!values.length) values = [0, 0, 0, 0, 0];
+  if (!values.length) return "";
   const width = 76, height = 32;
   const min = Math.min(...values), max = Math.max(...values);
   const range = Math.max(max - min, .001);
@@ -173,10 +173,10 @@ function renderOverview() {
   els.main.innerHTML = `<div class="page">
     ${pageHead("Research audit cockpit", "Good morning. What needs verification?", "Veritas turns papers into inspectable evidence, deterministic checks, findings, and reproducible audit traces.", `<button class="secondary-button" data-action="refresh">Refresh</button><button class="primary-button" data-action="new-audit">＋ New audit</button>`)}
     <section class="kpi-grid">
-      <article class="kpi-card"><div class="kpi-label">Papers in workspace</div><div class="kpi-value">${num(o.audits_total)}</div><div class="kpi-foot"><strong class="good">${num(o.papers_pages)}</strong> pages parsed</div>${sparkline(state.audits.map((_,i)=>i+1))}</article>
+      <article class="kpi-card"><div class="kpi-label">Papers in workspace</div><div class="kpi-value">${num(o.audits_total)}</div><div class="kpi-foot"><strong class="good">${num(o.papers_pages)}</strong> pages parsed</div></article>
       <article class="kpi-card"><div class="kpi-label">Verification coverage</div><div class="kpi-value">${pct(o.mean_coverage)}</div><div class="kpi-foot">Across papers with completed checks</div>${sparkline(values)}</article>
-      <article class="kpi-card"><div class="kpi-label">Verified checks</div><div class="kpi-value">${num(o.checks_verified)}</div><div class="kpi-foot"><strong class="good">${pct(o.verification_rate)}</strong> of resolved checks</div>${sparkline([0, o.checks_verified*.35, o.checks_verified*.55, o.checks_verified*.8, o.checks_verified])}</article>
-      <article class="kpi-card"><div class="kpi-label">Contradictions</div><div class="kpi-value">${num(o.checks_contradictions)}</div><div class="kpi-foot">${num(o.checks_review)} checks still need review</div>${sparkline([0,0,o.checks_contradictions*.4,o.checks_contradictions*.7,o.checks_contradictions])}</article>
+      <article class="kpi-card"><div class="kpi-label">Verified checks</div><div class="kpi-value">${num(o.checks_verified)}</div><div class="kpi-foot"><strong class="good">${pct(o.verification_rate)}</strong> of resolved checks</div></article>
+      <article class="kpi-card"><div class="kpi-label">Contradictions</div><div class="kpi-value">${num(o.checks_contradictions)}</div><div class="kpi-foot">${num(o.checks_review)} checks still need review</div></article>
     </section>
 
     <section class="dashboard-grid">
