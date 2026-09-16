@@ -91,7 +91,13 @@ def benchmark_catalog(
     suites = [dict(item) for item in _BENCHMARKS]
     gating = sum(bool(item["gating"]) for item in suites)
     persisted = [dict(item) for item in (results or ())]
-    persisted.sort(key=lambda item: str(item.get("finished_at") or ""), reverse=True)
+    persisted.sort(
+        key=lambda item: (
+            str(item.get("finished_at") or ""),
+            str(item.get("result_id") or ""),
+        ),
+        reverse=True,
+    )
 
     latest_results: dict[str, dict[str, object]] = {}
     for result in persisted:
