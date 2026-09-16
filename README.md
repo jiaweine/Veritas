@@ -53,7 +53,7 @@ veritas-harness --version
 curl http://127.0.0.1:8765/api/v1/health
 ```
 
-Interactive API documentation is available at `http://127.0.0.1:8765/api/docs`.
+Interactive API documentation is available at `http://127.0.0.1:8765/api/docs`. The installable PWA caches only the static application shell; `/api/` responses, PDFs, attachments, and other audit data are served with `Cache-Control: no-store`.
 
 The legacy `/api/health` route is retained for compatibility; new integrations should use `/api/v1/health` and the `/api/v1` product contract.
 
@@ -74,12 +74,20 @@ The `mobile/` client is a native Expo application using the same versioned API a
 ```bash
 cd mobile
 npm install
+npx expo install --check
 EXPO_PUBLIC_VERITAS_API_URL=http://127.0.0.1:8765 npx expo start
 ```
 
-For a physical device, point `EXPO_PUBLIC_VERITAS_API_URL` at a network-reachable Veritas server URL rather than the device's own loopback address.
+By default the Harness listens only on `127.0.0.1`. For a physical device, explicitly bind Veritas to a reachable trusted interface and point the app at that server, for example:
 
-The mobile client supports cockpit/audit views, findings, PDF upload, immutable reproduction artifacts, ACP reproduction, persisted run history, and correlated run detail.
+```bash
+veritas-harness --host 0.0.0.0
+EXPO_PUBLIC_VERITAS_API_URL=http://<trusted-host>:8765 npx expo start
+```
+
+Binding to `0.0.0.0` expands the network exposure of the local Harness. It is not an authenticated multi-user deployment boundary; use it only on a network you trust or place an appropriate authenticated HTTPS boundary in front of the service.
+
+The mobile client supports cockpit/audit views, findings, PDF upload, immutable reproduction artifacts, ACP reproduction, persisted run history, and correlated run detail. See [`mobile/README.md`](mobile/README.md) for device-specific setup.
 
 ## Optional reproduction agent
 
@@ -117,9 +125,11 @@ OTLP export is opt-in and occurs only after local audit events are appended. Exp
 ```bash
 python -m pip install -e ".[web,pdf,observability]"
 export VERITAS_OTEL_EXPORT=true
-# Configure the standard OTEL exporter environment for your collector.
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
 veritas-harness
 ```
+
+Export remains inactive unless the Veritas export flag, an explicit OTLP collector endpoint, and the optional observability dependencies are all present. The endpoint value itself is not exposed through the product API.
 
 ## Python library quick start
 
@@ -167,7 +177,7 @@ flowchart LR
 | Extraction | Reported values, statistical objects, source locations, parser provenance |
 | Verification | Applicability, rounding intervals, numerical identities, sample and design constraints |
 | Evidence graph | Claim/object identity and dependencies across paper, data, code, and assumptions |
-| Reproduction | Runtime environment, execution inputs/outputs, publication-object matching |
+| Reproduction | Runtime environment, immutable inputs, execution outputs, publication-object matching |
 | Provenance | Locked artifacts, execution attestations, release identities, cold verification |
 
 ## Real-paper evidence workflow
@@ -197,6 +207,8 @@ python scripts/smoke_real_pdf_fail_closed.py
 python scripts/benchmark_real_pdf_promotion.py
 ```
 
+The Workbench exposes this command inventory through `GET /api/v1/benchmarks`. It deliberately does not fabricate benchmark scores or trends when no durable benchmark result store exists.
+
 For the full CI dependency set and test suite:
 
 ```bash
@@ -222,6 +234,7 @@ pytest -q
 
 - [`docs/PRODUCT_WORKBENCH.md`](docs/PRODUCT_WORKBENCH.md) — product architecture, workbench model, versioned API, mobile, parser stack, and observability
 - [`docs/HARNESS.md`](docs/HARNESS.md) — Research Audit Workbench backend architecture and local workflow
+- [`mobile/README.md`](mobile/README.md) — native mobile setup and device connectivity
 - [`docs/REPLICATION_AGENT_BACKENDS.md`](docs/REPLICATION_AGENT_BACKENDS.md) — ACP replication agents, backend choices, and safety boundaries
 - [`docs/METHODS.md`](docs/METHODS.md) — audit model and methodology
 - [`docs/DETECTOR_CARDS.md`](docs/DETECTOR_CARDS.md) — detector scope and assumptions
