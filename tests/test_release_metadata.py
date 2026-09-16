@@ -4,7 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import veritas
-from veritas.harness import benchmark_cli, cli as harness_cli
+from veritas.harness import benchmark_cli
+from veritas.harness import cli as harness_cli
 from veritas.harness.web import create_app
 from veritas.replication import cli as replication_cli
 from veritas.version import package_version
