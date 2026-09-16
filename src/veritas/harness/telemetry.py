@@ -125,8 +125,8 @@ def export_terminal_run(record: dict[str, Any], event: HarnessEvent) -> bool:
     """Export one terminal Harness tool event as an OTLP span when explicitly enabled.
 
     The exporter intentionally emits metadata only. It does not include the PDF,
-    evidence text, raw prompts, agent messages, or arbitrary event payloads.
-    Export failures never change the local audit result.
+    audit title, evidence text, raw prompts, agent messages, or arbitrary event
+    payloads. Export failures never change the local audit result.
     """
 
     if event.kind != "tool":
@@ -154,7 +154,6 @@ def export_terminal_run(record: dict[str, Any], event: HarnessEvent) -> bool:
     attributes: dict[str, Any] = {
         "veritas.run.id": run_id,
         "veritas.audit.id": str(record.get("audit_id") or event.audit_id),
-        "veritas.audit.title": str(record.get("title") or ""),
         "veritas.run.kind": run_kind,
         "veritas.tool.name": tool,
         "veritas.run.phase": str(phase),
