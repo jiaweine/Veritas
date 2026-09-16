@@ -3,10 +3,15 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+import veritas
 from veritas.harness import cli as harness_cli
 from veritas.harness.web import create_app
 from veritas.replication import cli as replication_cli
 from veritas.version import package_version
+
+
+def test_public_version_matches_installed_distribution() -> None:
+    assert veritas.__version__ == package_version()
 
 
 def test_health_routes_and_capabilities_share_package_version(tmp_path) -> None:
