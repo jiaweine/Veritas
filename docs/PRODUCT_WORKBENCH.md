@@ -1,15 +1,16 @@
 # Veritas Product Workbench
 
-This document records the product-layer architecture introduced in the research audit workbench. It is intentionally additive: Veritas' deterministic detectors, dual-parser evidence model, audit identities, reproduction tooling, and locked evaluation remain the source of truth.
+This document records the product-layer architecture introduced in the research audit workbench. It is intentionally additive: Veritas' deterministic detectors, independent-parser evidence model, audit identities, reproduction tooling, and locked evaluation remain the source of truth.
 
 ## Product principles
 
 1. **Evidence is the primary object.** Chat is a command surface, not the product data model. A result should resolve back to artifact → page → table → row/source.
 2. **The Agent is a sidecar.** The default product is a dashboard, tables, evidence viewer, findings, and traces. Agent collaboration can expand into a workbench but should not consume the entire UI.
-3. **Runs are inspectable.** Tool execution is represented as structured events with identity, status, evidence, and result coverage.
+3. **Runs are inspectable.** Tool execution is represented as structured events with identity, status, evidence, timing, parser metadata, and result coverage.
 4. **No synthetic metrics.** Dashboard KPIs are derived from stored audit records only. Empty states stay empty rather than showing demo scores.
 5. **Local-first remains the default.** The product layer does not add mandatory hosted storage or telemetry.
 6. **Web and mobile share one versioned contract.** `/api/v1` is the compatibility boundary; legacy `/api/*` routes remain available.
+7. **Optional capabilities cannot silently weaken evidence policy.** Third-party parsing, reproduction agents, and hosted observability are explicit opt-ins with fail-closed defaults.
 
 These choices mirror the supplied GrowthEvo design package: information-dense cockpit pages, compact/sidecar/workbench Agent modes, a global command palette, evidence-native objects, and a Harness trace rather than an opaque chat transcript.
 
@@ -22,6 +23,8 @@ These choices mirror the supplied GrowthEvo design package: information-dense co
 - Three-column audit workbench with paper structure, PDF evidence viewer, latest detector result, findings, and trace.
 - Collapsible Audit Agent sidecar and `⌘K` command palette.
 - Live Reproduction control surface that streams structured ACP events when a server-side agent is configured.
+- Correlated Agent Runs inspector that resolves a `run_id` into start/update/finish events, timing, evidence, parser metadata, and failure state.
+- Live Settings capability surface for parser policy, ACP execution boundaries, API contract, and OTLP export state without exposing collector URLs or secrets.
 - Mobile responsive layout, bottom navigation, installable web app manifest, and offline shell cache. API/PDF responses are deliberately excluded from the service-worker cache.
 
 ### Backend API
@@ -33,6 +36,7 @@ GET  /api/v1/capabilities
 GET  /api/v1/overview
 GET  /api/v1/findings
 GET  /api/v1/runs
+GET  /api/v1/runs/{run_id}
 GET  /api/v1/search?q=...
 GET  /api/v1/audits
 GET  /api/v1/audits/{id}
@@ -57,7 +61,29 @@ Detector and replication executions use a shared run envelope. Completed or fail
 - evidence linkage and verification coverage when the underlying tool produces evidence;
 - a persisted error type for failed tool runs.
 
+`GET /api/v1/runs/{run_id}` projects the persisted audit event history into one correlated run detail object so clients do not need to reconstruct trace boundaries independently.
+
 The start trace stores only a hash and length of a reproduction prompt, not the raw prompt. Structured ACP updates are still persisted because they are the inspectable execution trace.
+
+### Parser stack and optional Docling adapter
+
+The product parser stack keeps the locked native baseline as the authority:
+
+```text
+pymupdf_native      family=mupdf_native
+pdfplumber_native   family=pdfminer_native
+```
+
+An optional Docling adapter can be enabled with:
+
+```text
+VERITAS_PDF_THIRD_PARSER=docling
+pip install -e '.[docling]'
+```
+
+The adapter emits the same immutable `NativePDFSnapshot` shape with parser identity, artifact hash, page provenance, words, and tables. Before a third snapshot is accepted, Veritas checks that it belongs to the same source artifact and uses a parser family independent from the baseline families.
+
+This opt-in does **not** change the existing two-family consensus/promotion requirement. The third snapshot is observational unless a future locked evaluation explicitly changes promotion policy. Unknown `VERITAS_PDF_THIRD_PARSER` values fail closed rather than silently selecting another parser.
 
 ### ACP reproduction boundary
 
@@ -81,7 +107,23 @@ Security behavior is fail-closed:
 - the audit metadata file is not exposed to the replication workspace; only a copy of the immutable paper is staged there;
 - the local workspace is **not** claimed to be a security sandbox. The selected ACP agent/runtime remains responsible for its execution isolation.
 
-The Reproduction UI reads `/api/v1/capabilities`, shows this boundary explicitly, and streams NDJSON events into a live trace. The same terminal events appear in `/api/v1/runs`.
+The Reproduction UI reads `/api/v1/capabilities`, shows this boundary explicitly, and streams NDJSON events into a live trace. The same terminal events appear in `/api/v1/runs` and can be reopened through the correlated run endpoint.
+
+### Optional OTLP observability
+
+Local event storage remains authoritative. Optional OpenTelemetry export can be enabled with:
+
+```text
+pip install -e '.[observability]'
+VERITAS_OTEL_EXPORT=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+```
+
+A terminal detector or reproduction event is exported only **after** the local event append is durable. Export errors are best-effort and cannot change a detector verdict or local run state.
+
+The OTLP span payload is intentionally metadata-only. It may include run/audit/tool identity, duration, artifact identity, parser ids, evidence page/table locator, verification coverage, check counts, and error type. It does not export the PDF, raw reproduction prompt, evidence quote/text, arbitrary ACP message payload, or collector endpoint through the product API.
+
+`/api/v1/capabilities` exposes whether export is enabled, whether the optional dependencies and endpoint are configured, and the metadata-only privacy contract. The live Settings surface renders those facts without revealing secrets.
 
 ### Native mobile
 
@@ -91,10 +133,13 @@ The Reproduction UI reads `/api/v1/capabilities`, shows this boundary explicitly
 - paper list;
 - evidence-linked findings;
 - native PDF document picker + upload;
-- audit detail and run trace;
-- deterministic Harness command composer.
+- audit detail and event trace;
+- deterministic Harness command composer;
+- ACP reproduction workspace with the same server-side fail-closed capability boundary;
+- persisted detector/reproduction run history backed by `/api/v1/runs`;
+- correlated native run detail backed by `/api/v1/runs/{run_id}`.
 
-The native client shares `/api/v1` with the web client rather than embedding the web product in a WebView.
+The native client shares `/api/v1` with the web client rather than embedding the web product in a WebView. React Native currently parses the replication NDJSON response at request completion for compatibility across native fetch implementations, while the web surface renders streamed events incrementally.
 
 ## Reference implementations and research considered
 
@@ -103,7 +148,7 @@ The implementation borrows **architecture and interaction patterns, not copied s
 - **Langfuse** — structured traces as a first-class product object and an observability UI for agent/tool activity. <https://github.com/langfuse/langfuse>
 - **OpenHands / Agent Canvas** — a control surface separated from the runtime, plus a sandbox boundary for code execution. <https://github.com/OpenHands/OpenHands>
 - **OpenAI Agents SDK** — trace/span semantics around agent turns, tool calls, guardrails, and handoffs. <https://github.com/openai/openai-agents-python>
-- **Docling** — a high-quality optional future adapter for richer document parsing; Veritas keeps its independent parser strategy rather than silently replacing it. <https://github.com/docling-project/docling>
+- **Docling** — richer document layout/table parsing behind an optional independent adapter; Veritas does not silently replace its baseline parser strategy. <https://github.com/docling-project/docling>
 - **shadcn/ui** and **TanStack Query** — design-system and async-state patterns considered for a future bundled React client. The current web client remains dependency-light to preserve the repository's single-command Python install. <https://github.com/shadcn-ui/ui> <https://github.com/TanStack/query>
 - **Expo SDK 57** — current stable mobile baseline in mid-2026, using React Native 0.86. <https://expo.dev/changelog/sdk-57>
 
@@ -123,20 +168,22 @@ The repository already ships a zero-build FastAPI/static Harness. Replacing it w
 
 ## Validation gates
 
-The branch keeps the repository's existing release gates and adds client-side checks:
+The branch keeps the repository's existing release gates and adds product/client checks:
 
 - `ruff check src tests`;
-- full `pytest` suite, including product API and streamed fake-ACP lifecycle coverage;
+- full `pytest` suite, including product API, parser-stack, metadata-only telemetry, run-detail, and streamed fake-ACP lifecycle coverage;
 - PDF regression benchmark;
 - PDF geometry holdout;
 - adversarial extraction fail-closed benchmark;
+- existing real-PDF non-gating probes;
 - Expo dependency compatibility check;
 - mobile TypeScript `tsc --noEmit`;
 - Node syntax checks for the dependency-free web modules.
 
 ## Next integration points
 
-- Add an optional Docling/MinerU parser adapter behind the existing independent parser interfaces and evaluate it against locked parser fixtures before enabling it by default.
-- Export the now-correlated run/span records through optional OpenTelemetry/Langfuse adapters without making hosted observability mandatory.
+- Evaluate the optional Docling snapshot on locked extraction fixtures and real-PDF holdouts before considering any promotion-policy change.
 - Add repository/code/data artifact intake to the reproduction workspace through existing provenance and security primitives rather than expanding the browser's authority.
-- Add benchmark comparison views only after benchmark runs are available; never fabricate benchmark scores in the product UI.
+- Add benchmark result persistence and comparison views only when benchmark executions have durable, versioned output objects; never fabricate benchmark scores in the product UI.
+- Add a Langfuse-specific adapter only if needed; OTLP remains the vendor-neutral optional observability boundary.
+- Add native incremental NDJSON consumption when React Native's supported fetch/runtime surface provides a stable streaming reader across target platforms.
