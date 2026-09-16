@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .benchmark_catalog import benchmark_catalog
+from .benchmark_results import BENCHMARK_RESULT_SCHEMA_VERSION, BenchmarkResultStore
 from .parser_stack import parser_stack_capability
 from .replication_guard import stream_replication_guarded
 from .run_views import project_run_detail
@@ -65,6 +66,7 @@ def create_app(
         data_dir or os.environ.get("VERITAS_HARNESS_DATA", "~/.veritas/harness")
     ).expanduser()
     runtime = harness or AuditHarness(resolved_data_dir)
+    benchmark_results = BenchmarkResultStore(runtime.store.root / "benchmark-results")
     static_dir = Path(__file__).with_name("static")
 
     app = FastAPI(
@@ -74,6 +76,7 @@ def create_app(
         redoc_url=None,
     )
     app.state.harness = runtime
+    app.state.benchmark_results = benchmark_results
 
     origins = _cors_origins()
     if origins:
@@ -116,7 +119,28 @@ def create_app(
 
     @app.get("/api/v1/benchmarks")
     def benchmarks() -> dict[str, object]:
-        return benchmark_catalog()
+        try:
+            results = benchmark_results.list_results(limit=500)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return benchmark_catalog(results=results)
+
+    @app.get("/api/v1/benchmarks/results")
+    def persisted_benchmark_results(
+        benchmark_id: Annotated[str | None, Query(max_length=80)] = None,
+        limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    ) -> dict[str, object]:
+        try:
+            results = benchmark_results.list_results(benchmark_id=benchmark_id, limit=limit)
+        except ValueError as exc:
+            detail = str(exc)
+            status_code = 404 if detail.startswith("unknown benchmark id:") else 409
+            raise HTTPException(status_code=status_code, detail=detail) from exc
+        return {
+            "schema_version": BENCHMARK_RESULT_SCHEMA_VERSION,
+            "scores_available": False,
+            "results": results,
+        }
 
     @app.get("/api/v1/runs")
     def runs() -> list[dict[str, object]]:
