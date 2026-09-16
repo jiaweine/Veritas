@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from ..version import package_version
 from .benchmark_catalog import benchmark_catalog
 from .parser_stack import parser_stack_capability
 from .replication_guard import stream_replication_guarded
@@ -22,6 +23,7 @@ from .telemetry import telemetry_capability
 MAX_UPLOAD_BYTES = 80 * 1024 * 1024
 MAX_ATTACHMENT_BYTES = 80 * 1024 * 1024
 _UPLOAD_CHUNK_BYTES = 1024 * 1024
+_API_VERSION = "v1"
 
 
 class MessageRequest(BaseModel):
@@ -66,10 +68,11 @@ def create_app(
     ).expanduser()
     runtime = harness or AuditHarness(resolved_data_dir)
     static_dir = Path(__file__).with_name("static")
+    product_version = package_version()
 
     app = FastAPI(
-        title="Veritas Research Audit Harness",
-        version="0.6.0",
+        title="Veritas Research Audit Workbench",
+        version=product_version,
         docs_url="/api/docs",
         redoc_url=None,
     )
@@ -95,12 +98,20 @@ def create_app(
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.get("/api/health")
+    @app.get("/api/v1/health")
     def health() -> dict[str, str]:
-        return {"status": "ok", "service": "veritas-harness", "api_version": "v1"}
+        return {
+            "status": "ok",
+            "service": "veritas-harness",
+            "api_version": _API_VERSION,
+            "version": product_version,
+        }
 
     @app.get("/api/v1/capabilities")
     def capabilities() -> dict[str, object]:
         value = dict(runtime.capabilities())
+        value["version"] = product_version
+        value["api_version"] = _API_VERSION
         value["max_attachment_bytes"] = MAX_ATTACHMENT_BYTES
         value["parser_stack"] = parser_stack_capability()
         value["observability"] = telemetry_capability()

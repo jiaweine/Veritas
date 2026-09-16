@@ -5,11 +5,13 @@ import asyncio
 import json
 from pathlib import Path
 
+from ..version import package_version
 from .acp import AcpTurnRunner, AgentCommand, PermissionPolicy, agent_from_environment
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run one Veritas replication turn through an ACP agent.")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {package_version()}")
     parser.add_argument("prompt", help="Instruction to send to the replication agent")
     parser.add_argument("--workspace", type=Path, default=Path.cwd(), help="Replication workspace directory")
     parser.add_argument(
