@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from veritas.harness.benchmark_catalog import benchmark_catalog
@@ -26,6 +28,17 @@ def test_benchmark_catalog_matches_repository_release_gate_shape() -> None:
     assert by_id["real-pdf-smoke"]["gating"] is False
     assert by_id["real-pdf-fail-closed"]["gating"] is False
     assert by_id["real-pdf-promotion"]["gating"] is False
+
+
+def test_benchmark_catalog_commands_are_present_in_ci_workflow() -> None:
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    suites = benchmark_catalog()["suites"]
+
+    for suite in suites:
+        assert suite["command"] in workflow
+        if suite["gating"]:
+            assert "continue-on-error: true\n        run: " + str(suite["command"]) not in workflow
 
 
 def test_benchmark_catalog_is_exposed_without_synthetic_scores(tmp_path) -> None:
