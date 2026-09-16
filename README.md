@@ -16,7 +16,8 @@ Veritas extracts reported statistical objects from research papers, checks numer
 ## Highlights
 
 - **Research Audit Workbench / PWA** — an information-dense local product with Overview, Audits, Findings, Agent Runs, Evidence, Reproduction, Benchmarks, Settings, a command palette, and an optional Agent sidecar.
-- **Versioned product API** — Web and native mobile clients share `/api/v1`, including capabilities, overview, findings, runs, search, audits, immutable attachments, and reproduction streams.
+- **Versioned product API** — Web and native mobile clients share `/api/v1`, including capabilities, overview, findings, benchmark provenance, runs, search, audits, immutable attachments, and reproduction streams.
+- **Benchmark execution provenance** — explicitly completed known suites can be recorded append-only with pass/fail, commit, duration, timestamp, and payload checksum; execution history is kept separate from benchmark scoring.
 - **Native mobile client** — an Expo / React Native app for cockpit, audits, findings, native PDF upload, immutable reproduction artifacts, replication, and persisted run inspection without embedding the web UI in a WebView.
 - **Paper-native extraction** — dual native-PDF parsing with geometry fallback and precise page/table/row/column provenance.
 - **Deterministic statistical checks** — rounding-aware regression arithmetic, sample accounting, correlations, grouped summaries, ANOVA, meta-analysis, SEM, standardized regression, DID, IV, RDD, and experimental checks.
@@ -163,7 +164,17 @@ python scripts/benchmark_extraction_adversarial.py
 python scripts/benchmark_real_pdf_promotion.py
 ```
 
-The Product Workbench exposes the command inventory through `GET /api/v1/benchmarks`; it deliberately does not fabricate benchmark scores or trends when no durable result store exists.
+After a known benchmark has actually completed, record that execution fact in the local Harness provenance store without re-running it through the Web process:
+
+```bash
+veritas-benchmark-result record \
+  --benchmark-id pdf-regression \
+  --exit-code 0 \
+  --commit-sha 0123456789abcdef \
+  --duration-ms 4210
+```
+
+The Product Workbench exposes the command inventory through `GET /api/v1/benchmarks` and read-only execution history through `GET /api/v1/benchmarks/results`. Persisted execution status is not a benchmark score: `scores_available` remains false, and Veritas does not fabricate score comparisons or trend lines without a dedicated versioned metric schema.
 
 For the full test suite:
 
@@ -178,7 +189,7 @@ pytest -q
 | Path | Purpose |
 | --- | --- |
 | [`src/veritas/`](src/veritas/) | Core audit, extraction, detector, reproduction, provenance, and harness library |
-| [`src/veritas/harness/`](src/veritas/harness/) | Versioned API, local audit store, product orchestration, and dependency-light Web/PWA UI |
+| [`src/veritas/harness/`](src/veritas/harness/) | Versioned API, local audit/benchmark stores, product orchestration, and dependency-light Web/PWA UI |
 | [`src/veritas/replication/`](src/veritas/replication/) | Optional ACP adapter for code-capable replication agents |
 | [`mobile/`](mobile/) | Native Expo / React Native client sharing the `/api/v1` contract |
 | [`scripts/`](scripts/) | Benchmark, evidence-building, and verification CLIs |
