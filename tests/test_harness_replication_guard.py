@@ -76,6 +76,9 @@ def _assert_persisted_integrity_error(client: TestClient, audit_id: str, prompt:
     assert payload["phase"] == "error"
     assert [event["payload"]["phase"] for event in payload["events"]] == ["start", "error"]
 
+    runtime = client.app.state.harness
+    assert not (runtime.store.root / audit_id / "replication-workspaces").exists()
+
 
 def test_tampered_attachment_becomes_persisted_replication_error(tmp_path, monkeypatch) -> None:
     _configure_fake_runner(monkeypatch)
