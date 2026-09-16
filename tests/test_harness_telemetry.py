@@ -57,7 +57,7 @@ def test_terminal_run_export_is_metadata_only(monkeypatch) -> None:
     )
 
     assert telemetry.export_terminal_run(
-        {"audit_id": "audit_abc123", "title": "Paper title"},
+        {"audit_id": "audit_abc123", "title": "Sensitive local paper title"},
         event,
     )
     attributes = tracer.kwargs["attributes"]
@@ -67,6 +67,7 @@ def test_terminal_run_export_is_metadata_only(monkeypatch) -> None:
     assert attributes["veritas.evidence.table"] == "Table 2"
     assert attributes["veritas.parsers"] == ["pymupdf_native", "pdfplumber_native"]
     rendered = repr(attributes)
+    assert "Sensitive local paper title" not in rendered
     assert "this must never be exported" not in rendered
     assert "sensitive evidence text must stay local" not in rendered
     assert tracer.span.end_time is not None
