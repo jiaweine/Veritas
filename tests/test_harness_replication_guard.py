@@ -17,7 +17,7 @@ def _make_pdf() -> bytes:
     return payload
 
 
-def test_tampered_attachment_becomes_persisted_replication_error(tmp_path, monkeypatch) -> None:
+def _configure_fake_runner(monkeypatch) -> None:
     class FakeRunner:
         def __init__(self, agent, *, permission_policy) -> None:
             self.agent = agent
@@ -32,28 +32,18 @@ def test_tampered_attachment_becomes_persisted_replication_error(tmp_path, monke
     monkeypatch.delenv("VERITAS_REPLICATION_PERMISSION_POLICY", raising=False)
     monkeypatch.setattr("veritas.harness.service.AcpTurnRunner", FakeRunner)
 
-    client = TestClient(create_app(tmp_path))
+
+def _create_audit(client: TestClient) -> str:
     created = client.post(
         "/api/v1/audits",
         data={"title": "Integrity test paper"},
         files={"file": ("paper.pdf", _make_pdf(), "application/pdf")},
     )
     assert created.status_code == 200
-    audit_id = created.json()["audit_id"]
+    return str(created.json()["audit_id"])
 
-    attached = client.post(
-        f"/api/v1/audits/{audit_id}/attachments",
-        files={"file": ("analysis.py", b"print('expected')\n", "text/x-python")},
-    )
-    assert attached.status_code == 200
-    attachment_id = attached.json()["attachment_id"]
 
-    runtime = client.app.state.harness
-    attachment_path = runtime.store.get_attachment_path(audit_id, attachment_id)
-    attachment_path.chmod(0o644)
-    attachment_path.write_bytes(b"print('tampered')\n")
-
-    prompt = "Reproduce the main result using the attached analysis code."
+def _assert_persisted_integrity_error(client: TestClient, audit_id: str, prompt: str) -> None:
     response = client.post(
         f"/api/v1/audits/{audit_id}/replication",
         json={"prompt": prompt},
@@ -85,3 +75,44 @@ def test_tampered_attachment_becomes_persisted_replication_error(tmp_path, monke
     assert payload["run_id"] == run_id
     assert payload["phase"] == "error"
     assert [event["payload"]["phase"] for event in payload["events"]] == ["start", "error"]
+
+
+def test_tampered_attachment_becomes_persisted_replication_error(tmp_path, monkeypatch) -> None:
+    _configure_fake_runner(monkeypatch)
+    client = TestClient(create_app(tmp_path))
+    audit_id = _create_audit(client)
+
+    attached = client.post(
+        f"/api/v1/audits/{audit_id}/attachments",
+        files={"file": ("analysis.py", b"print('expected')\n", "text/x-python")},
+    )
+    assert attached.status_code == 200
+    attachment_id = attached.json()["attachment_id"]
+
+    runtime = client.app.state.harness
+    attachment_path = runtime.store.get_attachment_path(audit_id, attachment_id)
+    attachment_path.chmod(0o644)
+    attachment_path.write_bytes(b"print('tampered')\n")
+
+    _assert_persisted_integrity_error(
+        client,
+        audit_id,
+        "Reproduce the main result using the attached analysis code.",
+    )
+
+
+def test_tampered_paper_becomes_persisted_replication_error(tmp_path, monkeypatch) -> None:
+    _configure_fake_runner(monkeypatch)
+    client = TestClient(create_app(tmp_path))
+    audit_id = _create_audit(client)
+
+    runtime = client.app.state.harness
+    paper_path = runtime.store.get_pdf_path(audit_id)
+    paper_path.chmod(0o644)
+    paper_path.write_bytes(b"%PDF-1.7\n% tampered outside Veritas\n")
+
+    _assert_persisted_integrity_error(
+        client,
+        audit_id,
+        "Reproduce the main result from the immutable paper.",
+    )
