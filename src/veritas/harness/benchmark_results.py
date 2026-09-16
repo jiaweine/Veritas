@@ -86,9 +86,11 @@ class BenchmarkResultStore:
         self,
         *,
         benchmark_id: str | None = None,
-        limit: int = 100,
+        limit: int | None = 100,
     ) -> list[dict[str, Any]]:
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+        if limit is not None and (
+            isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500
+        ):
             raise ValueError("limit must be between 1 and 500")
         if benchmark_id is not None and benchmark_suite(benchmark_id) is None:
             raise ValueError(f"unknown benchmark id: {benchmark_id}")
@@ -104,7 +106,7 @@ class BenchmarkResultStore:
             key=lambda item: (str(item["recorded_at"]), str(item["result_id"])),
             reverse=True,
         )
-        return results[:limit]
+        return results if limit is None else results[:limit]
 
     def _read_result(self, path: Path) -> dict[str, Any]:
         try:
