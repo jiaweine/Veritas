@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 
 import pymupdf
 from fastapi.testclient import TestClient
@@ -36,9 +37,13 @@ def test_product_api_overview_search_runs_and_pwa(tmp_path, monkeypatch) -> None
     assert caps.status_code == 200
     assert caps.json()["api_version"] == "v1"
     assert caps.json()["features"]["command_palette"] is True
+    assert caps.json()["features"]["reproduction_artifacts"] is True
+    assert caps.json()["max_attachment_bytes"] == 80 * 1024 * 1024
     assert caps.json()["replication"]["configured"] is False
     assert caps.json()["replication"]["permission_policy"] == "deny"
     assert caps.json()["replication"]["client_supplied_commands"] is False
+    assert caps.json()["replication"]["immutable_artifact_intake"] is True
+    assert caps.json()["replication"]["workspace_per_run"] is True
 
     created = client.post(
         "/api/v1/audits",
@@ -47,6 +52,7 @@ def test_product_api_overview_search_runs_and_pwa(tmp_path, monkeypatch) -> None
     )
     assert created.status_code == 200
     audit_id = created.json()["audit_id"]
+    assert created.json()["attachments"] == []
 
     overview = client.get("/api/v1/overview").json()
     assert overview["audits_total"] == 1
@@ -107,14 +113,29 @@ def test_product_api_overview_search_runs_and_pwa(tmp_path, monkeypatch) -> None
 
 
 def test_replication_stream_is_correlated_and_server_configured(tmp_path, monkeypatch) -> None:
+    artifact_bytes = b'print("reproduce")\n'
+    workspaces = []
+
     class FakeRunner:
         def __init__(self, agent, *, permission_policy) -> None:
             self.agent = agent
             self.permission_policy = permission_policy
 
         async def stream_turn(self, workspace, prompt):
-            assert workspace.name == "replication-workspace"
+            workspaces.append(workspace)
+            assert workspace.name.startswith("run_")
+            assert workspace.parent.name == "replication-workspaces"
             assert (workspace / "paper.pdf").is_file()
+            assert not (workspace / "audit.json").exists()
+            manifest = json.loads((workspace / "artifacts.json").read_text(encoding="utf-8"))
+            assert manifest["run_id"] == workspace.name
+            assert manifest["paper"]["sha256"]
+            assert len(manifest["attachments"]) == 1
+            attachment = manifest["attachments"][0]
+            assert attachment["filename"] == "analysis.py"
+            assert attachment["sha256"] == sha256(artifact_bytes).hexdigest()
+            staged = workspace / attachment["path"]
+            assert staged.read_bytes() == artifact_bytes
             assert prompt == "Reproduce the reported main result."
             yield {
                 "event_id": "rep_evt_test",
@@ -139,6 +160,30 @@ def test_replication_stream_is_correlated_and_server_configured(tmp_path, monkey
     ).json()
     audit_id = created["audit_id"]
 
+    attached = client.post(
+        f"/api/v1/audits/{audit_id}/attachments",
+        files={"file": ("../analysis.py", artifact_bytes, "text/x-python")},
+    )
+    assert attached.status_code == 200
+    attachment = attached.json()
+    assert attachment["attachment_id"].startswith("att_")
+    assert attachment["filename"] == "analysis.py"
+    assert attachment["sha256"] == sha256(artifact_bytes).hexdigest()
+    assert attachment["size_bytes"] == len(artifact_bytes)
+
+    listed = client.get(f"/api/v1/audits/{audit_id}/attachments")
+    assert listed.status_code == 200
+    assert listed.json() == [attachment]
+    downloaded = client.get(
+        f'/api/v1/audits/{audit_id}/attachments/{attachment["attachment_id"]}'
+    )
+    assert downloaded.status_code == 200
+    assert downloaded.content == artifact_bytes
+
+    audit = client.get(f"/api/v1/audits/{audit_id}").json()
+    assert audit["attachments"] == [attachment]
+    assert any(event["kind"] == "artifact" for event in audit["events"])
+
     caps = client.get("/api/v1/capabilities").json()
     assert caps["replication"]["configured"] is True
     assert caps["replication"]["agent"] == "CI fake agent"
@@ -157,8 +202,10 @@ def test_replication_stream_is_correlated_and_server_configured(tmp_path, monkey
     run_id = run_ids.pop()
     assert run_id.startswith("run_")
     assert events[0]["payload"]["phase"] == "start"
+    assert events[0]["payload"]["attachment_count"] == 1
     assert events[-1]["payload"]["phase"] == "finish"
     assert events[-1]["payload"]["duration_ms"] >= 0
+    assert events[-1]["payload"]["attachment_count"] == 1
     assert prompt not in json.dumps(events[0], ensure_ascii=False)
 
     runs = client.get("/api/v1/runs").json()
@@ -174,6 +221,39 @@ def test_replication_stream_is_correlated_and_server_configured(tmp_path, monkey
     assert detail["duration_ms"] >= 0
     assert detail["evidence"] is False
     assert [event["kind"] for event in detail["events"]] == ["tool", "replication", "tool"]
+
+    second = client.post(
+        f"/api/v1/audits/{audit_id}/replication",
+        json={"prompt": prompt},
+    )
+    assert second.status_code == 200
+    assert len(workspaces) == 2
+    assert workspaces[0] != workspaces[1]
+    assert workspaces[0].name != workspaces[1].name
+
+
+def test_attachment_limits_and_empty_payload_fail_closed(tmp_path, monkeypatch) -> None:
+    client = TestClient(create_app(tmp_path))
+    created = client.post(
+        "/api/v1/audits",
+        data={"title": "Attachment limit paper"},
+        files={"file": ("paper.pdf", _make_pdf(), "application/pdf")},
+    ).json()
+    audit_id = created["audit_id"]
+
+    monkeypatch.setattr("veritas.harness.web.MAX_ATTACHMENT_BYTES", 3)
+    oversized = client.post(
+        f"/api/v1/audits/{audit_id}/attachments",
+        files={"file": ("data.csv", b"1234", "text/csv")},
+    )
+    assert oversized.status_code == 413
+
+    empty = client.post(
+        f"/api/v1/audits/{audit_id}/attachments",
+        files={"file": ("empty.txt", b"", "text/plain")},
+    )
+    assert empty.status_code == 400
+    assert client.get("/api/v1/audits/audit_missing/attachments").status_code == 404
 
 
 def test_empty_message_is_rejected(tmp_path) -> None:
