@@ -1,0 +1,33 @@
+.benchmark-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-bottom: 10px; }
+.benchmark-summary { padding: 13px; min-height: 106px; display: grid; align-content: start; }
+.benchmark-summary > span { color: var(--text-soft); font-size: 8px; font-weight: 650; }
+.benchmark-summary > strong { margin-top: 8px; color: var(--text); font-size: 24px; letter-spacing: -.04em; }
+.benchmark-summary > small { margin-top: 5px; color: var(--text-faint); font-size: 7.5px; line-height: 1.45; }
+.benchmark-summary .benchmark-source-short { font-size: 18px; }
+.benchmark-section { margin-bottom: 10px; }
+.benchmark-grid { padding: 10px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.benchmark-card { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #fbfcfd; }
+.benchmark-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.benchmark-card-head > div { min-width: 0; }
+.benchmark-kind { display: block; color: var(--accent-ink); font-size: 7px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.benchmark-card h3 { margin: 5px 0 0; color: var(--text); font-size: 10px; line-height: 1.35; }
+.benchmark-card p { min-height: 34px; margin: 8px 0 10px; color: var(--text-soft); font-size: 8px; line-height: 1.5; }
+.benchmark-command, .benchmark-source { display: grid; gap: 4px; margin-top: 7px; }
+.benchmark-command > span, .benchmark-source > span:first-child { color: var(--text-faint); font-size: 6.8px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+.benchmark-command code { display: block; padding: 7px; border-radius: 7px; background: #f1f3f6; color: #576172; font: 7px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: normal; overflow-wrap: anywhere; }
+.benchmark-source > span:last-child { color: #737d8d; font-size: 7px; overflow-wrap: anywhere; }
+.benchmark-policy { padding: 13px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.benchmark-policy strong { display: block; color: var(--text); font-size: 10px; }
+.benchmark-policy p { max-width: 760px; margin: 5px 0 0; color: var(--text-soft); font-size: 8.5px; line-height: 1.55; }
+.benchmark-loading { min-height: 220px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--text-soft); font-size: 10px; }
+
+@media (max-width: 1180px) {
+  .benchmark-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .benchmark-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 680px) {
+  .benchmark-summary-grid, .benchmark-grid { grid-template-columns: 1fr; }
+  .benchmark-card p { min-height: auto; }
+  .benchmark-policy { align-items: flex-start; flex-direction: column; }
+}
