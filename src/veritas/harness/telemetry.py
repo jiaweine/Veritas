@@ -101,7 +101,7 @@ def _timestamp_ns(value: str | None) -> int | None:
     if not value:
         return None
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError:
         return None
     return int(parsed.timestamp() * 1_000_000_000)
