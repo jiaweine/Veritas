@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from veritas.harness import benchmark_cli
+from veritas.harness import benchmark_cli, benchmark_results
 from veritas.harness.benchmark_results import BenchmarkResultStore
 from veritas.harness.web import create_app
 
@@ -46,6 +46,23 @@ def test_store_ingest_is_content_addressed_and_idempotent(tmp_path: Path) -> Non
     assert first["record_sha256"]
     assert store.get_result(str(first["result_id"])) == first
     assert store.list_results() == [first]
+
+
+def test_store_fails_closed_on_result_id_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = BenchmarkResultStore(tmp_path)
+    first = store.ingest(_payload())
+    different_payload = _payload(summary="Semantically different result sharing a forced short id.")
+    monkeypatch.setattr(
+        benchmark_results,
+        "_result_id_from_payload_sha256",
+        lambda _payload_sha256: str(first["result_id"]),
+    )
+
+    with pytest.raises(ValueError, match="benchmark result id collision"):
+        store.ingest(different_payload)
 
 
 def test_store_rejects_unknown_or_mismatched_benchmark_contract(tmp_path: Path) -> None:
@@ -153,3 +170,21 @@ def test_operator_cli_ingests_validated_envelope(tmp_path: Path) -> None:
     assert record["source"] == "operator"
     assert record["commit_sha"] is None
     assert BenchmarkResultStore(data_dir).get_result(str(record["result_id"])) == record
+
+
+def test_operator_cli_rejects_oversized_source_without_unbounded_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "oversized.json"
+    source.write_bytes(b" " * (benchmark_cli._MAX_RESULT_FILE_BYTES + 1))
+    data_dir = tmp_path / "harness"
+    args = argparse.Namespace(result_file=source, data_dir=str(data_dir))
+
+    def fail_read_bytes(_path: Path) -> bytes:
+        raise AssertionError("benchmark CLI must not read an unbounded source with Path.read_bytes()")
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+
+    with pytest.raises(ValueError, match="benchmark result source exceeds 1 MiB"):
+        benchmark_cli.run(args)
