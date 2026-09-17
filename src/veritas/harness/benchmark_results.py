@@ -184,6 +184,10 @@ def _record_sha256(record: dict[str, Any]) -> str:
     return sha256(_canonical_json_bytes(value)).hexdigest()
 
 
+def _result_id_from_payload_sha256(payload_sha256: str) -> str:
+    return f"bmr_{payload_sha256[:16]}"
+
+
 class BenchmarkResultStore:
     """Append-only local store for validated benchmark execution envelopes."""
 
@@ -209,7 +213,7 @@ class BenchmarkResultStore:
 
         payload_bytes = _canonical_json_bytes(validated)
         payload_sha256 = sha256(payload_bytes).hexdigest()
-        result_id = f"bmr_{payload_sha256[:16]}"
+        result_id = _result_id_from_payload_sha256(payload_sha256)
         definition = benchmark_definition(validated["benchmark_id"])
         started = datetime.fromisoformat(validated["started_at"])
         finished = datetime.fromisoformat(validated["finished_at"])
@@ -239,7 +243,10 @@ class BenchmarkResultStore:
         with self._lock:
             destination = self._result_path(result_id)
             if destination.exists():
-                return self._read_result(result_id)
+                existing = self._read_result(result_id)
+                if existing.get("payload_sha256") != payload_sha256:
+                    raise ValueError(f"benchmark result id collision: {result_id}")
+                return existing
             temporary = destination.with_suffix(".json.tmp")
             temporary.write_text(
                 json.dumps(record, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n",
