@@ -13,6 +13,7 @@ This document records the product-layer architecture introduced in the research 
 7. **Optional capabilities cannot silently weaken evidence policy.** Third-party parsing, reproduction agents, and hosted observability are explicit opt-ins with fail-closed defaults.
 8. **Execution artifacts are immutable inputs.** Research code/data/environment files are hashed, preflighted, and copied into a new workspace per reproduction run; the product UI never treats upload as permission to execute.
 9. **Benchmark execution is provenance, not a dashboard score.** Benchmark result envelopes preserve the exact suite, command, status, commit, timing, source, and scalar metrics without inventing a normalized global score or trend.
+10. **Destructive maintenance stays operator-controlled.** Completed replication workspace copies may be pruned only through an explicit local CLI; the Web API never gains an automatic or remote delete path for audit evidence.
 
 These choices mirror the supplied GrowthEvo design package: information-dense cockpit pages, compact/sidecar/workbench Agent modes, a global command palette, evidence-native objects, and a Harness trace rather than an opaque chat transcript.
 
@@ -162,6 +163,8 @@ Security behavior is fail-closed:
 
 The Reproduction UI reads `/api/v1/capabilities`, shows this boundary explicitly, supports artifact preparation independently of agent configuration, and streams NDJSON events into a live trace. The same terminal events appear in `/api/v1/runs` and can be reopened through the correlated run endpoint.
 
+Completed per-run workspace copies use a separate operator-only retention surface. `veritas-workspace-retention prune --older-than-hours N` is a dry-run unless `--apply` is supplied. Eligibility comes from the persisted terminal replication event, not filesystem mtime, and the audit state plus `artifacts.json` are revalidated immediately before deletion. Running, unknown, malformed, or newer workspaces are never selected. Cleanup removes only the per-run workspace copy and appends `maintenance` provenance while preserving the paper, attachments, audit record, and original run trace. There is intentionally no Web DELETE endpoint or automatic cleanup scheduler. See [`WORKSPACE_RETENTION.md`](WORKSPACE_RETENTION.md).
+
 ### Optional OTLP observability
 
 Local event storage remains authoritative. Optional OpenTelemetry export can be enabled with:
@@ -225,7 +228,7 @@ The repository already ships a zero-build FastAPI/static Harness. Replacing it w
 The branch keeps the repository's existing release gates and adds product/client checks:
 
 - `ruff check src tests`;
-- full `pytest` suite, including product API, benchmark-result persistence/tamper/CLI coverage, parser-stack, metadata-only telemetry, run-detail, fake-ACP lifecycle, immutable-artifact tamper/preflight, and bounded-upload regression coverage;
+- full `pytest` suite, including product API, benchmark-result persistence/tamper/CLI coverage, workspace-retention dry-run/apply/provenance coverage, parser-stack, metadata-only telemetry, run-detail, fake-ACP lifecycle, immutable-artifact tamper/preflight, and bounded-upload regression coverage;
 - PDF regression benchmark;
 - PDF geometry holdout;
 - adversarial extraction fail-closed benchmark;
@@ -238,6 +241,5 @@ The branch keeps the repository's existing release gates and adds product/client
 
 - Evaluate the optional Docling snapshot on locked extraction fixtures and real-PDF holdouts before considering any promotion-policy change.
 - Have CI emit Benchmark Result Envelope v1 artifacts and define an explicit ingestion/promotion workflow for long-lived product installations; do not silently scrape or reinterpret historical result files.
-- Define retention/cleanup policy for completed reproduction workspaces so long-running local installations do not accumulate execution outputs indefinitely.
 - Add a Langfuse-specific adapter only if needed; OTLP remains the vendor-neutral optional observability boundary.
 - Add native incremental NDJSON consumption when React Native's supported fetch/runtime surface provides a stable streaming reader across target platforms.
