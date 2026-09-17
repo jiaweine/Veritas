@@ -49,6 +49,7 @@ dev = [
 veritas-harness = "veritas.harness.cli:main"
 veritas-replication = "veritas.replication.cli:main"
 veritas-benchmark-result = "veritas.harness.benchmark_cli:main"
+veritas-workspace-retention = "veritas.harness.workspace_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/veritas"]
