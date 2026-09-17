@@ -28,7 +28,8 @@ def build_parser() -> argparse.ArgumentParser:
 def run(args: argparse.Namespace) -> dict[str, object]:
     path = args.result_file.expanduser().resolve()
     try:
-        source_bytes = path.read_bytes()
+        with path.open("rb") as handle:
+            source_bytes = handle.read(_MAX_RESULT_FILE_BYTES + 1)
     except OSError as exc:
         raise ValueError(f"unable to read benchmark result: {path}") from exc
     if len(source_bytes) > _MAX_RESULT_FILE_BYTES:
