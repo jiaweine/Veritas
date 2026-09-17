@@ -259,3 +259,22 @@ def test_workspace_cli_is_dry_run_unless_apply_is_explicit(tmp_path: Path) -> No
     applied = workspace_cli.run(apply_args)
     assert applied["deleted_count"] == 1
     assert not workspace.exists()
+
+
+def test_workspace_cli_does_not_create_missing_data_dir(tmp_path: Path) -> None:
+    missing = tmp_path / "not-created"
+
+    listed = workspace_cli.run(argparse.Namespace(data_dir=str(missing), command="list"))
+    dry = workspace_cli.run(
+        argparse.Namespace(
+            data_dir=str(missing),
+            command="prune",
+            older_than_hours=24,
+            apply=False,
+        )
+    )
+
+    assert listed["workspace_count"] == 0
+    assert dry["workspace_count"] == 0
+    assert dry["candidate_count"] == 0
+    assert not missing.exists()
