@@ -226,6 +226,41 @@ def test_manifest_run_id_mismatch_fails_closed(tmp_path: Path) -> None:
     assert item["eligible"] is False
 
 
+def test_workspace_mountpoint_fails_closed(tmp_path: Path, monkeypatch) -> None:
+    store = HarnessStore(tmp_path)
+    audit_id = _create_audit(store)
+    run_id = "run_mounted"
+    workspace = _create_workspace(store, audit_id, run_id)
+    mounted = workspace / "mounted-output"
+    mounted.mkdir()
+    _append_run_event(
+        store,
+        audit_id,
+        run_id,
+        phase="finish",
+        created_at="2026-09-01T00:00:00Z",
+    )
+
+    original_ismount = os.path.ismount
+    monkeypatch.setattr(
+        os.path,
+        "ismount",
+        lambda path: Path(path) == mounted or original_ismount(path),
+    )
+    result = WorkspaceRetention(store).prune(
+        older_than_hours=1,
+        apply=True,
+        now=datetime(2026, 9, 17, 12, tzinfo=UTC),
+    )
+
+    assert result["candidate_count"] == 0
+    assert result["deleted_count"] == 0
+    assert workspace.is_dir()
+    item = result["workspaces"][0]
+    assert item["integrity"] == "invalid"
+    assert item["reason"] == "workspace contains a mount point"
+
+
 def test_workspace_cli_is_dry_run_unless_apply_is_explicit(tmp_path: Path) -> None:
     store = HarnessStore(tmp_path)
     audit_id = _create_audit(store)
