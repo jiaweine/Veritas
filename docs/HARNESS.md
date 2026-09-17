@@ -108,6 +108,25 @@ If preflight fails—for example because a local file was modified outside Verit
 
 The local workspace is **not** presented as a security sandbox. The configured ACP agent/runtime remains responsible for process, filesystem, network, and dependency isolation.
 
+### Replication workspace retention
+
+Completed per-run workspaces are execution copies, not the durable audit record. Operators can inspect them with:
+
+```bash
+veritas-workspace-retention list
+```
+
+Cleanup is always explicit and local. A retention selection is a dry-run unless `--apply` is supplied:
+
+```bash
+veritas-workspace-retention prune --older-than-hours 168
+veritas-workspace-retention prune --older-than-hours 168 --apply
+```
+
+Age is derived from the persisted terminal replication event (`finish` or `error`), never filesystem mtime. Before an applied delete, Veritas re-reads the audit state and revalidates the workspace `artifacts.json`. Running, unknown, malformed, symlink-root, and newer workspaces are left untouched.
+
+Applied cleanup removes only `replication-workspaces/<run_id>`. It preserves `audit.json`, immutable paper/attachments, benchmark result envelopes, and the original detector/replication event trace. A `maintenance` start→finish/error record documents the operator cleanup without storing an absolute local path. There is intentionally no Web DELETE endpoint and no automatic cleanup scheduler. See [`WORKSPACE_RETENTION.md`](WORKSPACE_RETENTION.md) for the full policy.
+
 ## Benchmark result persistence
 
 The CI command catalog and execution results are separate objects. `GET /api/v1/benchmarks` always describes the seven repository benchmark/probe commands wired to CI. Durable results appear only after an operator explicitly ingests a **Benchmark Result Envelope v1**:
