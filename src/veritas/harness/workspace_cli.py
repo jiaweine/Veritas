@@ -36,8 +36,40 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _empty_prune_result(*, older_than_hours: int, apply: bool) -> dict[str, object]:
+    if isinstance(older_than_hours, bool) or not isinstance(older_than_hours, int):
+        raise TypeError("older_than_hours must be an integer")
+    if older_than_hours < 1:
+        raise ValueError("older_than_hours must be at least 1")
+    return {
+        "schema_version": WORKSPACE_RETENTION_SCHEMA_VERSION,
+        "apply": apply,
+        "automatic_cleanup": False,
+        "older_than_hours": older_than_hours,
+        "workspace_count": 0,
+        "candidate_count": 0,
+        "deleted_count": 0,
+        "workspaces": [],
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, object]:
-    root = Path(args.data_dir).expanduser()
+    root = Path(args.data_dir).expanduser().resolve()
+    if not root.exists():
+        if args.command == "list":
+            return {
+                "schema_version": WORKSPACE_RETENTION_SCHEMA_VERSION,
+                "automatic_cleanup": False,
+                "workspace_count": 0,
+                "workspaces": [],
+            }
+        return _empty_prune_result(
+            older_than_hours=args.older_than_hours,
+            apply=bool(args.apply),
+        )
+    if not root.is_dir():
+        raise ValueError("Harness data path must be a directory")
+
     retention = WorkspaceRetention(HarnessStore(root))
     if args.command == "list":
         workspaces = retention.list_workspaces()
