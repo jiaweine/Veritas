@@ -33,6 +33,8 @@ def _run_id(value: object) -> str | None:
 
 
 def _tree_size_no_follow(root: Path) -> int:
+    if os.path.ismount(root):
+        raise ValueError("workspace root must not be a mount point")
     total = 0
     pending = [root]
     while pending:
@@ -43,7 +45,10 @@ def _tree_size_no_follow(root: Path) -> int:
                 if entry.is_symlink():
                     total += stat.st_size
                 elif entry.is_dir(follow_symlinks=False):
-                    pending.append(Path(entry.path))
+                    child = Path(entry.path)
+                    if os.path.ismount(child):
+                        raise ValueError("workspace contains a mount point")
+                    pending.append(child)
                 else:
                     total += stat.st_size
     return total
@@ -216,6 +221,9 @@ class WorkspaceRetention:
             return item
         try:
             item["size_bytes"] = _tree_size_no_follow(workspace)
+        except ValueError as exc:
+            item["reason"] = str(exc)
+            return item
         except OSError:
             item["reason"] = "workspace size could not be inspected safely"
             return item
@@ -282,6 +290,7 @@ class WorkspaceRetention:
         try:
             if workspace.is_symlink() or not workspace.is_dir():
                 raise ValueError("workspace changed before deletion")
+            _tree_size_no_follow(workspace)
             _remove_tree(workspace)
         except (OSError, ValueError) as exc:
             failed = HarnessEvent(
