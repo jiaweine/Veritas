@@ -110,7 +110,11 @@ The local workspace is **not** presented as a security sandbox. The configured A
 
 ## Benchmark result persistence
 
-The CI command catalog and execution results are separate objects. `GET /api/v1/benchmarks` always describes the seven repository benchmark/probe commands wired to CI. Durable results appear only after an operator explicitly ingests a **Benchmark Result Envelope v1**:
+The CI command catalog, CI-produced envelope artifacts, and the local durable result store are separate objects. `GET /api/v1/benchmarks` always describes the seven repository benchmark/probe commands wired to CI.
+
+Repository CI runs each catalog entry through `scripts/run_benchmark_enveloped.py`. The wrapper executes the exact catalog command, inherits its stdout/stderr, mirrors its exit code, and writes one strict **Benchmark Result Envelope v1** JSON file. The existing three gating steps remain gating; the four diagnostic probes retain `continue-on-error: true`. An `if: always()` artifact step uploads every envelope that was actually produced as `veritas-benchmark-results-<run-id>-<attempt>`. If a gating benchmark fails, its failed envelope is still uploaded; benchmarks that GitHub never ran are not synthesized as `skipped` results.
+
+CI publication is not local persistence. Durable Workbench results appear only after an operator explicitly ingests an envelope:
 
 ```bash
 veritas-benchmark-result ./benchmark-result.json
@@ -132,18 +136,15 @@ A minimal CI-sourced envelope looks like:
   "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "run_url": "https://github.com/example/repo/actions/runs/123",
   "summary": "PDF regression benchmark passed.",
-  "metrics": {
-    "cases": 4,
-    "verification_rate": 1.0
-  }
+  "metrics": {}
 }
 ```
 
-Accepted statuses are `passed`, `failed`, `error`, and `skipped`; accepted sources are `ci` and `operator`. A `ci` envelope requires a full 40-character Git commit SHA. Metrics are deliberately limited to a flat map of JSON scalar values. This prevents an unversioned arbitrary payload from becoming a de facto second result schema.
+Accepted statuses are `passed`, `failed`, `error`, and `skipped`; accepted sources are `ci` and `operator`. A `ci` envelope requires a full 40-character Git commit SHA. Metrics are deliberately limited to a flat map of JSON scalar values. The CI wrapper currently emits an empty metric map rather than scraping benchmark stdout; stable metrics can be added only when the producing benchmark exposes an explicit structured contract.
 
-The canonicalized envelope is content-addressed as `bmr_<hash>`. Re-ingesting the same semantic envelope is idempotent. The stored record also carries the source-file SHA-256, ingestion time, derived duration, and catalog-derived title/kind/gating metadata. Records are written read-only where supported and revalidated on every read; payload or derived-metadata tampering fails closed instead of being skipped.
+The canonicalized envelope is content-addressed as `bmr_<hash>`. Re-ingesting the same semantic envelope is idempotent. The stored record also carries the source-file SHA-256, whole-record SHA-256, ingestion time, derived duration, and catalog-derived title/kind/gating metadata. Records are written read-only where supported and revalidated on every read; payload, provenance, or derived-metadata tampering fails closed instead of being skipped.
 
-Persistence is local-first and does **not** imply that Veritas automatically captures historical GitHub Actions runs. CI or another operator must intentionally emit and ingest envelopes. The UI shows only persisted status/provenance/scalar metrics and never collapses heterogeneous metrics into a synthetic global score or trend.
+Persistence is local-first and does **not** imply that Veritas scans or imports historical GitHub Actions runs. Actions intentionally emits downloadable envelopes; an operator intentionally chooses which envelopes enter a local Harness store. The UI shows only persisted status/provenance/scalar metrics and never collapses heterogeneous metrics into a synthetic global score or trend.
 
 ## API
 
