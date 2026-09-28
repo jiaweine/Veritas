@@ -163,13 +163,15 @@ python scripts/benchmark_extraction_adversarial.py
 python scripts/benchmark_real_pdf_promotion.py
 ```
 
-The Product Workbench exposes the command inventory through `GET /api/v1/benchmarks` and validated persisted envelopes through `GET /api/v1/benchmark-results`. Results are append-only local artifacts and appear only after an operator explicitly ingests a Benchmark Result Envelope v1:
+Repository CI runs the locked catalog commands through `scripts/run_benchmark_enveloped.py`. The wrapper preserves each command's stdout/stderr and exit code while emitting a strict Benchmark Result Envelope v1. Every workflow run uploads the envelopes that were actually produced as a `veritas-benchmark-results-<run-id>-<attempt>` GitHub Actions artifact. A failed gating benchmark therefore still leaves an inspectable failed envelope; later steps that GitHub skips are not fabricated as results.
+
+The CI artifact is **not** the local Harness result store. The Product Workbench exposes the command inventory through `GET /api/v1/benchmarks` and validated persisted envelopes through `GET /api/v1/benchmark-results`. Results appear in a local workspace only after an operator explicitly ingests an envelope:
 
 ```bash
 veritas-benchmark-result ./benchmark-result.json
 ```
 
-Persistence does not make heterogeneous metrics comparable. Veritas shows the recorded status, provenance, and scalar metrics as-is and deliberately does not synthesize a global benchmark score or trend.
+Persistence does not make heterogeneous metrics comparable. The CI wrapper currently leaves `metrics` empty rather than parsing benchmark stdout heuristically. Veritas shows recorded status/provenance/scalar metrics as-is and deliberately does not synthesize a global benchmark score or trend.
 
 For the full test suite:
 
