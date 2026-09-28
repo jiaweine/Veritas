@@ -40,6 +40,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: veritas-benchmark-results-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .veritas-benchmark-results/*.json
+          path: benchmark-result-envelopes/*.json
           if-no-files-found: warn
           retention-days: 30
