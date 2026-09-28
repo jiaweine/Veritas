@@ -11,7 +11,7 @@ from pathlib import Path
 from .benchmark_catalog import benchmark_definition
 from .benchmark_results import validate_benchmark_result_payload
 
-_DEFAULT_OUTPUT_DIR = Path(".veritas-benchmark-results")
+_DEFAULT_OUTPUT_DIR = Path("benchmark-result-envelopes")
 _ERROR_EXIT_CODE = 127
 
 
