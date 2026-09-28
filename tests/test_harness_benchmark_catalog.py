@@ -48,7 +48,7 @@ def test_benchmark_catalog_suites_are_enveloped_in_ci_without_changing_gate_sema
             assert non_gating_block in workflow
 
     assert "if: always()\n        uses: actions/upload-artifact@v7" in workflow
-    assert "path: .veritas-benchmark-results/*.json" in workflow
+    assert "path: benchmark-result-envelopes/*.json" in workflow
 
 
 def test_benchmark_catalog_is_exposed_without_synthetic_scores(tmp_path) -> None:
