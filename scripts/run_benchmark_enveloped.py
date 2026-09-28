@@ -14,7 +14,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path(".veritas-benchmark-results"),
+        default=Path("benchmark-result-envelopes"),
         help="Directory for Benchmark Result Envelope v1 JSON files",
     )
     return parser
