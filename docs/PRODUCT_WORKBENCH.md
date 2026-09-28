@@ -85,7 +85,11 @@ Workspace-preparation integrity errors are also represented as persisted runs. A
 
 `GET /api/v1/benchmarks` exposes the benchmark/probe commands actually wired to `.github/workflows/ci.yml`. The catalog distinguishes release-gating benchmarks from diagnostic non-gating probes and is regression-tested against the workflow so product copy cannot silently drift from CI.
 
-Benchmark execution results use a separate **Benchmark Result Envelope v1**. They are not inferred from the existence of a benchmark script or from an old benchmark artifact. An operator explicitly imports an envelope with:
+Benchmark execution results use a separate **Benchmark Result Envelope v1**. They are not inferred from the existence of a benchmark script or from an old benchmark artifact. Repository CI runs each catalog command through `scripts/run_benchmark_enveloped.py`; the wrapper inherits benchmark stdout/stderr, preserves the command's exit code, and writes a strict envelope for every suite that actually executes. The workflow then uses `actions/upload-artifact@v7` under `if: always()` to publish the produced JSON files as `veritas-benchmark-results-<run-id>-<attempt>`.
+
+The wrapper does not invent results for steps GitHub never ran. A failing gating benchmark still produces a failed envelope before the job stops, while the four diagnostic probes retain their existing `continue-on-error: true` behavior. CI-generated envelopes currently use `metrics={}` rather than scraping unversioned stdout text.
+
+CI artifact publication is distinct from local persistence. An operator explicitly imports an envelope with:
 
 ```text
 veritas-benchmark-result ./benchmark-result.json
@@ -105,11 +109,11 @@ The result contract is intentionally narrow and versioned. It accepts:
 
 Unknown envelope fields are rejected rather than silently discarded. Nested metric payloads, non-finite numbers, command drift, malformed commit ids, and timezone-free timestamps fail closed. The source file is bounded to 1 MiB.
 
-Validated envelopes are canonicalized and content-addressed as `bmr_<hash>`. Re-ingesting the same semantic result is idempotent. Stored records add source/payload SHA-256 values, ingestion time, derived duration, and catalog-derived title/kind/gating metadata. Reads recompute the canonical payload hash and derived metadata so local tampering fails closed instead of being hidden.
+Validated envelopes are canonicalized and content-addressed as `bmr_<hash>`. Re-ingesting the same semantic result is idempotent. Stored records add source/payload/whole-record SHA-256 values, ingestion time, derived duration, and catalog-derived title/kind/gating metadata. Reads recompute the record and canonical payload hashes plus derived metadata so local tampering fails closed instead of being hidden.
 
 `GET /api/v1/benchmark-results` exposes the append-only local result history and supports an optional `benchmark_id` filter. `GET /api/v1/benchmark-results/{result_id}` returns one validated result. `GET /api/v1/benchmarks` reports `result_count`, `results_available`, and the actual latest result per suite.
 
-This persistence layer does **not** automatically scrape GitHub Actions history or turn a single old SSRN/reproduction JSON into a current product score. CI or another operator still has to intentionally emit and ingest envelopes. The UI shows recorded status/provenance/scalar metrics as-is; `scores_available` remains false and no cross-suite score/trend is synthesized.
+This persistence layer does **not** automatically scrape or import GitHub Actions history, and it does not turn a single old SSRN/reproduction JSON into a current product score. CI intentionally emits downloadable provenance envelopes; an operator intentionally decides which envelopes enter a long-lived local Harness. The UI shows recorded status/provenance/scalar metrics as-is; `scores_available` remains false and no cross-suite score/trend is synthesized.
 
 ### Parser stack and optional Docling adapter
 
@@ -225,11 +229,12 @@ The repository already ships a zero-build FastAPI/static Harness. Replacing it w
 The branch keeps the repository's existing release gates and adds product/client checks:
 
 - `ruff check src tests`;
-- full `pytest` suite, including product API, benchmark-result persistence/tamper/CLI coverage, parser-stack, metadata-only telemetry, run-detail, fake-ACP lifecycle, immutable-artifact tamper/preflight, and bounded-upload regression coverage;
+- full `pytest` suite, including product API, benchmark-result persistence/tamper/CLI coverage, CI envelope-runner/workflow coverage, parser-stack, metadata-only telemetry, run-detail, fake-ACP lifecycle, immutable-artifact tamper/preflight, and bounded-upload regression coverage;
 - PDF regression benchmark;
 - PDF geometry holdout;
 - adversarial extraction fail-closed benchmark;
 - existing real-PDF non-gating probes;
+- GitHub Actions upload of produced Benchmark Result Envelope v1 files without changing gate semantics;
 - Expo dependency compatibility check;
 - mobile TypeScript `tsc --noEmit`;
 - Node syntax checks for the dependency-free web modules.
@@ -237,7 +242,7 @@ The branch keeps the repository's existing release gates and adds product/client
 ## Next integration points
 
 - Evaluate the optional Docling snapshot on locked extraction fixtures and real-PDF holdouts before considering any promotion-policy change.
-- Have CI emit Benchmark Result Envelope v1 artifacts and define an explicit ingestion/promotion workflow for long-lived product installations; do not silently scrape or reinterpret historical result files.
+- Define an explicit bulk-import/promotion policy for CI envelope artifacts in long-lived product installations; do not silently scrape or auto-ingest historical runs.
 - Define retention/cleanup policy for completed reproduction workspaces so long-running local installations do not accumulate execution outputs indefinitely.
 - Add a Langfuse-specific adapter only if needed; OTLP remains the vendor-neutral optional observability boundary.
 - Add native incremental NDJSON consumption when React Native's supported fetch/runtime surface provides a stable streaming reader across target platforms.
