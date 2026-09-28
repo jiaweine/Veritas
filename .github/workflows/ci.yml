@@ -19,19 +19,27 @@ jobs:
       - run: pip install -e '.[dev,pdf,attestation,web,replication]'
       - run: ruff check src tests
       - run: pytest -q
-      - run: python scripts/benchmark_pdf_regression.py
-      - run: python scripts/benchmark_pdf_geometry_holdout.py
+      - run: python scripts/run_benchmark_enveloped.py pdf-regression
+      - run: python scripts/run_benchmark_enveloped.py pdf-geometry-holdout
       - name: Adversarial extraction fail-closed benchmark
-        run: python scripts/benchmark_extraction_adversarial.py
+        run: python scripts/run_benchmark_enveloped.py extraction-adversarial
       - name: BMC grouped regression-header probe (non-gating)
         continue-on-error: true
-        run: python scripts/probe_bmc_grouped_headers.py
+        run: python scripts/run_benchmark_enveloped.py bmc-grouped-headers
       - name: Real PDF extraction smoke (non-gating)
         continue-on-error: true
-        run: python scripts/smoke_real_pdf.py
+        run: python scripts/run_benchmark_enveloped.py real-pdf-smoke
       - name: Real PDF fail-closed controls (non-gating)
         continue-on-error: true
-        run: python scripts/smoke_real_pdf_fail_closed.py
+        run: python scripts/run_benchmark_enveloped.py real-pdf-fail-closed
       - name: Real PDF selective-promotion benchmark (non-gating)
         continue-on-error: true
-        run: python scripts/benchmark_real_pdf_promotion.py
+        run: python scripts/run_benchmark_enveloped.py real-pdf-promotion
+      - name: Upload benchmark result envelopes
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: veritas-benchmark-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .veritas-benchmark-results/*.json
+          if-no-files-found: warn
+          retention-days: 30
