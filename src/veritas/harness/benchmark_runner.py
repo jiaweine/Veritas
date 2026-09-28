@@ -69,7 +69,7 @@ def run_ci_benchmark(
     summary = f"{title} could not be started."
 
     try:
-        completed = subprocess.run(shlex.split(command), check=False)  # noqa: S603
+        completed = subprocess.run(shlex.split(command), check=False)  # noqa: S603, S607
     except OSError as exc:
         summary = f"{title} could not be started ({type(exc).__name__})."
     else:
