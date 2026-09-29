@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import shlex
+import threading
 from collections.abc import AsyncIterator, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -15,13 +17,16 @@ from uuid import uuid4
 class PermissionPolicy(StrEnum):
     """Host-side policy for ACP permission requests.
 
-    ``DENY`` is the safe default. ``ALLOW_ONCE`` may select only an explicit
-    ``allow_once`` option offered by the agent; it never upgrades to
-    ``allow_always``.
+    ``DENY`` remains the safe default. ``ALLOW_ONCE`` may select only an
+    explicit ``allow_once`` option offered by the agent. ``INTERACTIVE`` is
+    fail-closed unless a host control plane has explicitly activated the run;
+    when active, a human decision may select only an offered ``allow_once``
+    option and can never upgrade to ``allow_always``.
     """
 
     DENY = "deny"
     ALLOW_ONCE = "allow_once"
+    INTERACTIVE = "interactive"
 
 
 @dataclass(frozen=True)
@@ -111,6 +116,231 @@ class ReplicationDependencyError(RuntimeError):
     pass
 
 
+class ReplicationCancelledError(RuntimeError):
+    pass
+
+
+@dataclass
+class _PendingPermission:
+    run_id: str
+    request_id: str
+    options: tuple[dict[str, Any], ...]
+    future: asyncio.Future[str | None]
+    loop: asyncio.AbstractEventLoop
+    created_at: str
+
+
+@dataclass
+class _RunControl:
+    run_id: str
+    interactive_permissions: bool
+    cancelled: bool = False
+    pending: dict[str, _PendingPermission] = field(default_factory=dict)
+
+
+class _InteractiveControlPlane:
+    """Process-local control plane for a currently streaming ACP run.
+
+    The web harness activates runs explicitly. CLI callers never enter this
+    registry, so ``PermissionPolicy.INTERACTIVE`` remains deny-by-default when
+    no host UI is present. Futures are resolved through their owning event loop
+    so approval requests may arrive on another ASGI request/thread safely.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._runs: dict[str, _RunControl] = {}
+
+    def activate(self, run_id: str, *, interactive_permissions: bool) -> None:
+        _validate_run_id(run_id)
+        with self._lock:
+            self._runs[run_id] = _RunControl(
+                run_id=run_id,
+                interactive_permissions=interactive_permissions,
+            )
+
+    def deactivate(self, run_id: str) -> None:
+        with self._lock:
+            control = self._runs.pop(run_id, None)
+        if control is None:
+            return
+        for pending in tuple(control.pending.values()):
+            pending.loop.call_soon_threadsafe(_resolve_future, pending.future, None)
+
+    def state(self, run_id: str) -> dict[str, Any]:
+        with self._lock:
+            control = self._runs.get(run_id)
+            if control is None:
+                return {
+                    "run_id": run_id,
+                    "active": False,
+                    "cancel_requested": False,
+                    "interactive_permissions": False,
+                    "pending_permissions": [],
+                }
+            pending = [
+                {
+                    "request_id": item.request_id,
+                    "options": list(item.options),
+                    "created_at": item.created_at,
+                }
+                for item in control.pending.values()
+            ]
+            return {
+                "run_id": run_id,
+                "active": True,
+                "cancel_requested": control.cancelled,
+                "interactive_permissions": control.interactive_permissions,
+                "pending_permissions": pending,
+            }
+
+    def active(self, run_id: str) -> bool:
+        with self._lock:
+            return run_id in self._runs
+
+    def interactive(self, run_id: str) -> bool:
+        with self._lock:
+            control = self._runs.get(run_id)
+            return bool(control and control.interactive_permissions)
+
+    def cancelled(self, run_id: str) -> bool:
+        with self._lock:
+            control = self._runs.get(run_id)
+            return bool(control and control.cancelled)
+
+    def cancel(self, run_id: str) -> bool:
+        with self._lock:
+            control = self._runs.get(run_id)
+            if control is None:
+                return False
+            control.cancelled = True
+            pending = tuple(control.pending.values())
+        for item in pending:
+            item.loop.call_soon_threadsafe(_resolve_future, item.future, None)
+        return True
+
+    async def request(
+        self,
+        run_id: str,
+        request_id: str,
+        options: tuple[dict[str, Any], ...],
+        *,
+        timeout_seconds: float = 300.0,
+    ) -> str | None:
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[str | None] = loop.create_future()
+        pending = _PendingPermission(
+            run_id=run_id,
+            request_id=request_id,
+            options=options,
+            future=future,
+            loop=loop,
+            created_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        )
+        with self._lock:
+            control = self._runs.get(run_id)
+            if control is None or not control.interactive_permissions or control.cancelled:
+                return None
+            control.pending[request_id] = pending
+        try:
+            return await asyncio.wait_for(future, timeout=timeout_seconds)
+        except TimeoutError:
+            return None
+        finally:
+            with self._lock:
+                control = self._runs.get(run_id)
+                if control is not None:
+                    control.pending.pop(request_id, None)
+
+    def resolve(
+        self,
+        run_id: str,
+        request_id: str,
+        *,
+        decision: str,
+        option_id: str | None = None,
+    ) -> dict[str, Any]:
+        normalized = decision.strip().casefold()
+        if normalized not in {"allow_once", "reject"}:
+            raise ValueError("permission decision must be allow_once or reject")
+        with self._lock:
+            control = self._runs.get(run_id)
+            if control is None:
+                raise KeyError("replication run is not active")
+            pending = control.pending.get(request_id)
+            if pending is None:
+                raise KeyError("permission request is not pending")
+            allow_once_options = [
+                item
+                for item in pending.options
+                if item.get("kind") == "allow_once" and item.get("optionId")
+            ]
+            selected_id: str | None = None
+            if normalized == "allow_once":
+                if not allow_once_options:
+                    raise ValueError("agent did not offer an allow_once permission option")
+                if option_id:
+                    match = next(
+                        (item for item in allow_once_options if item.get("optionId") == option_id),
+                        None,
+                    )
+                    if match is None:
+                        raise ValueError("selected permission option is not an offered allow_once option")
+                    selected_id = str(match["optionId"])
+                elif len(allow_once_options) == 1:
+                    selected_id = str(allow_once_options[0]["optionId"])
+                else:
+                    raise ValueError("option_id is required when multiple allow_once options are offered")
+            loop = pending.loop
+            future = pending.future
+        loop.call_soon_threadsafe(_resolve_future, future, selected_id)
+        return {
+            "run_id": run_id,
+            "request_id": request_id,
+            "decision": normalized,
+            "selected_option_id": selected_id,
+        }
+
+
+_CONTROL_PLANE = _InteractiveControlPlane()
+
+
+def activate_replication_control(run_id: str, *, interactive_permissions: bool) -> None:
+    _CONTROL_PLANE.activate(run_id, interactive_permissions=interactive_permissions)
+
+
+def deactivate_replication_control(run_id: str) -> None:
+    _CONTROL_PLANE.deactivate(run_id)
+
+
+def replication_control_state(run_id: str) -> dict[str, Any]:
+    _validate_run_id(run_id)
+    return _CONTROL_PLANE.state(run_id)
+
+
+def resolve_replication_permission(
+    run_id: str,
+    request_id: str,
+    *,
+    decision: str,
+    option_id: str | None = None,
+) -> dict[str, Any]:
+    _validate_run_id(run_id)
+    if not request_id.startswith("perm_") or not request_id[5:].isalnum():
+        raise ValueError("invalid permission request id")
+    return _CONTROL_PLANE.resolve(
+        run_id,
+        request_id,
+        decision=decision,
+        option_id=option_id,
+    )
+
+
+def cancel_replication_run(run_id: str) -> bool:
+    _validate_run_id(run_id)
+    return _CONTROL_PLANE.cancel(run_id)
+
+
 class AcpTurnRunner:
     """Run one ACP turn inside a caller-selected workspace.
 
@@ -139,6 +369,7 @@ class AcpTurnRunner:
             raise ValueError(f"replication workspace does not exist: {workspace_path}")
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("replication prompt must be non-empty")
+        run_id = workspace_path.name if workspace_path.name.startswith("run_") else ""
 
         try:
             from acp import PROTOCOL_VERSION, spawn_agent_process
@@ -177,7 +408,11 @@ class AcpTurnRunner:
                         title=update_kind,
                         detail=detail,
                         status=_status_for_update(update_kind, payload),
-                        payload={"session_id": session_id, "update": payload},
+                        payload={
+                            "session_id": session_id,
+                            "update_kind": update_kind,
+                            "update": payload,
+                        },
                     ).to_dict()
                 )
 
@@ -189,25 +424,64 @@ class AcpTurnRunner:
                 **_: Any,
             ) -> object:
                 call_payload = _jsonable(tool_call)
-                option_payloads = [_jsonable(option) for option in options]
-                selected = _select_allow_once(options) if policy is PermissionPolicy.ALLOW_ONCE else None
+                option_payloads = tuple(_jsonable(option) for option in options)
+                request_id = f"perm_{uuid4().hex[:12]}"
+                title = str(
+                    call_payload.get("title")
+                    or call_payload.get("name")
+                    or "Tool permission"
+                )
+
+                selected: object | None = None
+                if (
+                    policy is PermissionPolicy.INTERACTIVE
+                    and run_id
+                    and _CONTROL_PLANE.interactive(run_id)
+                ):
+                    await queue.put(
+                        ReplicationEvent(
+                            kind="permission",
+                            title=title,
+                            detail="Waiting for an explicit allow-once or reject decision.",
+                            status="review",
+                            payload={
+                                "request_id": request_id,
+                                "session_id": session_id,
+                                "tool_call": call_payload,
+                                "options": list(option_payloads),
+                                "decision": "pending",
+                                "policy": policy.value,
+                            },
+                        ).to_dict()
+                    )
+                    selected_id = await _CONTROL_PLANE.request(
+                        run_id,
+                        request_id,
+                        option_payloads,
+                    )
+                    selected = _select_allow_once_by_id(options, selected_id)
+                elif policy is PermissionPolicy.ALLOW_ONCE:
+                    selected = _select_allow_once(options)
+
                 decision = "selected" if selected is not None else "cancelled"
                 await queue.put(
                     ReplicationEvent(
                         kind="permission",
-                        title=str(call_payload.get("title") or call_payload.get("name") or "Tool permission"),
+                        title=title,
                         detail=(
-                            "Allowed once by explicit Veritas policy."
+                            "Allowed once by explicit Veritas policy or human approval."
                             if selected is not None
-                            else "Denied by Veritas replication policy."
+                            else "Denied by Veritas replication policy or reviewer decision."
                         ),
-                        status="review" if selected is not None else "blocked",
+                        status="success" if selected is not None else "blocked",
                         payload={
+                            "request_id": request_id,
                             "session_id": session_id,
                             "tool_call": call_payload,
-                            "options": option_payloads,
+                            "options": list(option_payloads),
                             "decision": decision,
                             "policy": policy.value,
+                            "selected_option_id": getattr(selected, "option_id", None),
                         },
                     ).to_dict()
                 )
@@ -246,6 +520,20 @@ class AcpTurnRunner:
             )
 
             while not prompt_task.done() or not queue.empty():
+                if run_id and _CONTROL_PLANE.cancelled(run_id):
+                    prompt_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await prompt_task
+                    while not queue.empty():
+                        yield queue.get_nowait()
+                    yield ReplicationEvent(
+                        kind="turn_cancelled",
+                        title="Replication turn cancelled",
+                        detail="The host requested cancellation; the agent process is being terminated.",
+                        status="review",
+                        payload={"session_id": session.session_id},
+                    ).to_dict()
+                    raise ReplicationCancelledError("replication run cancelled by user")
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=0.1)
                 except TimeoutError:
@@ -292,6 +580,28 @@ def _select_allow_once(options: Iterable[object]) -> object | None:
         if getattr(option, "kind", None) == "allow_once" and getattr(option, "option_id", None):
             return option
     return None
+
+
+def _select_allow_once_by_id(options: Iterable[object], option_id: str | None) -> object | None:
+    if not option_id:
+        return None
+    for option in options:
+        if (
+            getattr(option, "kind", None) == "allow_once"
+            and getattr(option, "option_id", None) == option_id
+        ):
+            return option
+    return None
+
+
+def _resolve_future(future: asyncio.Future[str | None], value: str | None) -> None:
+    if not future.done():
+        future.set_result(value)
+
+
+def _validate_run_id(run_id: str) -> None:
+    if not isinstance(run_id, str) or not run_id.startswith("run_") or not run_id[4:].isalnum():
+        raise ValueError("invalid replication run id")
 
 
 def _jsonable(value: object) -> dict[str, Any]:

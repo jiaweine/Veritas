@@ -6,6 +6,8 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
+from veritas.replication import activate_replication_control, deactivate_replication_control
+
 from .models import HarnessEvent
 from .service import AuditHarness
 
@@ -91,14 +93,15 @@ async def stream_replication_guarded(
     """Keep replication failures inside the persisted run lifecycle.
 
     Immutable paper and attachment hashes are preflighted before the harness is
-    allowed to create a run workspace. AuditHarness remains authoritative for
-    the normal start/update/finish/error lifecycle; this guard only fills errors
-    that would otherwise escape before or outside that lifecycle.
+    allowed to create a run workspace. Once the start event exposes the run id,
+    this web-only guard activates a process-local control plane for cancellation
+    and, only when explicitly configured, interactive allow-once approvals.
     """
 
     started = perf_counter()
     run_id: str | None = None
     emitted = False
+    active_control_run: str | None = None
 
     try:
         record = runtime.get_audit(audit_id)
@@ -128,6 +131,17 @@ async def stream_replication_guarded(
             candidate = payload.get("run_id")
             if candidate:
                 run_id = str(candidate)
+            if (
+                active_control_run is None
+                and run_id is not None
+                and payload.get("phase") == "start"
+            ):
+                capability = runtime.replication_capability()
+                activate_replication_control(
+                    run_id,
+                    interactive_permissions=(capability.get("permission_policy") == "interactive"),
+                )
+                active_control_run = run_id
             yield event
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         for event in _persist_failure(
@@ -140,3 +154,6 @@ async def stream_replication_guarded(
             stage="stream" if emitted else "workspace_prepare",
         ):
             yield event
+    finally:
+        if active_control_run is not None:
+            deactivate_replication_control(active_control_run)
