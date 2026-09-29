@@ -9,6 +9,7 @@ from uuid import uuid4
 from veritas.replication import activate_replication_control, deactivate_replication_control
 
 from .models import HarnessEvent
+from .replication_workspace_product import normalize_replication_event
 from .service import AuditHarness
 
 
@@ -96,6 +97,8 @@ async def stream_replication_guarded(
     allowed to create a run workspace. Once the start event exposes the run id,
     this web-only guard activates a process-local control plane for cancellation
     and, only when explicitly configured, interactive allow-once approvals.
+    Product-facing stream events are projected through the same normalizer used
+    when persisted runs are reopened, so cancellation has one UI meaning.
     """
 
     started = perf_counter()
@@ -142,7 +145,7 @@ async def stream_replication_guarded(
                     interactive_permissions=(capability.get("permission_policy") == "interactive"),
                 )
                 active_control_run = run_id
-            yield event
+            yield normalize_replication_event(event)
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         for event in _persist_failure(
             runtime,
