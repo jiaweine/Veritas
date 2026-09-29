@@ -122,6 +122,54 @@ def replication_workspace_product_file(
     }
 
 
+def normalize_replication_event(
+    value: dict[str, Any],
+    *,
+    historical_permissions: bool = False,
+) -> dict[str, Any]:
+    """Project one persisted/live event into product-safe replication semantics."""
+
+    projected = dict(value)
+    payload = projected.get("payload")
+    if not isinstance(payload, dict):
+        return projected
+
+    outer = dict(payload)
+    if (
+        projected.get("kind") == "tool"
+        and outer.get("error_type") == "ReplicationCancelledError"
+    ):
+        projected["title"] = "Replication run cancelled"
+        projected["detail"] = "Cancelled by the user; the agent turn was terminated."
+        projected["status"] = "review"
+        outer["phase"] = "cancelled"
+        outer["error_type"] = None
+        terminal_result = outer.get("result")
+        if isinstance(terminal_result, dict):
+            normalized_terminal_result = dict(terminal_result)
+            normalized_terminal_result["status"] = "cancelled"
+            outer["result"] = normalized_terminal_result
+
+    agent_event = outer.get("agent_event")
+    if (
+        historical_permissions
+        and isinstance(agent_event, dict)
+        and agent_event.get("kind") == "permission"
+    ):
+        agent_copy = dict(agent_event)
+        agent_payload = agent_copy.get("payload")
+        if isinstance(agent_payload, dict) and agent_payload.get("decision") == "pending":
+            permission_copy = dict(agent_payload)
+            permission_copy["decision"] = "historical_pending"
+            agent_copy["payload"] = permission_copy
+            agent_copy["detail"] = "Historical permission request; this run is no longer actionable."
+            agent_copy["status"] = "review"
+            outer["agent_event"] = agent_copy
+
+    projected["payload"] = outer
+    return projected
+
+
 def normalize_replication_run(value: dict[str, Any]) -> dict[str, Any]:
     """Normalize persisted replication terminal state and archived approvals."""
 
@@ -137,46 +185,13 @@ def normalize_replication_run(value: dict[str, Any]) -> dict[str, Any]:
         result["error_type"] = None
 
     events = result.get("events")
-    if not isinstance(events, list):
-        return result
-    projected_events: list[Any] = []
-    for event in events:
-        if not isinstance(event, dict):
-            projected_events.append(event)
-            continue
-        projected = dict(event)
-        payload = projected.get("payload")
-        if isinstance(payload, dict):
-            outer = dict(payload)
-            if (
-                cancelled
-                and projected.get("kind") == "tool"
-                and outer.get("error_type") == "ReplicationCancelledError"
-            ):
-                projected["title"] = "Replication run cancelled"
-                projected["detail"] = "Cancelled by the user; the agent turn was terminated."
-                projected["status"] = "review"
-                outer["phase"] = "cancelled"
-                outer["error_type"] = None
-                terminal_result = outer.get("result")
-                if isinstance(terminal_result, dict):
-                    normalized_terminal_result = dict(terminal_result)
-                    normalized_terminal_result["status"] = "cancelled"
-                    outer["result"] = normalized_terminal_result
-            agent_event = outer.get("agent_event")
-            if isinstance(agent_event, dict) and agent_event.get("kind") == "permission":
-                agent_copy = dict(agent_event)
-                agent_payload = agent_copy.get("payload")
-                if isinstance(agent_payload, dict) and agent_payload.get("decision") == "pending":
-                    permission_copy = dict(agent_payload)
-                    permission_copy["decision"] = "historical_pending"
-                    agent_copy["payload"] = permission_copy
-                    agent_copy["detail"] = "Historical permission request; this run is no longer actionable."
-                    agent_copy["status"] = "review"
-                    outer["agent_event"] = agent_copy
-            projected["payload"] = outer
-        projected_events.append(projected)
-    result["events"] = projected_events
+    if isinstance(events, list):
+        result["events"] = [
+            normalize_replication_event(event, historical_permissions=True)
+            if isinstance(event, dict)
+            else event
+            for event in events
+        ]
     return result
 
 
