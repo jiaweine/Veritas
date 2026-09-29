@@ -1,0 +1,360 @@
+/* Evidence preview and secondary-surface polish for the reference-aligned workbench. */
+
+body.reference-audit-active .ah-source-pane:has(.ref-evidence-preview) .ah-pdf {
+  display: none;
+}
+
+.ref-evidence-preview {
+  flex: 1 1 auto;
+  min-height: 320px;
+  display: flex;
+  overflow: auto;
+  border-bottom: 1px solid #1d2b32;
+  background: #cfd1cf;
+}
+
+.ref-preview-stage {
+  width: 100%;
+  min-height: 100%;
+  display: grid;
+  place-items: start center;
+  padding: 20px 18px 24px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255,255,255,.26), transparent 34%),
+    #d4d5d2;
+}
+
+.ref-paper-sheet {
+  width: min(96%, 700px);
+  min-height: 275px;
+  margin-top: 2px;
+  padding: 24px 28px 20px;
+  color: #16191b;
+  background: #fbfaf6;
+  border: 1px solid rgba(0,0,0,.13);
+  box-shadow: 0 7px 28px rgba(0,0,0,.15);
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.ref-paper-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ref-paper-heading strong {
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.ref-paper-heading span {
+  color: #666;
+  font: 8px/1.3 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: nowrap;
+}
+
+.ref-paper-rule {
+  height: 1px;
+  margin: 9px 0;
+  background: #777;
+}
+
+.ref-paper-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: #333;
+  font-size: 9px;
+  font-style: italic;
+}
+
+.ref-paper-subhead em {
+  color: #6a6a6a;
+  font: 7.5px/1.2 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-style: normal;
+}
+
+.ref-paper-table {
+  width: 100%;
+  border-top: 1px solid #777;
+  border-bottom: 1px solid #999;
+}
+
+.ref-paper-tr {
+  display: grid;
+  grid-template-columns: minmax(145px,1.5fr) repeat(4,minmax(70px,.8fr));
+  align-items: center;
+  min-height: 37px;
+  border-top: 1px solid #d5d4cf;
+}
+
+.ref-paper-tr:first-child {
+  border-top: 0;
+}
+
+.ref-paper-tr > * {
+  min-width: 0;
+  padding: 6px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  text-align: center;
+}
+
+.ref-paper-tr > *:first-child {
+  text-align: left;
+}
+
+.ref-paper-th {
+  color: #353535;
+  font-style: italic;
+}
+
+.ref-paper-th > * {
+  font-size: 8px;
+}
+
+.ref-paper-tr mark {
+  border-radius: 2px;
+  background: rgba(62, 187, 184, .32);
+  color: #111;
+  font-weight: 700;
+}
+
+.ref-paper-note {
+  margin: 12px 0 0;
+  color: #4c4c4c;
+  font-size: 8px;
+  line-height: 1.45;
+  font-style: italic;
+}
+
+/* Finish the dark Runs surface: existing data stays live, only visual treatment changes. */
+body.reference-runs-active .run-detail-metrics > div {
+  border: 1px solid #203139;
+  background: #0d181e;
+}
+
+body.reference-runs-active .run-detail-metrics span {
+  color: #6f8289;
+}
+
+body.reference-runs-active .run-detail-metrics strong {
+  color: #e3ecee;
+}
+
+body.reference-runs-active .run-detail-grid,
+body.reference-runs-active .run-detail-field,
+body.reference-runs-active .run-trace-title,
+body.reference-runs-active .run-trace-card {
+  border-color: #1d2b32;
+}
+
+body.reference-runs-active .run-parser-chip {
+  border-color: #294148;
+  background: #102026;
+  color: #9db0b6;
+}
+
+body.reference-runs-active .run-detail-actions .secondary-button {
+  border-color: #294148;
+  background: #102026;
+  color: #9ee9e3;
+}
+
+body.reference-runs-active .run-kind-mark,
+body.reference-runs-active .run-event-icon,
+body.reference-runs-active .run-trace-rail > span {
+  border-color: #294148;
+  background: #102026;
+  color: #73ddd5;
+}
+
+body.reference-runs-active .run-trace-rail i {
+  background: #20343a;
+}
+
+/* Replication remains capability-gated, but visually belongs to the same research system. */
+body:has([data-reproduction-surface='true']) {
+  --bg: #071015;
+  --surface: #0a1419;
+  --surface-soft: #0d181e;
+  --surface-strong: #111e25;
+  --text: #e9f1f3;
+  --text-soft: #9aaab0;
+  --text-muted: #8b9ca2;
+  --text-faint: #697c83;
+  --line: #1d2b32;
+  --line-strong: #2a4048;
+  --accent: #52d5cb;
+  --accent-soft: rgba(82,213,203,.12);
+  --accent-ink: #80e5de;
+  --good: #55d59b;
+  --good-soft: rgba(85,213,155,.11);
+  --warn: #e7b44a;
+  --warn-soft: rgba(231,180,74,.11);
+  --bad: #ff7070;
+  --bad-soft: rgba(255,112,112,.11);
+  background: #071015;
+}
+
+body:has([data-reproduction-surface='true']) .app-shell,
+body:has([data-reproduction-surface='true']) .app-main,
+body:has([data-reproduction-surface='true']) .main-content {
+  background: #071015;
+}
+
+body:has([data-reproduction-surface='true']) .sidebar {
+  background: linear-gradient(180deg, #071116, #081217);
+  border-right-color: #1d2b32;
+}
+
+body:has([data-reproduction-surface='true']) .topbar {
+  background: #081217;
+  border-bottom-color: #1d2b32;
+  color: #e8f0f2;
+}
+
+body:has([data-reproduction-surface='true']) .command-trigger,
+body:has([data-reproduction-surface='true']) .ghost-button {
+  border-color: #203139;
+  background: #0d181e;
+  color: #9eafb4;
+}
+
+body:has([data-reproduction-surface='true']) .primary-button {
+  background: #3fc9c0;
+  color: #061115;
+  box-shadow: none;
+}
+
+body:has([data-reproduction-surface='true']) .nav-item.active {
+  background: #10262b;
+  color: #edf4f5;
+  box-shadow: inset 2px 0 0 #52d5cb;
+}
+
+body:has([data-reproduction-surface='true']) .replication-product {
+  color: #dfe8ea;
+}
+
+body:has([data-reproduction-surface='true']) .rep-title-row h1,
+body:has([data-reproduction-surface='true']) .rep-thread-empty h2,
+body:has([data-reproduction-surface='true']) .rep-center-head strong,
+body:has([data-reproduction-surface='true']) .rep-artifact strong,
+body:has([data-reproduction-surface='true']) .rep-run-row strong {
+  color: #eaf2f4;
+}
+
+body:has([data-reproduction-surface='true']) .rep-title-block p,
+body:has([data-reproduction-surface='true']) .rep-thread-empty p,
+body:has([data-reproduction-surface='true']) .rep-project-meta small,
+body:has([data-reproduction-surface='true']) .rep-artifact small,
+body:has([data-reproduction-surface='true']) .rep-run-row small {
+  color: #758991;
+}
+
+body:has([data-reproduction-surface='true']) .rep-boundary-pills span,
+body:has([data-reproduction-surface='true']) .rep-select,
+body:has([data-reproduction-surface='true']) .rep-icon-action,
+body:has([data-reproduction-surface='true']) .rep-suggestions button,
+body:has([data-reproduction-surface='true']) .rep-cancel {
+  border-color: #263a42;
+  background: #0d181e;
+  color: #96a8ae;
+}
+
+body:has([data-reproduction-surface='true']) .rep-grid {
+  border-color: #24383f;
+  background: #081217;
+  box-shadow: none;
+}
+
+body:has([data-reproduction-surface='true']) .rep-left,
+body:has([data-reproduction-surface='true']) .rep-right {
+  background: #091318;
+}
+
+body:has([data-reproduction-surface='true']) .rep-center {
+  background: #081217;
+}
+
+body:has([data-reproduction-surface='true']) .rep-left,
+body:has([data-reproduction-surface='true']) .rep-right,
+body:has([data-reproduction-surface='true']) .rep-section,
+body:has([data-reproduction-surface='true']) .rep-center-head,
+body:has([data-reproduction-surface='true']) .rep-right-tabs,
+body:has([data-reproduction-surface='true']) .rep-composer-wrap {
+  border-color: #1d2b32;
+}
+
+body:has([data-reproduction-surface='true']) .rep-artifact:hover,
+body:has([data-reproduction-surface='true']) .rep-run-row:hover,
+body:has([data-reproduction-surface='true']) .rep-run-row.selected {
+  border-color: #2a444b;
+  background: #0e2025;
+}
+
+body:has([data-reproduction-surface='true']) .rep-file-icon,
+body:has([data-reproduction-surface='true']) .rep-run-glyph,
+body:has([data-reproduction-surface='true']) .rep-agent-orb {
+  background: #123034;
+  color: #79e0d8;
+  box-shadow: none;
+}
+
+body:has([data-reproduction-surface='true']) .rep-thread {
+  background: #081217;
+}
+
+body:has([data-reproduction-surface='true']) .rep-system-event,
+body:has([data-reproduction-surface='true']) .rep-tool-card,
+body:has([data-reproduction-surface='true']) .rep-plan-card,
+body:has([data-reproduction-surface='true']) .rep-update-card {
+  border-color: #203139;
+  background: #0d181e;
+}
+
+body:has([data-reproduction-surface='true']) .rep-system-event strong,
+body:has([data-reproduction-surface='true']) .rep-tool-head strong,
+body:has([data-reproduction-surface='true']) .rep-plan-card strong,
+body:has([data-reproduction-surface='true']) .rep-message-text {
+  color: #dce6e8;
+}
+
+body:has([data-reproduction-surface='true']) .rep-system-event small,
+body:has([data-reproduction-surface='true']) .rep-plan-card p,
+body:has([data-reproduction-surface='true']) .rep-update-card p,
+body:has([data-reproduction-surface='true']) .rep-message-label {
+  color: #758991;
+}
+
+body:has([data-reproduction-surface='true']) .rep-composer,
+body:has([data-reproduction-surface='true']) .rep-composer textarea,
+body:has([data-reproduction-surface='true']) .rep-workspace-empty,
+body:has([data-reproduction-surface='true']) .rep-workspace-pane {
+  border-color: #263a42;
+  background: #0b161b;
+  color: #dce6e8;
+}
+
+body:has([data-reproduction-surface='true']) .rep-right-tabs button.active {
+  color: #7ce0d9;
+  border-bottom-color: #52d5cb;
+}
+
+@media (max-width: 880px) {
+  .ref-paper-sheet {
+    width: 100%;
+    padding: 18px 16px;
+  }
+
+  .ref-paper-tr {
+    grid-template-columns: minmax(110px,1.4fr) repeat(4,minmax(58px,.8fr));
+  }
+}

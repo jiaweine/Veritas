@@ -12,6 +12,10 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert shell.status_code == 200
     assert "/static/audit-harness-product.css" in shell.text
     assert "/static/audit-harness-product.js" in shell.text
+    assert "/static/reference-workbench.css" in shell.text
+    assert "/static/reference-workbench.js" in shell.text
+    assert "/static/reference-surfaces.css" in shell.text
+    assert "/static/reference-evidence-preview.js" in shell.text
 
     script = client.get("/static/audit-harness-product.js")
     assert script.status_code == 200
@@ -28,8 +32,36 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert ".ah-splitter" in styles.text
     assert ".ah-run-inspector" in styles.text
 
+    reference_script = client.get("/static/reference-workbench.js")
+    assert reference_script.status_code == 200
+    assert 'json("/api/v1/audits")' in reference_script.text
+    assert 'json("/api/v1/runs")' in reference_script.text
+    assert "latest_result" in reference_script.text
+    assert "data-reference-analysis" in reference_script.text
+
+    evidence_script = client.get("/static/reference-evidence-preview.js")
+    assert evidence_script.status_code == 200
+    assert "/api/v1/audits/${encodeURIComponent(auditId)}" in evidence_script.text
+    assert "result.fields" in evidence_script.text
+    assert "data-reference-evidence-preview" in evidence_script.text
+
+    reference_styles = client.get("/static/reference-workbench.css")
+    assert reference_styles.status_code == 200
+    assert "reference-audit-active" in reference_styles.text
+    assert "ref-selected-analysis" in reference_styles.text
+    assert "reference-runs-active" in reference_styles.text
+
+    surface_styles = client.get("/static/reference-surfaces.css")
+    assert surface_styles.status_code == 200
+    assert "ref-evidence-preview" in surface_styles.text
+    assert "data-reproduction-surface" in surface_styles.text
+
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'const CACHE = "veritas-shell-v15"' in service_worker.text
+    assert 'const CACHE = "veritas-shell-v17"' in service_worker.text
     assert "/static/audit-harness-product.css" in service_worker.text
     assert "/static/audit-harness-product.js" in service_worker.text
+    assert "/static/reference-workbench.css" in service_worker.text
+    assert "/static/reference-workbench.js" in service_worker.text
+    assert "/static/reference-surfaces.css" in service_worker.text
+    assert "/static/reference-evidence-preview.js" in service_worker.text

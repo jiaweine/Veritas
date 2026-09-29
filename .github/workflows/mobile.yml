@@ -37,6 +37,8 @@ jobs:
           node --check ../src/veritas/harness/static/runs.js
           node --check ../src/veritas/harness/static/settings.js
           node --check ../src/veritas/harness/static/benchmarks.js
+          node --check ../src/veritas/harness/static/reference-workbench.js
+          node --check ../src/veritas/harness/static/reference-evidence-preview.js
       - name: Install mobile dependencies
         run: npm install --no-audit --no-fund
       - name: Validate Expo dependency set
