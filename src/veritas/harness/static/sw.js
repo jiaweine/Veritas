@@ -1,4 +1,4 @@
-const CACHE = "veritas-shell-v15";
+const CACHE = "veritas-shell-v16";
 const SHELL = [
   "/",
   "/static/styles.css",
@@ -9,6 +9,7 @@ const SHELL = [
   "/static/runs.css",
   "/static/settings.css",
   "/static/benchmarks.css",
+  "/static/reference-workbench.css",
   "/static/app.js",
   "/static/audit-harness.js",
   "/static/audit-harness-product.js",
@@ -17,6 +18,7 @@ const SHELL = [
   "/static/runs.js",
   "/static/settings.js",
   "/static/benchmarks.js",
+  "/static/reference-workbench.js",
   "/static/icon.svg",
   "/manifest.webmanifest",
 ];
