@@ -302,7 +302,12 @@ document.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
   if (target.closest("[data-ah-notes-tab], .ah-notes-pane")) return;
-  if (target.closest("[data-ah-tab], [data-ah-page], [data-ah-run], [data-ah-nav]")) {
+  if (target.closest("[data-ah-run]")) {
+    deactivateNotes();
+    root.querySelector("[data-ah-tab='source']")?.click();
+    return;
+  }
+  if (target.closest("[data-ah-tab], [data-ah-page], [data-ah-nav]")) {
     deactivateNotes();
   }
 }, true);
