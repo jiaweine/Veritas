@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from veritas.replication.acp import _InteractiveControlPlane
+
 
 _OPTIONS = (
     {"kind": "allow_always", "optionId": "forever", "name": "Always allow"},
@@ -37,8 +36,12 @@ def test_valid_permission_decision_is_consumed_exactly_once() -> None:
         assert first["selected_option_id"] == "once"
         assert control.state(run_id)["pending_permissions"] == []
 
-        with pytest.raises(KeyError, match="not pending"):
+        try:
             control.resolve(run_id, request_id, decision="reject")
+        except KeyError as exc:
+            assert "not pending" in str(exc)
+        else:
+            raise AssertionError("a permission decision must be consumed exactly once")
 
         assert await pending == "once"
         control.deactivate(run_id)
@@ -58,13 +61,17 @@ def test_invalid_allow_once_does_not_consume_pending_request() -> None:
         )
         await asyncio.sleep(0)
 
-        with pytest.raises(ValueError, match="not an offered allow_once"):
+        try:
             control.resolve(
                 run_id,
                 request_id,
                 decision="allow_once",
                 option_id="forever",
             )
+        except ValueError as exc:
+            assert "not an offered allow_once" in str(exc)
+        else:
+            raise AssertionError("allow_once must select an offered allow_once option")
         assert len(control.state(run_id)["pending_permissions"]) == 1
 
         rejected = control.resolve(run_id, request_id, decision="reject")
@@ -93,13 +100,17 @@ def test_cancel_atomically_revokes_all_pending_approvals() -> None:
         assert state["cancel_requested"] is True
         assert state["pending_permissions"] == []
 
-        with pytest.raises(KeyError, match="cancellation already requested"):
+        try:
             control.resolve(
                 run_id,
                 request_id,
                 decision="allow_once",
                 option_id="once",
             )
+        except KeyError as exc:
+            assert "cancellation already requested" in str(exc)
+        else:
+            raise AssertionError("cancelled runs must reject later permission approvals")
 
         assert await pending is None
         control.deactivate(run_id)
