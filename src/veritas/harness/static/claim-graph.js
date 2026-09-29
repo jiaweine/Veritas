@@ -4,6 +4,7 @@ const graphState = {
   auditId: "",
   active: false,
   queued: false,
+  rendering: false,
   requestToken: 0,
 };
 
@@ -180,9 +181,11 @@ function bindGraph(root, audit) {
 }
 
 async function renderGraph(root) {
+  if (graphState.rendering) return;
   const auditId = root.dataset.auditId || "";
   const inspector = root.querySelector("#ah-inspector");
   if (!auditId || !inspector) return;
+  graphState.rendering = true;
   const token = ++graphState.requestToken;
   inspector.innerHTML = `<div class="cg-loading"><span>◇</span><strong>Building evidence graph…</strong></div>`;
   try {
@@ -197,6 +200,8 @@ async function renderGraph(root) {
     bindGraph(freshRoot, audit);
   } catch (error) {
     inspector.innerHTML = `<div class="cg-empty"><span>!</span><strong>Claim graph unavailable</strong><p>${esc(error.message)}</p></div>`;
+  } finally {
+    graphState.rendering = false;
   }
 }
 
@@ -229,7 +234,7 @@ function ensureTab(root) {
     nativeTab.dataset.claimGraphBound = "true";
     nativeTab.addEventListener("click", () => { graphState.active = false; });
   });
-  if (graphState.active && !root.querySelector("[data-reference-claim-graph='true']")) renderGraph(root);
+  if (graphState.active && !graphState.rendering && !root.querySelector("[data-reference-claim-graph='true']")) renderGraph(root);
 }
 
 function enhance() {
