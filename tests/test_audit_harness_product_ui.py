@@ -16,6 +16,9 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "/static/reference-workbench.js" in shell.text
     assert "/static/reference-surfaces.css" in shell.text
     assert "/static/reference-evidence-preview.js" in shell.text
+    assert "/static/claim-graph.css" in shell.text
+    assert "/static/claim-graph.js" in shell.text
+    assert "/static/mobile-polish.css" in shell.text
 
     script = client.get("/static/audit-harness-product.js")
     assert script.status_code == 200
@@ -45,6 +48,11 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "result.fields" in evidence_script.text
     assert "data-reference-evidence-preview" in evidence_script.text
 
+    claim_script = client.get("/static/claim-graph.js")
+    assert claim_script.status_code == 200
+    assert "data-reference-claim-graph" in claim_script.text
+    assert "veritas:evidence-field" in claim_script.text
+
     reference_styles = client.get("/static/reference-workbench.css")
     assert reference_styles.status_code == 200
     assert "reference-audit-active" in reference_styles.text
@@ -56,12 +64,20 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "ref-evidence-preview" in surface_styles.text
     assert "data-reproduction-surface" in surface_styles.text
 
+    mobile_styles = client.get("/static/mobile-polish.css")
+    assert mobile_styles.status_code == 200
+    assert ".ah-header-actions" in mobile_styles.text
+    assert ".ah-event > .ah-badge" in mobile_styles.text
+
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'const CACHE = "veritas-shell-v17"' in service_worker.text
+    assert 'const CACHE = "veritas-shell-v19"' in service_worker.text
     assert "/static/audit-harness-product.css" in service_worker.text
     assert "/static/audit-harness-product.js" in service_worker.text
     assert "/static/reference-workbench.css" in service_worker.text
     assert "/static/reference-workbench.js" in service_worker.text
     assert "/static/reference-surfaces.css" in service_worker.text
     assert "/static/reference-evidence-preview.js" in service_worker.text
+    assert "/static/claim-graph.css" in service_worker.text
+    assert "/static/claim-graph.js" in service_worker.text
+    assert "/static/mobile-polish.css" in service_worker.text
