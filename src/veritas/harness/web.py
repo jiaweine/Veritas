@@ -12,6 +12,12 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from veritas.replication import (
+    cancel_replication_run,
+    replication_control_state,
+    resolve_replication_permission,
+)
+
 from ..version import package_version
 from .benchmark_catalog import benchmark_catalog, benchmark_definition
 from .benchmark_results import BenchmarkResultStore
@@ -20,6 +26,12 @@ from .replication_guard import stream_replication_guarded
 from .replication_workspace import (
     preview_replication_workspace_file,
     replication_workspace_snapshot,
+)
+from .replication_workspace_product import (
+    find_replication_audit,
+    normalize_replication_run,
+    replication_workspace_product_file,
+    replication_workspace_product_snapshot,
 )
 from .run_views import project_run_detail
 from .service import AuditHarness
@@ -37,6 +49,11 @@ class MessageRequest(BaseModel):
 
 class ReplicationRequest(BaseModel):
     prompt: str
+
+
+class PermissionDecisionRequest(BaseModel):
+    decision: str
+    option_id: str | None = None
 
 
 def _cors_origins() -> list[str]:
@@ -117,6 +134,18 @@ def create_app(
     @app.get("/api/v1/capabilities")
     def capabilities() -> dict[str, object]:
         value = dict(runtime.capabilities())
+        replication = dict(value.get("replication") or {})
+        replication.update(
+            {
+                "interactive_approval_supported": True,
+                "interactive_approval_enabled": replication.get("permission_policy") == "interactive",
+                "cancellation_supported": True,
+                "workspace_inspector": True,
+                "workspace_diff": False,
+                "bounded_workspace_preview": True,
+            }
+        )
+        value["replication"] = replication
         value["version"] = product_version
         value["api_version"] = _API_VERSION
         value["max_attachment_bytes"] = MAX_ATTACHMENT_BYTES
@@ -174,14 +203,14 @@ def create_app(
 
     @app.get("/api/v1/runs")
     def runs() -> list[dict[str, object]]:
-        return runtime.runs()
+        return [normalize_replication_run(item) for item in runtime.runs()]
 
     @app.get("/api/v1/runs/{run_id}")
     def run_detail(run_id: str) -> dict[str, object]:
         detail = project_run_detail(runtime.list_audits(), run_id)
         if detail is None:
             raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
-        return detail
+        return normalize_replication_run(detail)
 
     @app.get("/api/v1/search")
     def search(
@@ -320,8 +349,9 @@ def create_app(
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
 
+    # Stable audit-scoped workspace inspection API from the bounded inspector.
     @app.get("/api/v1/audits/{audit_id}/replication-runs/{run_id}/workspace")
-    def replication_workspace(audit_id: str, run_id: str) -> dict[str, object]:
+    def audit_replication_workspace(audit_id: str, run_id: str) -> dict[str, object]:
         try:
             return replication_workspace_snapshot(runtime.store, audit_id, run_id)
         except FileNotFoundError as exc:
@@ -332,13 +362,79 @@ def create_app(
             raise HTTPException(status_code=413, detail=str(exc)) from exc
 
     @app.get("/api/v1/audits/{audit_id}/replication-runs/{run_id}/workspace/file")
-    def replication_workspace_file(
+    def audit_replication_workspace_file(
         audit_id: str,
         run_id: str,
         path: Annotated[str, Query(min_length=1, max_length=512)],
     ) -> dict[str, object]:
         try:
             return preview_replication_workspace_file(runtime.store, audit_id, run_id, path)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    # Run-centric product controls and projections used by the three-pane UI.
+    @app.get("/api/v1/replication/runs/{run_id}/control")
+    def replication_control(run_id: str) -> dict[str, object]:
+        try:
+            find_replication_audit(runtime, run_id)
+            return replication_control_state(run_id)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/v1/replication/runs/{run_id}/permissions/{request_id}")
+    def decide_replication_permission(
+        run_id: str,
+        request_id: str,
+        request: PermissionDecisionRequest,
+    ) -> dict[str, object]:
+        try:
+            find_replication_audit(runtime, run_id)
+            return resolve_replication_permission(
+                run_id,
+                request_id,
+                decision=request.decision,
+                option_id=request.option_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc.args[0])) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/v1/replication/runs/{run_id}/cancel")
+    def cancel_replication(run_id: str) -> dict[str, object]:
+        try:
+            find_replication_audit(runtime, run_id)
+            cancelled = cancel_replication_run(run_id)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if not cancelled:
+            raise HTTPException(status_code=409, detail="replication run is no longer active")
+        return {"run_id": run_id, "cancel_requested": True}
+
+    @app.get("/api/v1/runs/{run_id}/workspace")
+    def product_replication_workspace(run_id: str) -> dict[str, object]:
+        try:
+            return replication_workspace_product_snapshot(runtime, run_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+
+    @app.get("/api/v1/runs/{run_id}/workspace/file")
+    def product_replication_workspace_file(
+        run_id: str,
+        path: Annotated[str, Query(min_length=1, max_length=512)],
+    ) -> dict[str, object]:
+        try:
+            return replication_workspace_product_file(runtime, run_id, path)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:

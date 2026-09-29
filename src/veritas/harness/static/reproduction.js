@@ -1,5 +1,20 @@
 const main = document.querySelector("#main-content");
 
+const repState = {
+  capabilities: null,
+  audits: [],
+  selectedAuditId: "",
+  attachments: [],
+  runs: [],
+  selectedRunId: "",
+  selectedRun: null,
+  workspace: null,
+  selectedFile: null,
+  inspectorTab: "changes",
+  streaming: false,
+  maxAttachmentBytes: 80 * 1024 * 1024,
+};
+
 const escapeHtml = (value = "") => String(value)
   .replaceAll("&", "&amp;")
   .replaceAll("<", "&lt;")
@@ -7,46 +22,18 @@ const escapeHtml = (value = "") => String(value)
   .replaceAll('"', "&quot;")
   .replaceAll("'", "&#039;");
 
-async function getJson(path) {
-  const response = await fetch(path, { headers: { Accept: "application/json" } });
+async function request(path, options = {}) {
+  const response = await fetch(path, options);
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
     try { detail = (await response.json()).detail || detail; } catch {}
     throw new Error(detail);
   }
-  return response.json();
+  return response;
 }
 
-function badge(status, text = status) {
-  const normalized = String(status || "info").replaceAll("_", "-");
-  return `<span class="badge ${escapeHtml(normalized)}">${escapeHtml(text)}</span>`;
-}
-
-function traceSymbol(event) {
-  const agentKind = event.payload?.agent_event?.kind || "";
-  const title = String(event.title || "").toLowerCase();
-  if (agentKind === "permission") return "◆";
-  if (title.includes("terminal")) return ">_";
-  if (title.includes("tool_call") || title.includes("tool call")) return "⌁";
-  if (event.kind === "tool") return "⌁";
-  if (event.kind === "replication") return "↻";
-  return "·";
-}
-
-function traceRow(event) {
-  const status = event.status || "info";
-  const kind = event.kind || "event";
-  const payload = event.payload || {};
-  const phase = payload.phase ? ` · ${payload.phase}` : "";
-  const duration = payload.duration_ms != null ? ` · ${Number(payload.duration_ms).toFixed(0)} ms` : "";
-  return `<div class="status-row">
-    <span class="status-icon ${escapeHtml(status)}">${escapeHtml(traceSymbol(event))}</span>
-    <div class="status-copy">
-      <strong>${escapeHtml(event.title || "Replication event")}</strong>
-      <small>${escapeHtml(kind)}${escapeHtml(phase)}${escapeHtml(duration)}${event.detail ? ` · ${escapeHtml(event.detail)}` : ""}</small>
-    </div>
-    ${badge(status)}
-  </div>`;
+async function getJson(path) {
+  return request(path, { headers: { Accept: "application/json" } }).then((response) => response.json());
 }
 
 function formatBytes(value) {
@@ -56,193 +43,391 @@ function formatBytes(value) {
   return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MiB`;
 }
 
-function lockControls(controls) {
-  const snapshot = controls.filter(Boolean).map((control) => [control, control.disabled]);
-  snapshot.forEach(([control]) => { control.disabled = true; });
-  return () => snapshot.forEach(([control, disabled]) => { control.disabled = disabled; });
+function formatDuration(value) {
+  const ms = Number(value);
+  if (!Number.isFinite(ms)) return "—";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  return `${(ms / 1000).toFixed(ms < 10000 ? 2 : 1)} s`;
 }
 
-function renderArtifacts(items, auditId) {
-  if (!items.length) {
-    return `<div class="artifact-empty"><strong>No attached artifacts</strong><small>Add code, data, environment files, or an archive. Veritas stores the original bytes immutably and does not unpack or execute them in the web process.</small></div>`;
-  }
-  return items.map((item) => `<div class="artifact-row">
-    <span class="artifact-icon">◇</span>
-    <div class="artifact-copy">
-      <strong>${escapeHtml(item.filename || item.attachment_id)}</strong>
-      <small>${formatBytes(item.size_bytes)} · <span class="mono">sha256:${escapeHtml(String(item.sha256 || "").slice(0, 16))}…</span></small>
+function formatTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function badge(status, label = status) {
+  const normalized = String(status || "info").replaceAll("_", "-");
+  return `<span class="badge ${escapeHtml(normalized)}">${escapeHtml(label || "info")}</span>`;
+}
+
+function selectedAudit() {
+  return repState.audits.find((audit) => audit.audit_id === repState.selectedAuditId) || null;
+}
+
+function replicationRuns() {
+  return repState.runs.filter((run) => run.run_kind === "replication" && (!repState.selectedAuditId || run.audit_id === repState.selectedAuditId));
+}
+
+function renderShell() {
+  const capability = repState.capabilities?.replication || {};
+  const configured = Boolean(capability.configured);
+  const interactive = Boolean(capability.interactive_approval_enabled);
+  const audits = repState.audits;
+  const selected = selectedAudit();
+  const runs = replicationRuns();
+  const auditOptions = audits.map((audit) => `<option value="${escapeHtml(audit.audit_id)}" ${audit.audit_id === repState.selectedAuditId ? "selected" : ""}>${escapeHtml(audit.title || audit.filename || audit.audit_id)}</option>`).join("");
+
+  main.innerHTML = `<div class="page replication-product" data-reproduction-surface="true">
+    <div class="rep-topbar">
+      <div class="rep-title-block">
+        <span class="eyebrow">Replication workspace</span>
+        <div class="rep-title-row"><h1>Reproduce with an agent</h1>${configured ? badge("success", capability.agent || "ACP agent") : badge("review", "agent not configured")}</div>
+        <p>Code-agent execution stays separate from the Audit Agent. Veritas supplies immutable paper/artifact copies, records ACP events, and independently inspects the run workspace.</p>
+      </div>
+      <div class="rep-boundary-pills">
+        <span>Permission · <b>${escapeHtml(capability.permission_policy || "deny")}</b></span>
+        <span>Approval UI · <b>${interactive ? "interactive" : "off"}</b></span>
+        <span>Sandbox · <b>agent-owned</b></span>
+      </div>
     </div>
-    <a class="artifact-download" href="/api/v1/audits/${encodeURIComponent(auditId)}/attachments/${encodeURIComponent(item.attachment_id)}" download>Download</a>
-  </div>`).join("");
+
+    ${!audits.length ? `<div class="empty-state rep-empty"><div class="empty-state-inner"><div class="empty-mark">↻</div><h2>No paper available</h2><p>Upload a research paper first, then attach code/data and open a replication workspace.</p></div></div>` : `
+    <div class="rep-grid">
+      <aside class="rep-left" aria-label="Replication project">
+        <section class="rep-section">
+          <div class="rep-section-head"><span>Project</span><span class="rep-dot ${configured ? "online" : ""}"></span></div>
+          <label class="rep-label" for="rep-audit-select">Paper</label>
+          <select id="rep-audit-select" class="rep-select" ${repState.streaming ? "disabled" : ""}>${auditOptions}</select>
+          <div class="rep-project-meta">
+            <span class="mono">${escapeHtml(repState.selectedAuditId)}</span>
+            <small>${selected ? escapeHtml(selected.filename || "paper.pdf") : ""}</small>
+          </div>
+        </section>
+
+        <section class="rep-section rep-artifact-section">
+          <div class="rep-section-head"><span>Artifacts</span><button id="rep-add-artifact" class="rep-icon-action" title="Attach immutable files" ${repState.streaming ? "disabled" : ""}>＋</button></div>
+          <input id="rep-artifact-input" type="file" multiple hidden />
+          <div id="rep-artifact-list" class="rep-artifact-list">${renderArtifactList()}</div>
+        </section>
+
+        <section class="rep-section rep-history-section">
+          <div class="rep-section-head"><span>Runs</span><button id="rep-refresh-runs" class="rep-icon-action" title="Refresh runs">↻</button></div>
+          <div id="rep-run-list" class="rep-run-list">${renderRunList(runs)}</div>
+        </section>
+      </aside>
+
+      <section class="rep-center" aria-label="Agent conversation">
+        <div class="rep-center-head">
+          <div><strong>${escapeHtml(capability.agent || "Replication agent")}</strong><small>${configured ? "ACP session · structured events" : "Configure VERITAS_REPLICATION_AGENT"}</small></div>
+          <div class="rep-run-actions"><span id="rep-live-state" class="rep-live-state ${repState.streaming ? "running" : ""}"><i></i>${repState.streaming ? "running" : "ready"}</span><button id="rep-cancel" class="rep-cancel" ${repState.streaming && repState.selectedRunId ? "" : "disabled"}>Stop</button></div>
+        </div>
+        <div id="rep-thread" class="rep-thread">${renderPersistedThread(repState.selectedRun)}</div>
+        <div class="rep-composer-wrap">
+          ${interactive ? `<div class="rep-approval-note">Tool permissions pause here until you choose <b>Allow once</b> or <b>Reject</b>. Permanent approval is never offered by Veritas.</div>` : ""}
+          <div class="rep-composer">
+            <textarea id="rep-prompt" rows="3" ${configured && !repState.streaming ? "" : "disabled"} placeholder="Ask the replication agent to inspect code, run the project, reproduce a table or figure, compare outputs, or explain a discrepancy…"></textarea>
+            <div class="rep-composer-foot"><span>⌘/Ctrl + Enter to run · natural-language goal only</span><button id="rep-run" class="primary-button" ${configured && !repState.streaming ? "" : "disabled"}>Run agent ↑</button></div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="rep-right" aria-label="Workspace inspector">
+        <div class="rep-tabs" role="tablist">
+          <button data-rep-tab="changes" class="${repState.inspectorTab === "changes" ? "active" : ""}">Changes</button>
+          <button data-rep-tab="files" class="${repState.inspectorTab === "files" ? "active" : ""}">Files</button>
+          <button data-rep-tab="run" class="${repState.inspectorTab === "run" ? "active" : ""}">Run</button>
+          <button id="rep-refresh-workspace" class="rep-tab-refresh" title="Refresh workspace">↻</button>
+        </div>
+        <div id="rep-inspector" class="rep-inspector">${renderInspector()}</div>
+      </aside>
+    </div>`}
+  </div>`;
+
+  if (audits.length) bindSurface();
 }
 
-async function loadArtifacts(auditId, listNode, countNode) {
-  if (!auditId || !listNode) return [];
-  listNode.innerHTML = `<div class="artifact-empty"><small>Loading immutable artifact manifest…</small></div>`;
-  try {
-    const items = await getJson(`/api/v1/audits/${encodeURIComponent(auditId)}/attachments`);
-    listNode.innerHTML = renderArtifacts(items, auditId);
-    if (countNode) countNode.textContent = `${items.length} attached`;
-    return items;
-  } catch (error) {
-    listNode.innerHTML = `<div class="artifact-empty danger"><strong>Artifact manifest unavailable</strong><small>${escapeHtml(error.message)}</small></div>`;
-    if (countNode) countNode.textContent = "unavailable";
-    return [];
-  }
+function renderArtifactList() {
+  if (!repState.attachments.length) return `<div class="rep-mini-empty">No code or data attached yet.</div>`;
+  return repState.attachments.map((item) => `<a class="rep-artifact" href="/api/v1/audits/${encodeURIComponent(repState.selectedAuditId)}/attachments/${encodeURIComponent(item.attachment_id)}" download>
+    <span class="rep-file-icon">◇</span><span><strong>${escapeHtml(item.filename)}</strong><small>${formatBytes(item.size_bytes)} · ${escapeHtml(String(item.sha256 || "").slice(0, 10))}…</small></span>
+  </a>`).join("");
 }
 
-async function uploadArtifacts(auditId, files, listNode, countNode, button, maxBytes, locks = []) {
-  const selected = [...files];
-  if (!auditId || !selected.length) return;
-  const oversized = selected.find((file) => file.size > maxBytes);
-  if (oversized) {
-    throw new Error(`${oversized.name} exceeds the ${formatBytes(maxBytes)} per-file limit.`);
-  }
+function renderRunList(runs) {
+  if (!runs.length) return `<div class="rep-mini-empty">No replication runs for this paper.</div>`;
+  return runs.map((run) => `<button class="rep-run-row ${run.run_id === repState.selectedRunId ? "selected" : ""}" data-run-id="${escapeHtml(run.run_id)}">
+    <span class="rep-run-glyph ${escapeHtml(run.status || "")}">↻</span>
+    <span><strong>${escapeHtml(run.phase === "cancelled" ? "Cancelled run" : run.task || "Replication run")}</strong><small>${formatTime(run.created_at)} · ${formatDuration(run.duration_ms)}</small></span>
+    <em>${escapeHtml(run.phase || run.status || "done")}</em>
+  </button>`).join("");
+}
 
-  const unlock = lockControls([button, ...locks]);
-  const original = button.textContent;
-  try {
-    for (let index = 0; index < selected.length; index += 1) {
-      button.textContent = `Uploading ${index + 1}/${selected.length}…`;
-      const body = new FormData();
-      body.append("file", selected[index], selected[index].name);
-      const response = await fetch(`/api/v1/audits/${encodeURIComponent(auditId)}/attachments`, {
+function renderPersistedThread(detail) {
+  if (!detail?.events?.length) {
+    return `<div class="rep-thread-empty"><div class="rep-agent-orb">V</div><h2>Ready to reproduce</h2><p>Attach the paper's code/data, describe a target result, then inspect commands, approvals, file changes, and outputs as one auditable run.</p><div class="rep-suggestions"><button data-suggest="Inspect the attached project and explain how to reproduce the paper's main result. Do not change files yet.">Inspect project</button><button data-suggest="Run the project's existing tests and reproduction commands, then compare outputs with the paper.">Run reproduction</button><button data-suggest="Identify which files and commands produce the paper's main table or figure, and report any discrepancy.">Trace table/figure</button></div></div>`;
+  }
+  return detail.events.map((event) => eventCard(event, detail.run_id)).join("");
+}
+
+function eventCard(event, runId) {
+  if (event.kind === "tool") {
+    const payload = event.payload || {};
+    const phase = payload.phase || "update";
+    const icon = phase === "error" ? "!" : phase === "finish" ? "✓" : "↻";
+    return `<div class="rep-system-event"><span class="rep-system-icon ${escapeHtml(event.status || "")}">${icon}</span><div><strong>${escapeHtml(event.title || "Replication run")}</strong><small>${escapeHtml(event.detail || "")}${payload.duration_ms != null ? ` · ${formatDuration(payload.duration_ms)}` : ""}</small></div>${badge(event.status || "info", phase)}</div>`;
+  }
+  if (event.kind !== "replication") return "";
+  const agent = event.payload?.agent_event || {};
+  return agentEventCard(agent, runId || event.payload?.run_id || "");
+}
+
+function agentEventCard(agent, runId) {
+  const kind = agent.kind || "agent_update";
+  const payload = agent.payload || {};
+  if (kind === "permission") return permissionCard(agent, runId);
+  if (kind === "turn_cancelled") return `<div class="rep-system-event"><span class="rep-system-icon review">■</span><div><strong>Run cancelled</strong><small>${escapeHtml(agent.detail || "Agent process stopped")}</small></div>${badge("review", "cancelled")}</div>`;
+  if (kind === "turn_completed") return `<div class="rep-system-event"><span class="rep-system-icon success">✓</span><div><strong>Agent turn completed</strong><small>${escapeHtml(agent.detail || "end_turn")}</small></div>${badge("success", "done")}</div>`;
+  if (kind === "agent") return `<div class="rep-system-event"><span class="rep-system-icon running">↻</span><div><strong>${escapeHtml(agent.title || "Starting agent")}</strong><small>${escapeHtml(agent.detail || "")}</small></div></div>`;
+
+  const update = payload.update || {};
+  const updateKind = String(payload.update_kind || update.sessionUpdate || update.session_update || agent.title || "update");
+  const content = update.content || {};
+  const text = typeof content.text === "string" ? content.text : agent.detail || "";
+  const normalized = updateKind.toLowerCase();
+
+  if (normalized.includes("agent_message")) {
+    return `<article class="rep-message agent"><div class="rep-avatar">V</div><div class="rep-message-body"><div class="rep-message-label">Replication agent</div><div class="rep-message-text">${escapeHtml(text)}</div></div></article>`;
+  }
+  if (normalized.includes("thought") || normalized.includes("reason")) {
+    return `<details class="rep-reasoning"><summary>Reasoning update</summary><div>${escapeHtml(text || "Structured reasoning event")}</div></details>`;
+  }
+  if (normalized.includes("plan")) {
+    return `<div class="rep-plan-card"><div class="rep-card-kicker">PLAN</div><strong>${escapeHtml(update.title || agent.title || "Agent plan")}</strong>${text ? `<p>${escapeHtml(text)}</p>` : ""}${structuredPayload(update)}</div>`;
+  }
+  if (normalized.includes("tool") || normalized.includes("terminal") || normalized.includes("command")) {
+    const title = update.title || update.name || agent.title || "Tool call";
+    const status = update.status || agent.status || "running";
+    return `<div class="rep-tool-card"><div class="rep-tool-head"><span>⌘</span><strong>${escapeHtml(title)}</strong>${badge(status, status)}</div>${text ? `<pre>${escapeHtml(text)}</pre>` : ""}${structuredPayload(update)}</div>`;
+  }
+  if (normalized.includes("file") || normalized.includes("diff")) {
+    return `<div class="rep-tool-card file"><div class="rep-tool-head"><span>Δ</span><strong>${escapeHtml(update.title || "File update")}</strong>${badge(agent.status || "info")}</div>${text ? `<pre>${escapeHtml(text)}</pre>` : ""}${structuredPayload(update)}</div>`;
+  }
+  return `<div class="rep-update-card"><span>${escapeHtml(updateKind)}</span>${text ? `<p>${escapeHtml(text)}</p>` : structuredPayload(update)}</div>`;
+}
+
+function permissionCard(agent, runId) {
+  const payload = agent.payload || {};
+  const pending = payload.decision === "pending";
+  const options = Array.isArray(payload.options) ? payload.options : [];
+  const allowOptions = options.filter((item) => item.kind === "allow_once" && (item.optionId || item.option_id));
+  const tool = payload.tool_call || {};
+  const detail = tool.title || tool.name || agent.title || "Agent tool request";
+  return `<div class="rep-permission ${pending ? "pending" : "resolved"}" data-permission-card="${escapeHtml(payload.request_id || "")}">
+    <div class="rep-permission-icon">!</div><div class="rep-permission-copy"><div class="rep-card-kicker">PERMISSION</div><strong>${escapeHtml(detail)}</strong><p>${pending ? "This operation is paused. Review it before continuing." : escapeHtml(agent.detail || "Permission resolved.")}</p>${structuredPayload(tool)}</div>
+    ${pending ? `<div class="rep-permission-actions"><button class="rep-reject" data-permission-decision="reject" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}">Reject</button>${allowOptions.map((item) => `<button class="rep-allow" data-permission-decision="allow_once" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}" data-option-id="${escapeHtml(item.optionId || item.option_id)}">${escapeHtml(item.name || "Allow once")}</button>`).join("")}</div>` : `<div class="rep-permission-result">${badge(agent.status || "info", payload.decision || "resolved")}</div>`}
+  </div>`;
+}
+
+function structuredPayload(value) {
+  if (!value || typeof value !== "object") return "";
+  const interesting = {};
+  for (const key of ["status", "kind", "rawInput", "raw_input", "locations", "content", "terminalId", "terminal_id"]) {
+    if (value[key] != null && key !== "content") interesting[key] = value[key];
+  }
+  if (!Object.keys(interesting).length) return "";
+  const text = JSON.stringify(interesting, null, 2);
+  return `<pre class="rep-json">${escapeHtml(text.slice(0, 12000))}</pre>`;
+}
+
+function renderInspector() {
+  if (repState.selectedFile) return renderFileInspector(repState.selectedFile);
+  if (repState.inspectorTab === "run") return renderRunInspector();
+  if (!repState.workspace) {
+    return `<div class="rep-inspector-empty"><span>▦</span><strong>No workspace snapshot</strong><p>Run the agent or select a previous replication run. Files are inspected from disk, independently of the agent's narrative.</p></div>`;
+  }
+  const files = repState.workspace.files || [];
+  const visible = repState.inspectorTab === "changes" ? files.filter((item) => item.change !== "original") : files;
+  if (!visible.length) {
+    return `<div class="rep-inspector-empty"><span>✓</span><strong>${repState.inspectorTab === "changes" ? "No workspace changes" : "No files"}</strong><p>${repState.workspace.staged_inputs_unchanged ? "Staged paper and artifacts match their immutable source hashes." : "Inspect the workspace integrity warning above."}</p></div>`;
+  }
+  return `${repState.workspace.staged_inputs_unchanged ? "" : `<div class="rep-integrity-warning"><strong>Staged input drift detected</strong><span>${escapeHtml((repState.workspace.staged_input_drift || []).join(", "))}</span></div>`}<div class="rep-file-list">${visible.map((file) => `<button class="rep-workspace-file" data-workspace-file="${escapeHtml(file.path)}"><span class="rep-change ${escapeHtml(file.change)}">${file.change === "created" ? "+" : file.change === "deleted" ? "−" : file.change === "modified" ? "M" : file.change === "unsafe_link" ? "!" : "·"}</span><span><strong>${escapeHtml(file.path)}</strong><small>${formatBytes(file.size_bytes)} · ${escapeHtml(file.change)}</small></span>${file.binary ? `<em>binary</em>` : ""}</button>`).join("")}</div>`;
+}
+
+function renderRunInspector() {
+  const run = repState.selectedRun;
+  if (!run) return `<div class="rep-inspector-empty"><span>⌁</span><strong>No run selected</strong><p>Select a run from the left rail.</p></div>`;
+  const workspace = repState.workspace;
+  return `<div class="rep-run-inspector">
+    <div class="rep-inspector-metric"><span>Status</span><strong>${escapeHtml(run.phase || run.status || "—")}</strong></div>
+    <div class="rep-inspector-metric"><span>Duration</span><strong>${formatDuration(run.duration_ms)}</strong></div>
+    <div class="rep-inspector-metric"><span>Events</span><strong>${run.events?.length || 0}</strong></div>
+    <div class="rep-inspector-metric"><span>Changed files</span><strong>${workspace?.changed_files?.length || 0}</strong></div>
+    <div class="rep-inspector-block"><span>Run ID</span><code>${escapeHtml(run.run_id)}</code></div>
+    <div class="rep-inspector-block"><span>Artifact</span><code>${escapeHtml(run.artifact_id || "—")}</code></div>
+    <div class="rep-inspector-block"><span>Workspace trust</span><p>Veritas inspects this directory, but the directory itself is not a sandbox. Process, filesystem, and network isolation belong to the configured agent runtime.</p></div>
+  </div>`;
+}
+
+function renderFileInspector(file) {
+  const title = escapeHtml(file.path || "file");
+  const mode = file.diff ? "Diff" : "Preview";
+  const body = file.diff || file.content || (file.binary ? "Binary file preview is intentionally disabled." : "No text content.");
+  return `<div class="rep-file-detail"><div class="rep-file-detail-head"><button id="rep-file-back">←</button><div><strong>${title}</strong><small>${escapeHtml(file.change || "file")} · ${formatBytes(file.size_bytes)}</small></div><span>${mode}</span></div>${file.immutable_input && file.change !== "original" ? `<div class="rep-integrity-warning"><strong>Staged input changed inside the agent workspace</strong><span>The immutable source artifact stored by Veritas is unchanged; this copy drifted during the run.</span></div>` : ""}<pre class="rep-code ${file.diff ? "diff" : ""}">${escapeHtml(body)}</pre>${file.truncated ? `<div class="rep-truncated">Preview capped at 512 KiB.</div>` : ""}</div>`;
+}
+
+function bindSurface() {
+  document.querySelector("#rep-audit-select")?.addEventListener("change", async (event) => {
+    if (repState.streaming) return;
+    repState.selectedAuditId = event.target.value;
+    repState.selectedRunId = "";
+    repState.selectedRun = null;
+    repState.workspace = null;
+    repState.selectedFile = null;
+    await Promise.all([loadAttachments(), loadRuns()]);
+    const first = replicationRuns()[0];
+    if (first) await selectRun(first.run_id, false);
+    renderShell();
+  });
+
+  document.querySelector("#rep-add-artifact")?.addEventListener("click", () => document.querySelector("#rep-artifact-input")?.click());
+  document.querySelector("#rep-artifact-input")?.addEventListener("change", uploadArtifacts);
+  document.querySelector("#rep-refresh-runs")?.addEventListener("click", async () => { await loadRuns(); renderShell(); });
+  document.querySelector("#rep-run")?.addEventListener("click", runAgent);
+  document.querySelector("#rep-cancel")?.addEventListener("click", cancelRun);
+  document.querySelector("#rep-refresh-workspace")?.addEventListener("click", async () => { await loadWorkspace(repState.selectedRunId); renderShell(); });
+
+  document.querySelector("#rep-prompt")?.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      void runAgent();
+    }
+  });
+  document.querySelectorAll("[data-suggest]").forEach((button) => button.addEventListener("click", () => {
+    const input = document.querySelector("#rep-prompt");
+    if (input) { input.value = button.dataset.suggest || ""; input.focus(); }
+  }));
+  document.querySelectorAll("[data-run-id]").forEach((button) => {
+    if (button.dataset.permissionDecision) return;
+    button.addEventListener("click", async () => { await selectRun(button.dataset.runId); renderShell(); });
+  });
+  document.querySelectorAll("[data-rep-tab]").forEach((button) => button.addEventListener("click", () => {
+    repState.inspectorTab = button.dataset.repTab;
+    repState.selectedFile = null;
+    renderShell();
+  }));
+  document.querySelectorAll("[data-workspace-file]").forEach((button) => button.addEventListener("click", async () => {
+    await openWorkspaceFile(button.dataset.workspaceFile);
+    renderShell();
+  }));
+  document.querySelector("#rep-file-back")?.addEventListener("click", () => { repState.selectedFile = null; renderShell(); });
+  bindPermissionButtons();
+}
+
+function bindPermissionButtons(root = document) {
+  root.querySelectorAll("[data-permission-decision]").forEach((button) => button.addEventListener("click", async () => {
+    button.disabled = true;
+    const runId = button.dataset.runId;
+    const requestId = button.dataset.requestId;
+    const decision = button.dataset.permissionDecision;
+    const optionId = button.dataset.optionId || null;
+    try {
+      await request(`/api/v1/replication/runs/${encodeURIComponent(runId)}/permissions/${encodeURIComponent(requestId)}`, {
         method: "POST",
-        body,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, option_id: optionId }),
       });
-      if (!response.ok) {
-        let detail = `${response.status} ${response.statusText}`;
-        try { detail = (await response.json()).detail || detail; } catch {}
-        throw new Error(detail);
-      }
+      const card = button.closest(".rep-permission");
+      if (card) card.querySelector(".rep-permission-actions").innerHTML = `<span class="rep-decision-sent">${decision === "allow_once" ? "Allow-once sent" : "Rejected"}</span>`;
+    } catch (error) {
+      button.disabled = false;
+      showInlineError(error.message);
     }
-    await loadArtifacts(auditId, listNode, countNode);
-  } finally {
-    unlock();
-    button.textContent = original;
+  }));
+}
+
+async function loadAttachments() {
+  if (!repState.selectedAuditId) { repState.attachments = []; return; }
+  repState.attachments = await getJson(`/api/v1/audits/${encodeURIComponent(repState.selectedAuditId)}/attachments`);
+}
+
+async function loadRuns() {
+  repState.runs = await getJson("/api/v1/runs");
+}
+
+async function selectRun(runId, refresh = true) {
+  if (!runId) return;
+  repState.selectedRunId = runId;
+  repState.selectedFile = null;
+  try {
+    const [detail] = await Promise.all([
+      getJson(`/api/v1/runs/${encodeURIComponent(runId)}`),
+      loadWorkspace(runId),
+    ]);
+    repState.selectedRun = detail;
+  } catch (error) {
+    if (refresh) showInlineError(error.message);
   }
 }
 
-function workspaceBadge(status) {
-  const labels = {
-    staged_unchanged: ["success", "staged · unchanged"],
-    staged_modified: ["danger", "staged · modified"],
-    staged_deleted: ["danger", "staged · deleted"],
-    created: ["info", "created"],
-    created_symlink: ["review", "symlink"],
-    created_other: ["review", "other"],
-  };
-  const [tone, label] = labels[status] || ["info", status || "file"];
-  return badge(tone, label);
-}
-
-function renderWorkspace(snapshot) {
-  const summary = snapshot.summary || {};
-  const files = snapshot.files || [];
-  const integrityTone = snapshot.integrity_ok ? "success" : "danger";
-  const integrityTitle = snapshot.integrity_ok ? "Staged inputs unchanged" : "Staged input integrity breach";
-  const fileRows = files.length ? files.map((item) => {
-    const previewablePath = item.exists && item.kind === "file";
-    const sha = item.sha256 ? ` · sha256:${escapeHtml(String(item.sha256).slice(0, 12))}…` : "";
-    const size = item.size_bytes == null ? "missing" : formatBytes(item.size_bytes);
-    return `<button class="workspace-file-row${previewablePath ? " previewable" : ""}" type="button" data-workspace-path="${escapeHtml(item.path)}" ${previewablePath ? "" : "disabled"}>
-      <span class="workspace-file-icon">${item.kind === "symlink" ? "↗" : item.exists ? "◇" : "×"}</span>
-      <span class="workspace-file-copy"><strong>${escapeHtml(item.path)}</strong><small>${escapeHtml(size)}${sha}${item.hash_computed === false && item.exists && item.kind === "file" ? " · hash omitted by inspection bound" : ""}</small></span>
-      ${workspaceBadge(item.status)}
-    </button>`;
-  }).join("") : `<div class="artifact-empty"><strong>No workspace files</strong><small>The run workspace contains no inspectable entries.</small></div>`;
-
-  return `<div class="workspace-integrity ${integrityTone}">
-      <div><strong>${integrityTitle}</strong><small>Integrity scope: Veritas-staged paper, attachments, and artifacts.json only. This is not a sandbox or a correctness verdict.</small></div>
-      ${badge(integrityTone, snapshot.integrity_ok ? "integrity ok" : "review required")}
-    </div>
-    <div class="workspace-summary">
-      <div><span>Created files</span><strong>${Number(summary.created_files || 0)}</strong></div>
-      <div><span>Staged unchanged</span><strong>${Number(summary.staged_unchanged || 0)}</strong></div>
-      <div><span>Staged modified</span><strong>${Number(summary.staged_modified || 0)}</strong></div>
-      <div><span>Staged deleted</span><strong>${Number(summary.staged_deleted || 0)}</strong></div>
-      <div><span>Symlinks</span><strong>${Number(summary.symlinks || 0)}</strong></div>
-    </div>
-    <div class="workspace-grid">
-      <div class="workspace-files">
-        <div class="workspace-subhead"><strong>Run files</strong><small>${escapeHtml(snapshot.run_id)}</small></div>
-        <div class="workspace-file-list">${fileRows}</div>
-      </div>
-      <div class="workspace-preview">
-        <div class="workspace-subhead"><strong>Read-only preview</strong><small>UTF-8 · first 256 KiB</small></div>
-        <div id="workspace-preview-body" class="workspace-preview-body"><div class="artifact-empty"><strong>Select a file</strong><small>Generated outputs are untrusted until reviewed. Symlinks are never followed.</small></div></div>
-      </div>
-    </div>
-    <p class="reproduction-helper">${escapeHtml(snapshot.note || "")}</p>`;
-}
-
-async function previewWorkspaceFile(auditId, runId, path, previewNode) {
-  previewNode.innerHTML = `<div class="artifact-empty"><small>Loading bounded file preview…</small></div>`;
+async function loadWorkspace(runId) {
+  if (!runId) { repState.workspace = null; return; }
   try {
-    const params = new URLSearchParams({ path });
-    const value = await getJson(`/api/v1/audits/${encodeURIComponent(auditId)}/replication-runs/${encodeURIComponent(runId)}/workspace/file?${params}`);
-    if (!value.previewable) {
-      previewNode.innerHTML = `<div class="artifact-empty"><strong>Preview unavailable</strong><small>${escapeHtml(value.reason || "This file is not UTF-8 text.")} · ${formatBytes(value.size_bytes)}</small></div>`;
-      return;
+    repState.workspace = await getJson(`/api/v1/runs/${encodeURIComponent(runId)}/workspace`);
+  } catch (error) {
+    repState.workspace = null;
+    if (!repState.streaming && !String(error.message).includes("not found")) throw error;
+  }
+}
+
+async function openWorkspaceFile(path) {
+  if (!repState.selectedRunId || !path) return;
+  repState.selectedFile = await getJson(`/api/v1/runs/${encodeURIComponent(repState.selectedRunId)}/workspace/file?path=${encodeURIComponent(path)}`);
+}
+
+async function uploadArtifacts(event) {
+  const files = [...(event.target.files || [])];
+  event.target.value = "";
+  if (!files.length || !repState.selectedAuditId || repState.streaming) return;
+  const oversized = files.find((file) => file.size > repState.maxAttachmentBytes);
+  if (oversized) { showInlineError(`${oversized.name} exceeds ${formatBytes(repState.maxAttachmentBytes)}.`); return; }
+  try {
+    for (const file of files) {
+      const body = new FormData();
+      body.append("file", file, file.name);
+      await request(`/api/v1/audits/${encodeURIComponent(repState.selectedAuditId)}/attachments`, { method: "POST", body });
     }
-    previewNode.innerHTML = `<div class="workspace-preview-meta"><strong>${escapeHtml(value.path)}</strong><small>${formatBytes(value.size_bytes)}${value.truncated ? " · preview truncated" : " · complete"}</small></div><pre>${escapeHtml(value.content || "")}</pre>`;
-  } catch (error) {
-    previewNode.innerHTML = `<div class="artifact-empty danger"><strong>Preview failed</strong><small>${escapeHtml(error.message)}</small></div>`;
-  }
+    await loadAttachments();
+    renderShell();
+  } catch (error) { showInlineError(error.message); }
 }
 
-async function loadWorkspace(auditId, runId, workspaceNode, runNode) {
-  if (!workspaceNode || !runId) return;
-  workspaceNode.innerHTML = `<div class="artifact-empty"><small>Inspecting run-scoped workspace without following symlinks…</small></div>`;
-  if (runNode) runNode.textContent = runId;
-  try {
-    const snapshot = await getJson(`/api/v1/audits/${encodeURIComponent(auditId)}/replication-runs/${encodeURIComponent(runId)}/workspace`);
-    workspaceNode.innerHTML = renderWorkspace(snapshot);
-    const previewNode = workspaceNode.querySelector("#workspace-preview-body");
-    workspaceNode.querySelectorAll(".workspace-file-row.previewable").forEach((row) => {
-      row.addEventListener("click", async () => {
-        workspaceNode.querySelectorAll(".workspace-file-row").forEach((item) => item.classList.remove("active"));
-        row.classList.add("active");
-        await previewWorkspaceFile(auditId, runId, row.dataset.workspacePath || "", previewNode);
-      });
-    });
-    const firstCreated = workspaceNode.querySelector('.workspace-file-row.previewable .badge.info')?.closest(".workspace-file-row");
-    const firstPreviewable = firstCreated || workspaceNode.querySelector(".workspace-file-row.previewable");
-    if (firstPreviewable) firstPreviewable.click();
-  } catch (error) {
-    workspaceNode.innerHTML = `<div class="artifact-empty danger"><strong>Workspace inspection unavailable</strong><small>${escapeHtml(error.message)}</small></div>`;
-  }
-}
+async function runAgent() {
+  if (repState.streaming || !repState.selectedAuditId) return;
+  const promptNode = document.querySelector("#rep-prompt");
+  const prompt = promptNode?.value.trim();
+  if (!prompt) { showInlineError("Describe a reproduction goal first."); return; }
 
-async function streamReplication(auditId, prompt, timeline, button, locks = []) {
-  const unlock = lockControls([button, ...locks]);
-  button.textContent = "Running…";
-  timeline.innerHTML = `<div class="status-row"><span class="status-icon running">↻</span><div class="status-copy"><strong>Opening replication stream</strong><small>Waiting for structured ACP events…</small></div></div>`;
-  let runId = null;
+  repState.streaming = true;
+  repState.selectedRunId = "";
+  repState.selectedRun = null;
+  repState.workspace = null;
+  repState.selectedFile = null;
+  const thread = document.querySelector("#rep-thread");
+  if (thread) thread.innerHTML = `<article class="rep-message user"><div class="rep-avatar user">You</div><div class="rep-message-body"><div class="rep-message-label">Reproduction goal</div><div class="rep-message-text">${escapeHtml(prompt)}</div></div></article>`;
+  setRunningUi(true);
+
   try {
-    const response = await fetch(`/api/v1/audits/${encodeURIComponent(auditId)}/replication`, {
+    const response = await request(`/api/v1/audits/${encodeURIComponent(repState.selectedAuditId)}/replication`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
       body: JSON.stringify({ prompt }),
     });
-    if (!response.ok) {
-      let detail = `${response.status} ${response.statusText}`;
-      try { detail = (await response.json()).detail || detail; } catch {}
-      throw new Error(detail);
-    }
-    if (!response.body) throw new Error("Streaming response body is unavailable in this browser.");
-
+    if (!response.body) throw new Error("Streaming response body is unavailable.");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let rows = "";
-    const appendEvent = (event) => {
-      if (event?.payload?.run_id) runId = event.payload.run_id;
-      rows += traceRow(event);
-      timeline.innerHTML = rows;
-      timeline.scrollTop = timeline.scrollHeight;
-    };
-
+    const observed = [];
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -251,175 +436,97 @@ async function streamReplication(auditId, prompt, timeline, button, locks = []) 
       buffer = lines.pop() || "";
       for (const line of lines) {
         if (!line.trim()) continue;
-        appendEvent(JSON.parse(line));
+        const event = JSON.parse(line);
+        observed.push(event);
+        consumeLiveEvent(event, thread);
       }
     }
-    if (buffer.trim()) appendEvent(JSON.parse(buffer));
+    if (buffer.trim()) {
+      const event = JSON.parse(buffer);
+      observed.push(event);
+      consumeLiveEvent(event, thread);
+    }
+    const finalRunId = repState.selectedRunId || [...observed].reverse().map((event) => event.payload?.run_id).find(Boolean);
+    repState.streaming = false;
+    await loadRuns();
+    if (finalRunId) await selectRun(finalRunId, false);
+    renderShell();
   } catch (error) {
-    timeline.innerHTML += `<div class="status-row"><span class="status-icon danger">!</span><div class="status-copy"><strong>Replication request failed</strong><small>${escapeHtml(error.message)}</small></div>${badge("danger", "error")}</div>`;
-  } finally {
-    unlock();
-    button.textContent = "Run reproduction";
+    repState.streaming = false;
+    setRunningUi(false);
+    if (thread) thread.insertAdjacentHTML("beforeend", `<div class="rep-system-event"><span class="rep-system-icon danger">!</span><div><strong>Replication request failed</strong><small>${escapeHtml(error.message)}</small></div>${badge("danger", "error")}</div>`);
   }
-  return runId;
+}
+
+function consumeLiveEvent(event, thread) {
+  const runId = event.payload?.run_id;
+  if (runId && !repState.selectedRunId) {
+    repState.selectedRunId = runId;
+    const cancel = document.querySelector("#rep-cancel");
+    if (cancel) cancel.disabled = false;
+  }
+  if (!thread) return;
+  const html = eventCard(event, repState.selectedRunId);
+  if (html) {
+    thread.insertAdjacentHTML("beforeend", html);
+    bindPermissionButtons(thread);
+    thread.scrollTop = thread.scrollHeight;
+  }
+}
+
+async function cancelRun() {
+  if (!repState.streaming || !repState.selectedRunId) return;
+  try {
+    await request(`/api/v1/replication/runs/${encodeURIComponent(repState.selectedRunId)}/cancel`, { method: "POST" });
+    const button = document.querySelector("#rep-cancel");
+    if (button) { button.disabled = true; button.textContent = "Stopping…"; }
+  } catch (error) { showInlineError(error.message); }
+}
+
+function setRunningUi(running) {
+  const state = document.querySelector("#rep-live-state");
+  const run = document.querySelector("#rep-run");
+  const cancel = document.querySelector("#rep-cancel");
+  const select = document.querySelector("#rep-audit-select");
+  const prompt = document.querySelector("#rep-prompt");
+  if (state) { state.classList.toggle("running", running); state.innerHTML = `<i></i>${running ? "running" : "ready"}`; }
+  if (run) run.disabled = running;
+  if (cancel) cancel.disabled = !running || !repState.selectedRunId;
+  if (select) select.disabled = running;
+  if (prompt) prompt.disabled = running;
+}
+
+function showInlineError(message) {
+  let toast = document.querySelector("#toast");
+  if (toast) {
+    toast.textContent = message;
+    toast.classList.add("show");
+    clearTimeout(showInlineError.timer);
+    showInlineError.timer = setTimeout(() => toast.classList.remove("show"), 3200);
+  }
 }
 
 async function enhanceReproduction() {
   if (!main || main.dataset.reproductionEnhanced === "true") return;
   if (!main.textContent.includes("Reproduction workflow")) return;
   main.dataset.reproductionEnhanced = "true";
-
   try {
-    const [capabilities, audits] = await Promise.all([
+    const [capabilities, audits, runs] = await Promise.all([
       getJson("/api/v1/capabilities"),
       getJson("/api/v1/audits"),
+      getJson("/api/v1/runs"),
     ]);
-    const replication = capabilities.replication || {};
-    const configured = Boolean(replication.configured);
-    const maxAttachmentBytes = Number(capabilities.max_attachment_bytes || 80 * 1024 * 1024);
-    const options = audits.map((audit) => `<option value="${escapeHtml(audit.audit_id)}">${escapeHtml(audit.title || audit.filename || audit.audit_id)}</option>`).join("");
-
-    main.innerHTML = `<div class="page" data-reproduction-surface="true">
-      <div class="page-head">
-        <div class="page-head-copy">
-          <span class="eyebrow">Reproducibility</span>
-          <h1 class="page-title">Reproduction</h1>
-          <p class="page-subtitle">Attach immutable research artifacts, run a server-configured ACP agent in a run-specific workspace, inspect structured execution, and review the exact post-run files without exposing arbitrary host paths.</p>
-        </div>
-        <div class="page-actions">${configured ? badge("success", "agent configured") : badge("review", "fail-closed")}</div>
-      </div>
-
-      <section class="content-row">
-        <article class="panel">
-          <div class="panel-head"><h2>Execution boundary</h2>${configured ? `<span class="panel-link">${escapeHtml(replication.agent || "ACP agent")}</span>` : ""}</div>
-          <div class="panel-body">
-            <div class="stat-list">
-              <div class="stat-item"><span>Agent</span><strong>${escapeHtml(replication.agent || "Not configured")}</strong></div>
-              <div class="stat-item"><span>Permission policy</span><strong>${escapeHtml(replication.permission_policy || "deny")}</strong></div>
-              <div class="stat-item"><span>Client-supplied commands</span><strong>${replication.client_supplied_commands ? "Allowed" : "Disabled"}</strong></div>
-              <div class="stat-item"><span>Workspace per run</span><strong>${replication.workspace_per_run ? "Yes" : "No"}</strong></div>
-              <div class="stat-item"><span>Workspace security boundary</span><strong>${replication.workspace_is_security_boundary ? "Yes" : "Agent-owned"}</strong></div>
-            </div>
-            <p class="page-subtitle" style="margin:16px 0 0">Veritas stages read-only copies of the immutable paper and hash-verified attachments into a new workspace for each run. <span class="mono">audit.json</span> is not staged. The selected ACP agent remains responsible for its own execution sandbox.</p>
-          </div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head"><h2>Reproduction target</h2></div>
-          <div class="panel-body">
-            ${audits.length ? `
-              <label class="field"><span>Paper</span><select id="replication-audit" class="secondary-button" style="width:100%;text-align:left">${options}</select></label>
-              <label class="field" style="margin-top:14px"><span>Goal</span><textarea id="replication-prompt" rows="5" ${configured ? "" : "disabled"} placeholder="Reproduce the paper's main reported result and record the steps, environment, outputs, and discrepancies."></textarea></label>
-              <button id="replication-run" class="primary-button" style="margin-top:14px" ${configured ? "" : "disabled"}>Run reproduction</button>
-              ${configured ? "" : `<p class="reproduction-helper">Configure <span class="mono">VERITAS_REPLICATION_AGENT</span> on the server to enable execution. Artifact intake remains available.</p>`}
-            ` : `<div class="empty-state" style="min-height:220px"><div class="empty-state-inner"><div class="empty-mark">↻</div><h2>No paper available</h2><p>Upload a paper before attaching reproduction artifacts or starting a run.</p></div></div>`}
-          </div>
-        </article>
-      </section>
-
-      ${audits.length ? `<section class="panel reproduction-artifacts">
-        <div class="panel-head"><h2>Immutable reproduction artifacts</h2><span id="replication-artifact-count" class="panel-link">loading…</span></div>
-        <div class="panel-body">
-          <div class="artifact-toolbar">
-            <div><strong>Code · data · environment</strong><small>Stored byte-for-byte with SHA256 provenance. Archives are not unpacked by the web process. Max ${formatBytes(maxAttachmentBytes)} per file.</small></div>
-            <button id="replication-artifact-add" class="secondary-button">＋ Attach files</button>
-            <input id="replication-artifact-input" type="file" multiple hidden />
-          </div>
-          <div id="replication-artifact-list" class="artifact-list"></div>
-          <div id="replication-artifact-error" class="artifact-error" hidden></div>
-        </div>
-      </section>` : ""}
-
-      <section class="panel">
-        <div class="panel-head"><h2>Live replication trace</h2><span class="panel-link">NDJSON · persisted to audit history</span></div>
-        <div id="replication-timeline" class="panel-body status-stack" style="max-height:480px;overflow:auto">
-          <div class="status-row"><span class="status-icon">·</span><div class="status-copy"><strong>No replication run in this session</strong><small>Start a run to stream agent updates, tool permissions, terminal/tool activity, and completion state.</small></div></div>
-        </div>
-      </section>
-
-      <section class="panel reproduction-workspace">
-        <div class="panel-head"><h2>Run workspace</h2><span id="replication-workspace-run" class="panel-link">read-only · run scoped</span></div>
-        <div id="replication-workspace" class="panel-body">
-          <div class="artifact-empty"><strong>No run workspace selected</strong><small>After a run finishes or fails, Veritas will inspect that exact run directory, verify its staged inputs, and expose bounded read-only previews of regular files.</small></div>
-        </div>
-      </section>
-    </div>`;
-
-    const auditSelect = document.querySelector("#replication-audit");
-    const promptInput = document.querySelector("#replication-prompt");
-    const button = document.querySelector("#replication-run");
-    const artifactList = document.querySelector("#replication-artifact-list");
-    const artifactCount = document.querySelector("#replication-artifact-count");
-    const artifactInput = document.querySelector("#replication-artifact-input");
-    const artifactAdd = document.querySelector("#replication-artifact-add");
-    const artifactError = document.querySelector("#replication-artifact-error");
-    const workspaceNode = document.querySelector("#replication-workspace");
-    const workspaceRun = document.querySelector("#replication-workspace-run");
-
-    if (auditSelect && artifactList) {
-      await loadArtifacts(auditSelect.value, artifactList, artifactCount);
-      auditSelect.addEventListener("change", async () => {
-        if (artifactError) { artifactError.hidden = true; artifactError.textContent = ""; }
-        if (workspaceNode) workspaceNode.innerHTML = `<div class="artifact-empty"><strong>No run workspace selected</strong><small>Run the newly selected paper to inspect its run-scoped workspace.</small></div>`;
-        if (workspaceRun) workspaceRun.textContent = "read-only · run scoped";
-        await loadArtifacts(auditSelect.value, artifactList, artifactCount);
-      });
-    }
-
-    if (artifactAdd && artifactInput) {
-      artifactAdd.addEventListener("click", () => artifactInput.click());
-      artifactInput.addEventListener("change", async () => {
-        if (!auditSelect?.value || !artifactList || !artifactInput.files?.length) return;
-        if (artifactError) { artifactError.hidden = true; artifactError.textContent = ""; }
-        const targetAuditId = auditSelect.value;
-        try {
-          await uploadArtifacts(
-            targetAuditId,
-            artifactInput.files,
-            artifactList,
-            artifactCount,
-            artifactAdd,
-            maxAttachmentBytes,
-            [auditSelect, button],
-          );
-        } catch (error) {
-          if (artifactError) {
-            artifactError.hidden = false;
-            artifactError.textContent = error.message;
-          }
-        } finally {
-          artifactInput.value = "";
-        }
-      });
-    }
-
-    if (button) {
-      button.addEventListener("click", async () => {
-        const auditId = auditSelect?.value;
-        const prompt = promptInput?.value.trim();
-        const timeline = document.querySelector("#replication-timeline");
-        if (!auditId || !timeline) return;
-        if (!prompt) {
-          timeline.innerHTML = `<div class="status-row"><span class="status-icon review">!</span><div class="status-copy"><strong>Describe the reproduction goal</strong><small>The server accepts a goal/prompt, never a client-supplied executable command.</small></div>${badge("review")}</div>`;
-          return;
-        }
-        if (workspaceNode) workspaceNode.innerHTML = `<div class="artifact-empty"><small>Waiting for the run workspace to close before inspection…</small></div>`;
-        const runId = await streamReplication(
-          auditId,
-          prompt,
-          timeline,
-          button,
-          [auditSelect, promptInput, artifactAdd, artifactInput],
-        );
-        if (runId && workspaceNode) {
-          await loadWorkspace(auditId, runId, workspaceNode, workspaceRun);
-        } else if (workspaceNode) {
-          workspaceNode.innerHTML = `<div class="artifact-empty danger"><strong>No run id was persisted</strong><small>The replication request did not reach a run-scoped workspace.</small></div>`;
-        }
-      });
-    }
+    repState.capabilities = capabilities;
+    repState.audits = audits;
+    repState.runs = runs;
+    repState.maxAttachmentBytes = Number(capabilities.max_attachment_bytes || 80 * 1024 * 1024);
+    repState.selectedAuditId = repState.selectedAuditId && audits.some((audit) => audit.audit_id === repState.selectedAuditId) ? repState.selectedAuditId : audits[0]?.audit_id || "";
+    if (repState.selectedAuditId) await loadAttachments();
+    const first = replicationRuns()[0];
+    if (first) await selectRun(first.run_id, false);
+    renderShell();
   } catch (error) {
-    main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Reproduction surface unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
+    main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Replication workspace unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
   }
 }
 
