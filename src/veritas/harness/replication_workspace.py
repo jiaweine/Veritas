@@ -1,241 +1,387 @@
 from __future__ import annotations
 
-import difflib
+import codecs
 import json
 import os
+import re
+import stat
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from .service import AuditHarness
+from .store import HarnessStore
 
-MAX_WORKSPACE_FILES = 5000
-MAX_INSPECT_BYTES = 512 * 1024
-
-
-def find_replication_audit(runtime: AuditHarness, run_id: str) -> dict[str, Any]:
-    _validate_run_id(run_id)
-    for audit in runtime.list_audits():
-        for event in audit.get("events") or []:
-            payload = event.get("payload") or {}
-            if payload.get("run_id") == run_id and payload.get("run_kind") == "replication":
-                return audit
-    raise FileNotFoundError(f"replication run not found: {run_id}")
+_RUN_ID_RE = re.compile(r"^run_[0-9a-f]{12}$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_MAX_ENTRIES = 1000
+_MAX_STAGED_FILE_BYTES = 96 * 1024 * 1024
+_MAX_CREATED_HASH_BYTES = 8 * 1024 * 1024
+_MAX_CREATED_HASH_TOTAL_BYTES = 64 * 1024 * 1024
+_MAX_PREVIEW_BYTES = 256 * 1024
+_HASH_CHUNK_BYTES = 1024 * 1024
 
 
-def replication_workspace_snapshot(runtime: AuditHarness, run_id: str) -> dict[str, Any]:
-    audit = find_replication_audit(runtime, run_id)
-    audit_id = str(audit["audit_id"])
-    workspace = _workspace_path(runtime, audit_id, run_id)
-    expected = _expected_files(runtime, audit, run_id)
-    current = _scan_workspace(workspace)
+def replication_workspace_snapshot(
+    store: HarnessStore,
+    audit_id: str,
+    run_id: str,
+) -> dict[str, Any]:
+    """Inspect one persisted replication workspace without following symlinks.
+
+    The returned integrity state is deliberately narrow: it says whether the
+    read-only paper/attachment/manifest copies staged by Veritas still match
+    their audit-record identities. It does not claim that generated outputs are
+    correct, trustworthy, sandboxed, or reproducible.
+    """
+
+    record = store.get_audit(audit_id)
+    workspace = _authorized_workspace(store, audit_id, record, run_id)
+    expected = _expected_staged_objects(record, run_id)
 
     files: list[dict[str, Any]] = []
-    for path, metadata in current.items():
-        baseline = expected.get(path)
-        if metadata.get("kind") == "symlink":
-            change = "unsafe_link"
-        elif baseline is None:
-            change = "created"
-        elif metadata.get("sha256") == baseline.get("sha256"):
-            change = "original"
-        else:
-            change = "modified"
-        files.append(
-            {
-                **metadata,
-                "change": change,
-                "baseline_sha256": baseline.get("sha256") if baseline else None,
-                "immutable_input": bool(baseline and baseline.get("immutable_input")),
-            }
-        )
+    seen: set[str] = set()
+    entries_scanned = 0
+    directories = 0
+    created_hash_bytes = 0
 
-    for path, baseline in expected.items():
-        if path in current:
+    def walk(directory: Path, prefix: str = "") -> None:
+        nonlocal entries_scanned, directories, created_hash_bytes
+        try:
+            entries = sorted(os.scandir(directory), key=lambda item: item.name)
+        except OSError as exc:
+            raise RuntimeError(f"unable to inspect replication workspace: {exc}") from exc
+
+        for entry in entries:
+            entries_scanned += 1
+            if entries_scanned > _MAX_ENTRIES:
+                raise RuntimeError(
+                    f"replication workspace exceeds the {_MAX_ENTRIES}-entry inspection limit"
+                )
+            relative = f"{prefix}/{entry.name}" if prefix else entry.name
+            staged = expected.get(relative)
+
+            try:
+                entry_stat = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise RuntimeError(f"unable to stat replication workspace entry: {relative}") from exc
+
+            if stat.S_ISLNK(entry_stat.st_mode):
+                seen.add(relative)
+                files.append(
+                    {
+                        "path": relative,
+                        "kind": "symlink",
+                        "status": "staged_modified" if staged is not None else "created_symlink",
+                        "exists": True,
+                        "size_bytes": entry_stat.st_size,
+                        "sha256": None,
+                        "hash_computed": False,
+                        "staged_role": staged.get("role") if staged else None,
+                    }
+                )
+                continue
+
+            if stat.S_ISDIR(entry_stat.st_mode):
+                directories += 1
+                walk(Path(entry.path), relative)
+                continue
+
+            seen.add(relative)
+            if not stat.S_ISREG(entry_stat.st_mode):
+                files.append(
+                    {
+                        "path": relative,
+                        "kind": "other",
+                        "status": "staged_modified" if staged is not None else "created_other",
+                        "exists": True,
+                        "size_bytes": entry_stat.st_size,
+                        "sha256": None,
+                        "hash_computed": False,
+                        "staged_role": staged.get("role") if staged else None,
+                    }
+                )
+                continue
+
+            size_bytes = entry_stat.st_size
+            digest: str | None = None
+            hash_computed = False
+            status: str
+
+            if staged is not None:
+                expected_size = staged.get("size_bytes")
+                size_matches = expected_size is None or size_bytes == expected_size
+                if size_bytes <= _MAX_STAGED_FILE_BYTES:
+                    digest = _file_sha256(Path(entry.path))
+                    hash_computed = True
+                status = (
+                    "staged_unchanged"
+                    if size_matches and digest == staged["sha256"]
+                    else "staged_modified"
+                )
+            else:
+                if (
+                    size_bytes <= _MAX_CREATED_HASH_BYTES
+                    and created_hash_bytes + size_bytes <= _MAX_CREATED_HASH_TOTAL_BYTES
+                ):
+                    digest = _file_sha256(Path(entry.path))
+                    hash_computed = True
+                    created_hash_bytes += size_bytes
+                status = "created"
+
+            files.append(
+                {
+                    "path": relative,
+                    "kind": "file",
+                    "status": status,
+                    "exists": True,
+                    "size_bytes": size_bytes,
+                    "sha256": digest,
+                    "hash_computed": hash_computed,
+                    "staged_role": staged.get("role") if staged else None,
+                }
+            )
+
+    walk(workspace)
+
+    for relative, staged in expected.items():
+        if relative in seen:
             continue
         files.append(
             {
-                "path": path,
-                "size_bytes": 0,
-                "sha256": None,
-                "binary": baseline.get("binary", False),
+                "path": relative,
                 "kind": "file",
-                "change": "deleted",
-                "baseline_sha256": baseline.get("sha256"),
-                "immutable_input": bool(baseline.get("immutable_input")),
+                "status": "staged_deleted",
+                "exists": False,
+                "size_bytes": None,
+                "sha256": None,
+                "hash_computed": False,
+                "staged_role": staged["role"],
             }
         )
 
     files.sort(key=lambda item: str(item["path"]))
-    counts = {
-        name: sum(1 for item in files if item.get("change") == name)
-        for name in ("original", "created", "modified", "deleted", "unsafe_link")
-    }
-    immutable_drift = [
-        item["path"]
+    staged_unchanged = sum(item["status"] == "staged_unchanged" for item in files)
+    staged_modified = sum(item["status"] == "staged_modified" for item in files)
+    staged_deleted = sum(item["status"] == "staged_deleted" for item in files)
+    created = sum(item["status"] == "created" for item in files)
+    symlinks = sum(item["kind"] == "symlink" for item in files)
+    hash_omitted = sum(
+        item["kind"] == "file" and item["exists"] and not item["hash_computed"]
         for item in files
-        if item.get("immutable_input") and item.get("change") not in {"original"}
-    ]
+    )
+
     return {
-        "schema_version": 1,
-        "run_id": run_id,
+        "schema_version": "1",
         "audit_id": audit_id,
+        "run_id": run_id,
         "workspace_is_security_boundary": False,
+        "integrity_scope": "veritas_staged_inputs_only",
+        "integrity_ok": staged_modified == 0 and staged_deleted == 0,
+        "summary": {
+            "entries_scanned": entries_scanned,
+            "directories": directories,
+            "files_present": sum(item["kind"] == "file" and item["exists"] for item in files),
+            "created_files": created,
+            "staged_unchanged": staged_unchanged,
+            "staged_modified": staged_modified,
+            "staged_deleted": staged_deleted,
+            "symlinks": symlinks,
+            "hash_omitted": hash_omitted,
+        },
         "files": files,
-        "counts": counts,
-        "changed_files": [
-            item["path"] for item in files if item.get("change") != "original"
-        ],
-        "staged_input_drift": immutable_drift,
-        "staged_inputs_unchanged": not immutable_drift,
+        "note": (
+            "Integrity covers only Veritas-staged paper, attachments, and artifacts.json. "
+            "Generated files remain untrusted reproduction outputs until separately reviewed."
+        ),
     }
 
 
-def replication_workspace_file(
-    runtime: AuditHarness,
+def preview_replication_workspace_file(
+    store: HarnessStore,
+    audit_id: str,
     run_id: str,
     relative_path: str,
 ) -> dict[str, Any]:
-    audit = find_replication_audit(runtime, run_id)
-    audit_id = str(audit["audit_id"])
-    workspace = _workspace_path(runtime, audit_id, run_id)
-    clean_path = _clean_relative_path(relative_path)
-    expected = _expected_files(runtime, audit, run_id)
-    baseline = expected.get(clean_path)
-    candidate = workspace.joinpath(*PurePosixPath(clean_path).parts)
+    """Return a bounded UTF-8 preview for one run-owned regular file."""
 
-    current_bytes: bytes | None = None
-    current_sha: str | None = None
-    current_size = 0
-    deleted = False
-    if candidate.exists() or candidate.is_symlink():
-        safe = _safe_regular_file(workspace, candidate)
-        current_size = safe.stat().st_size
-        current_sha = _file_sha256(safe)
-        current_bytes = _bounded_bytes(safe)
-    elif baseline is not None:
-        deleted = True
-    else:
-        raise FileNotFoundError(f"workspace file not found: {clean_path}")
+    record = store.get_audit(audit_id)
+    workspace = _authorized_workspace(store, audit_id, record, run_id)
+    parts = _safe_relative_parts(relative_path)
 
-    baseline_bytes = _baseline_bytes(baseline)
-    if deleted:
-        change = "deleted"
-    elif baseline is None:
-        change = "created"
-    elif current_sha == baseline.get("sha256"):
-        change = "original"
-    else:
-        change = "modified"
+    cursor = workspace
+    final_stat: os.stat_result | None = None
+    for index, part in enumerate(parts):
+        cursor = cursor / part
+        try:
+            current_stat = os.lstat(cursor)
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"workspace file not found: {relative_path}") from exc
+        except OSError as exc:
+            raise RuntimeError(f"unable to inspect workspace path: {relative_path}") from exc
 
-    current_text, current_binary, current_truncated = _decode_text(current_bytes, current_size)
-    baseline_size = int(baseline.get("size_bytes") or 0) if baseline else 0
-    baseline_text, baseline_binary, baseline_truncated = _decode_text(
-        baseline_bytes,
-        baseline_size,
-    )
-    diff = ""
-    if change in {"created", "modified", "deleted"} and not current_binary and not baseline_binary:
-        before = baseline_text or ""
-        after = current_text or ""
-        diff = "".join(
-            difflib.unified_diff(
-                before.splitlines(keepends=True),
-                after.splitlines(keepends=True),
-                fromfile=f"a/{clean_path}",
-                tofile=f"b/{clean_path}",
-                n=3,
-            )
-        )
+        if stat.S_ISLNK(current_stat.st_mode):
+            raise ValueError("symlink paths cannot be previewed")
+        if index < len(parts) - 1 and not stat.S_ISDIR(current_stat.st_mode):
+            raise FileNotFoundError(f"workspace file not found: {relative_path}")
+        final_stat = current_stat
+
+    if final_stat is None or not stat.S_ISREG(final_stat.st_mode):
+        raise ValueError("workspace preview requires a regular file")
+
+    resolved_workspace = workspace.resolve(strict=True)
+    resolved_file = cursor.resolve(strict=True)
+    if not resolved_file.is_relative_to(resolved_workspace):
+        raise ValueError("workspace path escapes the replication run")
+
+    try:
+        with resolved_file.open("rb") as handle:
+            sample = handle.read(_MAX_PREVIEW_BYTES)
+    except OSError as exc:
+        raise RuntimeError(f"unable to read workspace file: {relative_path}") from exc
+
+    truncated = final_stat.st_size > len(sample)
+    if b"\x00" in sample:
+        return {
+            "audit_id": audit_id,
+            "run_id": run_id,
+            "path": PurePosixPath(*parts).as_posix(),
+            "size_bytes": final_stat.st_size,
+            "previewable": False,
+            "truncated": truncated,
+            "encoding": None,
+            "content": None,
+            "reason": "binary_content",
+        }
+
+    decoder = codecs.getincrementaldecoder("utf-8")("strict")
+    try:
+        text = decoder.decode(sample, final=not truncated)
+    except UnicodeDecodeError:
+        return {
+            "audit_id": audit_id,
+            "run_id": run_id,
+            "path": PurePosixPath(*parts).as_posix(),
+            "size_bytes": final_stat.st_size,
+            "previewable": False,
+            "truncated": truncated,
+            "encoding": None,
+            "content": None,
+            "reason": "non_utf8_content",
+        }
 
     return {
-        "run_id": run_id,
         "audit_id": audit_id,
-        "path": clean_path,
-        "change": change,
-        "size_bytes": current_size,
-        "sha256": current_sha,
-        "baseline_sha256": baseline.get("sha256") if baseline else None,
-        "immutable_input": bool(baseline and baseline.get("immutable_input")),
-        "binary": current_binary,
-        "baseline_binary": baseline_binary,
-        "truncated": current_truncated,
-        "baseline_truncated": baseline_truncated,
-        "content": None if current_binary else current_text,
-        "baseline_content": None if baseline_binary else baseline_text,
-        "diff": diff,
+        "run_id": run_id,
+        "path": PurePosixPath(*parts).as_posix(),
+        "size_bytes": final_stat.st_size,
+        "previewable": True,
+        "truncated": truncated,
+        "encoding": "utf-8",
+        "content": text,
+        "reason": None,
     }
 
 
-def normalize_replication_run(value: dict[str, Any]) -> dict[str, Any]:
-    result = dict(value)
-    if result.get("run_kind") == "replication" and result.get("error_type") == "ReplicationCancelledError":
-        result["phase"] = "cancelled"
-        result["status"] = "review"
-    return result
-
-
-def _workspace_path(runtime: AuditHarness, audit_id: str, run_id: str) -> Path:
-    _validate_run_id(run_id)
-    root = runtime.paper_path(audit_id).parent / "replication-workspaces"
-    workspace = root / run_id
-    if not workspace.is_dir():
-        raise FileNotFoundError(f"replication workspace not found: {run_id}")
-    resolved_root = root.resolve()
-    resolved_workspace = workspace.resolve()
-    try:
-        resolved_workspace.relative_to(resolved_root)
-    except ValueError as exc:
-        raise ValueError("replication workspace escaped its audit root") from exc
-    return resolved_workspace
-
-
-def _expected_files(
-    runtime: AuditHarness,
-    audit: dict[str, Any],
+def _authorized_workspace(
+    store: HarnessStore,
+    audit_id: str,
+    record: dict[str, Any],
     run_id: str,
-) -> dict[str, dict[str, Any]]:
-    audit_id = str(audit["audit_id"])
-    paper_path = runtime.paper_path(audit_id)
+) -> Path:
+    _validate_run_id(run_id)
+    if record.get("audit_id") != audit_id:
+        raise FileNotFoundError(f"audit not found: {audit_id}")
+    if not _audit_has_replication_run(record, run_id):
+        raise FileNotFoundError(f"replication run not found for audit: {run_id}")
+
+    audit_dir = store.root / audit_id
+    workspace = audit_dir / "replication-workspaces" / run_id
+    try:
+        workspace_stat = os.lstat(workspace)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"replication workspace not found: {run_id}") from exc
+    except OSError as exc:
+        raise RuntimeError(f"unable to inspect replication workspace: {run_id}") from exc
+    if stat.S_ISLNK(workspace_stat.st_mode) or not stat.S_ISDIR(workspace_stat.st_mode):
+        raise ValueError("replication workspace root must be a real directory")
+
+    resolved_audit = audit_dir.resolve(strict=True)
+    resolved_workspace = workspace.resolve(strict=True)
+    if not resolved_workspace.is_relative_to(resolved_audit):
+        raise ValueError("replication workspace escapes the audit directory")
+    return workspace
+
+
+def _audit_has_replication_run(record: dict[str, Any], run_id: str) -> bool:
+    for event in record.get("events") or []:
+        if not isinstance(event, dict) or event.get("kind") != "tool":
+            continue
+        payload = event.get("payload") or {}
+        if not isinstance(payload, dict):
+            continue
+        if (
+            payload.get("run_id") == run_id
+            and payload.get("run_kind") == "replication"
+            and payload.get("tool") == "replication.acp"
+        ):
+            return True
+    return False
+
+
+def _expected_staged_objects(record: dict[str, Any], run_id: str) -> dict[str, dict[str, Any]]:
+    paper_sha = _require_sha256(record.get("artifact_sha256"), "paper sha256")
     expected: dict[str, dict[str, Any]] = {
         "paper.pdf": {
-            "sha256": audit.get("artifact_sha256"),
-            "size_bytes": paper_path.stat().st_size,
-            "source": paper_path,
-            "binary": True,
-            "immutable_input": True,
+            "sha256": paper_sha,
+            "size_bytes": None,
+            "role": "paper",
         }
     }
+
     attachment_manifest: list[dict[str, Any]] = []
-    for metadata in audit.get("attachments") or []:
-        attachment_id = str(metadata["attachment_id"])
-        source = runtime.store.get_attachment_path(audit_id, attachment_id)
-        path = f"attachments/{attachment_id}/{source.name}"
-        expected[path] = {
-            "sha256": metadata.get("sha256"),
-            "size_bytes": metadata.get("size_bytes"),
-            "source": source,
-            "binary": _looks_binary(source),
-            "immutable_input": True,
+    for metadata in record.get("attachments") or []:
+        if not isinstance(metadata, dict):
+            raise TypeError("audit attachment metadata is invalid")
+        attachment_id = str(metadata.get("attachment_id") or "")
+        if not attachment_id.startswith("att_") or not attachment_id[4:].isalnum():
+            raise ValueError("audit attachment id is invalid")
+        filename = str(metadata.get("filename") or "")
+        if (
+            not filename
+            or filename in {".", ".."}
+            or "/" in filename
+            or "\\" in filename
+            or "\x00" in filename
+        ):
+            raise ValueError("audit attachment filename is invalid")
+        digest = _require_sha256(metadata.get("sha256"), "attachment sha256")
+        size_bytes = metadata.get("size_bytes")
+        if not isinstance(size_bytes, int) or isinstance(size_bytes, bool) or size_bytes < 0:
+            raise ValueError("audit attachment size is invalid")
+        relative = f"attachments/{attachment_id}/{filename}"
+        expected[relative] = {
+            "sha256": digest,
+            "size_bytes": size_bytes,
+            "role": "attachment",
         }
         attachment_manifest.append(
             {
                 "attachment_id": attachment_id,
-                "filename": source.name,
-                "sha256": metadata.get("sha256"),
-                "size_bytes": metadata.get("size_bytes"),
+                "filename": filename,
+                "sha256": digest,
+                "size_bytes": size_bytes,
                 "media_type": metadata.get("media_type"),
-                "path": path,
+                "path": relative,
             }
         )
+
     manifest = {
         "schema_version": "1",
         "run_id": run_id,
         "paper": {
             "filename": "paper.pdf",
-            "sha256": audit.get("artifact_sha256"),
-            "artifact_id": (audit.get("paper_summary") or {}).get("artifact_id"),
+            "sha256": paper_sha,
+            "artifact_id": (record.get("paper_summary") or {}).get("artifact_id"),
         },
         "attachments": attachment_manifest,
     }
@@ -245,141 +391,45 @@ def _expected_files(
     expected["artifacts.json"] = {
         "sha256": sha256(manifest_bytes).hexdigest(),
         "size_bytes": len(manifest_bytes),
-        "bytes": manifest_bytes,
-        "binary": False,
-        "immutable_input": True,
+        "role": "manifest",
     }
     return expected
 
 
-def _scan_workspace(workspace: Path) -> dict[str, dict[str, Any]]:
-    items: dict[str, dict[str, Any]] = {}
-    seen = 0
-    for root, dirs, files in os.walk(workspace, followlinks=False):
-        root_path = Path(root)
-        kept_dirs: list[str] = []
-        for name in dirs:
-            path = root_path / name
-            relative = path.relative_to(workspace).as_posix()
-            if path.is_symlink():
-                seen += 1
-                items[relative] = {
-                    "path": relative,
-                    "size_bytes": 0,
-                    "sha256": None,
-                    "binary": False,
-                    "kind": "symlink",
-                }
-            else:
-                kept_dirs.append(name)
-        dirs[:] = kept_dirs
-        for name in files:
-            path = root_path / name
-            relative = path.relative_to(workspace).as_posix()
-            seen += 1
-            if seen > MAX_WORKSPACE_FILES:
-                raise ValueError(f"replication workspace exceeds {MAX_WORKSPACE_FILES} inspectable entries")
-            if path.is_symlink():
-                items[relative] = {
-                    "path": relative,
-                    "size_bytes": 0,
-                    "sha256": None,
-                    "binary": False,
-                    "kind": "symlink",
-                }
-                continue
-            safe = _safe_regular_file(workspace, path)
-            items[relative] = {
-                "path": relative,
-                "size_bytes": safe.stat().st_size,
-                "sha256": _file_sha256(safe),
-                "binary": _looks_binary(safe),
-                "kind": "file",
-            }
-    return items
+def _safe_relative_parts(relative_path: str) -> tuple[str, ...]:
+    if not isinstance(relative_path, str):
+        raise TypeError("workspace path must be text")
+    if not relative_path or len(relative_path) > 512 or "\x00" in relative_path:
+        raise ValueError("workspace path is invalid")
+    if "\\" in relative_path:
+        raise ValueError("workspace path must use POSIX separators")
+    raw_parts = relative_path.split("/")
+    if any(part in {"", ".", ".."} for part in raw_parts):
+        raise ValueError("workspace path must be a normalized relative path")
+    pure = PurePosixPath(relative_path)
+    if pure.is_absolute():
+        raise ValueError("workspace path must be relative")
+    return tuple(raw_parts)
 
 
-def _safe_regular_file(workspace: Path, candidate: Path) -> Path:
-    if candidate.is_symlink():
-        raise ValueError("workspace symlinks are not inspectable")
-    resolved = candidate.resolve(strict=True)
-    try:
-        resolved.relative_to(workspace.resolve())
-    except ValueError as exc:
-        raise ValueError("workspace file escaped its run directory") from exc
-    relative = candidate.relative_to(workspace)
-    cursor = workspace
-    for part in relative.parts:
-        cursor = cursor / part
-        if cursor.is_symlink():
-            raise ValueError("workspace symlinks are not inspectable")
-    if not resolved.is_file():
-        raise ValueError("workspace path is not a regular file")
-    return resolved
+def _validate_run_id(run_id: str) -> None:
+    if not isinstance(run_id, str) or _RUN_ID_RE.fullmatch(run_id) is None:
+        raise ValueError("invalid replication run id")
 
 
-def _clean_relative_path(value: str) -> str:
-    if not isinstance(value, str) or not value.strip() or "\x00" in value:
-        raise ValueError("workspace file path is required")
-    normalized = value.replace("\\", "/").strip()
-    pure = PurePosixPath(normalized)
-    if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
-        raise ValueError("workspace file path must stay inside the run workspace")
-    return pure.as_posix()
-
-
-def _bounded_bytes(path: Path) -> bytes:
-    with path.open("rb") as handle:
-        return handle.read(MAX_INSPECT_BYTES + 1)
-
-
-def _baseline_bytes(baseline: dict[str, Any] | None) -> bytes | None:
-    if baseline is None:
-        return None
-    if isinstance(baseline.get("bytes"), bytes):
-        return baseline["bytes"]
-    source = baseline.get("source")
-    if isinstance(source, Path):
-        return _bounded_bytes(source)
-    return None
-
-
-def _decode_text(payload: bytes | None, size: int) -> tuple[str | None, bool, bool]:
-    if payload is None:
-        return "", False, False
-    truncated = size > MAX_INSPECT_BYTES or len(payload) > MAX_INSPECT_BYTES
-    visible = payload[:MAX_INSPECT_BYTES]
-    if b"\x00" in visible:
-        return None, True, truncated
-    try:
-        return visible.decode("utf-8"), False, truncated
-    except UnicodeDecodeError:
-        return None, True, truncated
-
-
-def _looks_binary(path: Path) -> bool:
-    try:
-        with path.open("rb") as handle:
-            sample = handle.read(8192)
-    except OSError:
-        return True
-    if b"\x00" in sample:
-        return True
-    try:
-        sample.decode("utf-8")
-    except UnicodeDecodeError:
-        return True
-    return False
+def _require_sha256(value: object, label: str) -> str:
+    text = str(value or "")
+    if _SHA256_RE.fullmatch(text) is None:
+        raise ValueError(f"{label} is invalid")
+    return text
 
 
 def _file_sha256(path: Path) -> str:
     digest = sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(_HASH_CHUNK_BYTES), b""):
+                digest.update(chunk)
+    except OSError as exc:
+        raise RuntimeError(f"unable to hash workspace file: {path.name}") from exc
     return digest.hexdigest()
-
-
-def _validate_run_id(run_id: str) -> None:
-    if not isinstance(run_id, str) or not run_id.startswith("run_") or not run_id[4:].isalnum():
-        raise ValueError("invalid replication run id")

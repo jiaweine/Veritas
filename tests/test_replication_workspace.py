@@ -122,7 +122,7 @@ if __name__ == "__main__":
     assert replication_control_state("run_fixture1")["active"] is False
 
 
-def test_workspace_api_uses_filesystem_truth_and_rejects_escape(tmp_path, monkeypatch) -> None:
+def test_workspace_product_api_reuses_bounded_inspector_and_rejects_escape(tmp_path, monkeypatch) -> None:
     artifact_bytes = b'print("original")\n'
     outside = tmp_path / "outside.txt"
     outside.write_text("outside", encoding="utf-8")
@@ -159,7 +159,8 @@ def test_workspace_api_uses_filesystem_truth_and_rejects_escape(tmp_path, monkey
     assert caps["interactive_approval_supported"] is True
     assert caps["interactive_approval_enabled"] is True
     assert caps["workspace_inspector"] is True
-    assert caps["workspace_diff"] is True
+    assert caps["workspace_diff"] is False
+    assert caps["bounded_workspace_preview"] is True
     assert caps["cancellation_supported"] is True
 
     created = client.post(
@@ -185,6 +186,13 @@ def test_workspace_api_uses_filesystem_truth_and_rejects_escape(tmp_path, monkey
     assert control.status_code == 200
     assert control.json()["active"] is False
 
+    # Main's stable audit-scoped inspector remains intact.
+    bounded = client.get(f"/api/v1/audits/{audit_id}/replication-runs/{run_id}/workspace")
+    assert bounded.status_code == 200
+    assert bounded.json()["workspace_is_security_boundary"] is False
+    assert bounded.json()["integrity_scope"] == "veritas_staged_inputs_only"
+
+    # The product projection supplies run-centric change labels to the UI.
     snapshot_response = client.get(f"/api/v1/runs/{run_id}/workspace")
     assert snapshot_response.status_code == 200
     snapshot = snapshot_response.json()
@@ -197,6 +205,7 @@ def test_workspace_api_uses_filesystem_truth_and_rejects_escape(tmp_path, monkey
     assert by_path["escape-link"]["change"] == "unsafe_link"
     assert snapshot["staged_inputs_unchanged"] is False
     assert attachment_path in snapshot["staged_input_drift"]
+    assert snapshot["bounded_inspection"]["symlinks"] == 1
 
     generated = client.get(
         f"/api/v1/runs/{run_id}/workspace/file",
@@ -205,14 +214,16 @@ def test_workspace_api_uses_filesystem_truth_and_rejects_escape(tmp_path, monkey
     assert generated.status_code == 200
     assert generated.json()["content"] == "result=42\n"
     assert generated.json()["change"] == "created"
+    assert generated.json()["previewable"] is True
 
     modified = client.get(
         f"/api/v1/runs/{run_id}/workspace/file",
         params={"path": attachment_path},
     )
     assert modified.status_code == 200
-    assert '-print("original")' in modified.json()["diff"]
-    assert '+print("changed")' in modified.json()["diff"]
+    assert modified.json()["content"] == 'print("changed")\n'
+    assert modified.json()["change"] == "modified"
+    assert modified.json()["immutable_input"] is True
 
     assert client.get(
         f"/api/v1/runs/{run_id}/workspace/file",

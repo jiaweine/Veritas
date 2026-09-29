@@ -50,23 +50,28 @@ The source PDF and attachments in the Harness store remain authoritative. A codi
 
 The workspace `cwd` is **not** a security boundary. Filesystem, process and network isolation remain the responsibility of the configured coding-agent runtime (for example, the Codex sandbox or an external container/workspace implementation).
 
-## Server-side workspace inspector
+## Bounded server-side workspace inspector
 
-The UI does not trust an agent to report its own file changes. Veritas independently scans the run directory and computes SHA-256 identities for regular files. The inspector classifies paths as:
+The UI does not trust an agent to report its own file changes. Veritas reuses the bounded run inspector documented in [`REPLICATION_WORKSPACE_INSPECTION.md`](REPLICATION_WORKSPACE_INSPECTION.md).
 
-- `original`;
-- `created`;
-- `modified`;
-- `deleted`;
-- `unsafe_link`.
+The lower-level inspector:
 
-Text previews and unified diffs are capped at 512 KiB. Inspector file reads reject absolute paths, `..`, symlinks and paths that resolve outside the run directory. Symlink targets are never followed.
+- binds the request to the audit that actually owns the replication `run_id`;
+- never follows symlinks;
+- rejects traversal and non-normalized paths;
+- caps a scan at 1,000 entries;
+- hashes Veritas-staged files only up to the documented staged-file bound;
+- hashes created files only within per-file and aggregate created-output budgets;
+- caps UTF-8 preview reads at 256 KiB;
+- records when a hash was intentionally omitted because an inspection bound was reached.
 
-A changed staged paper, attachment or `artifacts.json` is surfaced as `staged_input_drift`. This means only that the run copy changed; it does not imply the immutable source artifact changed.
+Its integrity result is intentionally narrow: it covers only the Veritas-staged paper, attachments and `artifacts.json`. Generated files remain untrusted reproduction outputs until separately reviewed.
+
+The product adapter projects those bounded results into `original`, `created`, `modified`, `deleted`, `unsafe_link`, and `unsafe_other` states for the three-pane UI. A changed staged input is surfaced as staged-input drift; this means only that the run copy changed, not that the immutable source artifact changed.
 
 ## Product API
 
-Existing streaming execution remains:
+Streaming execution remains:
 
 ```text
 POST /api/v1/audits/{audit_id}/replication
@@ -82,9 +87,16 @@ POST /api/v1/replication/runs/{run_id}/permissions/{request_id}
 POST /api/v1/replication/runs/{run_id}/cancel
 ```
 
-Permission decisions accept only `reject` or `allow_once`. `allow_once` can select only an offered option with ACP kind `allow_once`.
+Permission decisions accept only `reject` or `allow_once`. `allow_once` can select only an option the ACP agent actually offered with kind `allow_once`.
 
-Workspace inspection:
+The stable bounded inspector API remains audit-scoped:
+
+```text
+GET /api/v1/audits/{audit_id}/replication-runs/{run_id}/workspace
+GET /api/v1/audits/{audit_id}/replication-runs/{run_id}/workspace/file?path=<relative-path>
+```
+
+The Product Workbench additionally exposes run-centric projections for its inspector panes:
 
 ```text
 GET /api/v1/runs/{run_id}/workspace
@@ -98,15 +110,19 @@ GET /api/v1/runs
 GET /api/v1/runs/{run_id}
 ```
 
-## UI
+## Web UI
 
-The web Reproduction surface is a three-pane Replication Workspace:
+The Reproduction surface is a three-pane Replication Workspace:
 
 1. **Project rail** — paper selection, immutable attachments and prior replication runs.
-2. **Agent conversation** — streamed messages, reasoning, plans, tool/terminal events, permission cards and run lifecycle state.
-3. **Workspace inspector** — Changes, Files and Run tabs backed by server-side filesystem inspection.
+2. **Agent conversation** — streamed agent messages, reasoning, plans, tool/terminal events, permission cards and run lifecycle state.
+3. **Workspace inspector** — Changes, Files and Run tabs backed by bounded server-side filesystem inspection.
 
-The workspace can reopen prior runs from persisted Harness events and the retained run-specific workspace directory.
+The workspace can reopen prior runs from persisted Harness events and the retained run-specific workspace directory. Historical pending-permission events are evidence of what happened in the run; only a currently active streamed run can resolve a live permission request.
+
+## Cancellation
+
+An active Web Harness run can request cancellation through the run control API. Veritas resolves any pending permission fail-closed, cancels the active ACP prompt and tears down the child-agent process context. Persisted product views normalize this terminal condition as `cancelled`; it is not reported as successful reproduction.
 
 ## Non-goals
 
