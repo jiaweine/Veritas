@@ -143,6 +143,7 @@
 
   body.reference-audit-active .ah-thread {
     padding: 10px 9px 14px;
+    overflow-x: hidden;
   }
 
   body.reference-audit-active .ah-message.user {
@@ -150,12 +151,29 @@
   }
 
   body.reference-audit-active .ah-event {
+    grid-template-columns: 20px minmax(0, 1fr);
     margin-left: 22px;
     padding-left: 10px;
+    padding-right: 4px;
+  }
+
+  body.reference-audit-active .ah-event > .ah-badge,
+  body.reference-audit-active .ah-event > time {
+    display: none;
   }
 
   body.reference-audit-active .ah-event-icon {
     margin-left: -20px;
+  }
+
+  body.reference-audit-active .ah-event-copy {
+    min-width: 0;
+  }
+
+  body.reference-audit-active .ah-event-copy strong,
+  body.reference-audit-active .ah-event-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   body.reference-audit-active .ah-composer-wrap {
