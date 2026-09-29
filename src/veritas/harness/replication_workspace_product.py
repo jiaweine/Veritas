@@ -126,9 +126,15 @@ def normalize_replication_run(value: dict[str, Any]) -> dict[str, Any]:
     """Normalize persisted replication terminal state and archived approvals."""
 
     result = dict(value)
-    if result.get("run_kind") == "replication" and result.get("error_type") == "ReplicationCancelledError":
+    cancelled = (
+        result.get("run_kind") == "replication"
+        and result.get("error_type") == "ReplicationCancelledError"
+    )
+    if cancelled:
         result["phase"] = "cancelled"
         result["status"] = "review"
+        result["task"] = "Replication run cancelled"
+        result["error_type"] = None
 
     events = result.get("events")
     if not isinstance(events, list):
@@ -142,6 +148,21 @@ def normalize_replication_run(value: dict[str, Any]) -> dict[str, Any]:
         payload = projected.get("payload")
         if isinstance(payload, dict):
             outer = dict(payload)
+            if (
+                cancelled
+                and projected.get("kind") == "tool"
+                and outer.get("error_type") == "ReplicationCancelledError"
+            ):
+                projected["title"] = "Replication run cancelled"
+                projected["detail"] = "Cancelled by the user; the agent turn was terminated."
+                projected["status"] = "review"
+                outer["phase"] = "cancelled"
+                outer["error_type"] = None
+                terminal_result = outer.get("result")
+                if isinstance(terminal_result, dict):
+                    normalized_terminal_result = dict(terminal_result)
+                    normalized_terminal_result["status"] = "cancelled"
+                    outer["result"] = normalized_terminal_result
             agent_event = outer.get("agent_event")
             if isinstance(agent_event, dict) and agent_event.get("kind") == "permission":
                 agent_copy = dict(agent_event)
