@@ -125,12 +125,18 @@ def _assert_product_information_architecture(page: Page) -> None:
 
 def _assert_reference_topology(page: Page) -> None:
     page.locator("[data-reference-sidebar]").wait_for(state="visible", timeout=10_000)
+    preview = page.locator("[data-reference-evidence-preview='true']")
+    preview.wait_for(state="visible", timeout=10_000)
+    if "Minimum wage" not in preview.inner_text() or "-0.021" not in preview.inner_text():
+        raise AssertionError("Evidence preview is not backed by the persisted detector result")
     analysis = page.locator("[data-reference-analysis='true']")
     analysis.wait_for(state="visible", timeout=10_000)
     if "-0.021" not in analysis.inner_text() or "0.026" not in analysis.inner_text():
         raise AssertionError("Selected Cell Analysis is not backed by the persisted detector consensus")
     if page.locator(".ah-left").is_visible():
         raise AssertionError("Legacy nested project rail is still visible in the desktop audit workbench")
+    if page.locator("#ah-pdf").is_visible():
+        raise AssertionError("Headless PDF plug-in should be replaced by the detector-backed evidence preview")
     if not page.evaluate("document.body.classList.contains('reference-audit-active')"):
         raise AssertionError("Reference-aligned audit shell did not activate")
 
