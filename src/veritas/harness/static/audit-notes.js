@@ -12,6 +12,7 @@ const notesState = {
   serverUpdatedAt: null,
   loading: false,
   saving: false,
+  error: "",
   requestToken: 0,
 };
 
@@ -56,8 +57,8 @@ function saveSessionPatch(auditId, patch) {
 
 function readDraft(auditId) {
   try {
-    const key = draftKey(auditId);
-    return localStorage.getItem(key) === null ? null : localStorage.getItem(key);
+    const value = localStorage.getItem(draftKey(auditId));
+    return value === null ? null : value;
   } catch {
     return null;
   }
@@ -84,17 +85,32 @@ function notesButton(root) {
 function ensureNotesTab(root) {
   let button = notesButton(root);
   if (!button) {
-    button = root.querySelector(".ah-workspace-tabs [data-ah-tab='provenance']");
-    if (!button) return null;
-    button.removeAttribute("data-ah-tab");
+    const provenance = root.querySelector(".ah-workspace-tabs [data-ah-tab='provenance']");
+    if (!provenance) return null;
+    button = document.createElement("button");
+    button.type = "button";
     button.dataset.ahNotesTab = "true";
     button.textContent = "Notes";
+    provenance.replaceWith(button);
   }
   if (button.dataset.ahNotesBound !== "true") {
     button.dataset.ahNotesBound = "true";
-    button.addEventListener("click", () => openNotes(root));
+    button.addEventListener("click", () => openNotes(auditRoot()));
   }
   return button;
+}
+
+function ensureAuditExit(root) {
+  const button = root.querySelector(".ah-workspace-tabs button:first-child");
+  if (!button || button.dataset.ahNotesExitBound === "true") return;
+  button.dataset.ahNotesExitBound = "true";
+  button.addEventListener("click", () => {
+    if (!notesState.active) return;
+    const auditId = activeAuditId(root);
+    notesState.active = false;
+    saveSessionPatch(auditId, { tab: "source" });
+    root.querySelector("[data-ah-tab='source']")?.click();
+  });
 }
 
 function setTopTabState(root, active) {
@@ -132,9 +148,10 @@ function renderNotesSurface(root) {
   if (draft !== null && draft === notesState.serverText) clearDraft(auditId);
   inspector.innerHTML = `<section class="ah-notes-pane" data-ah-notes-pane="true">
     <div class="ah-notes-copy"><span>Workspace notes</span><p>Capture review context, follow-ups, and handoff details here. Evidence stays in the linked Source and Provenance views.</p></div>
+    ${notesState.error ? `<div class="ah-notes-error" role="alert">${esc(notesState.error)}</div>` : ""}
     <textarea id="ah-notes-editor" maxlength="${MAX_NOTES_CHARS}" spellcheck="true" placeholder="Write notes about this audit…">${esc(value)}</textarea>
     <div class="ah-notes-footer">
-      <div><strong id="ah-notes-status">${dirty ? "Unsaved changes" : formatTimestamp(notesState.serverUpdatedAt)}</strong><small><span id="ah-notes-count">${value.length.toLocaleString()}</span> / ${MAX_NOTES_CHARS.toLocaleString()} characters · plain text</small></div>
+      <div><strong id="ah-notes-status">${esc(notesState.error || (dirty ? "Unsaved changes" : formatTimestamp(notesState.serverUpdatedAt)))}</strong><small><span id="ah-notes-count">${value.length.toLocaleString()}</span> / ${MAX_NOTES_CHARS.toLocaleString()} characters · plain text</small></div>
       <button id="ah-notes-save" type="button" ${dirty ? "" : "disabled"}>Save notes</button>
     </div>
   </section>`;
@@ -149,7 +166,7 @@ function updateEditorState(root, auditId) {
   if (!editor || !status || !count || !save) return;
   const dirty = editor.value !== notesState.serverText;
   count.textContent = editor.value.length.toLocaleString();
-  status.textContent = dirty ? "Unsaved changes" : formatTimestamp(notesState.serverUpdatedAt);
+  status.textContent = notesState.error || (dirty ? "Unsaved changes" : formatTimestamp(notesState.serverUpdatedAt));
   save.disabled = !dirty || notesState.saving;
   save.textContent = notesState.saving ? "Saving…" : "Save notes";
   if (dirty) writeDraft(auditId, editor.value);
@@ -160,7 +177,11 @@ function bindNotesEditor(root, auditId) {
   const editor = root.querySelector("#ah-notes-editor");
   const save = root.querySelector("#ah-notes-save");
   if (!editor || !save) return;
-  editor.addEventListener("input", () => updateEditorState(root, auditId));
+  editor.addEventListener("input", () => {
+    notesState.error = "";
+    root.querySelector(".ah-notes-error")?.remove();
+    updateEditorState(root, auditId);
+  });
   editor.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
@@ -174,6 +195,7 @@ async function loadNotes(root, auditId) {
   if (!auditId || notesState.loading) return;
   const token = ++notesState.requestToken;
   notesState.loading = true;
+  notesState.error = "";
   renderNotesSurface(root);
   try {
     const response = await fetch(`/api/v1/audits/${encodeURIComponent(auditId)}`, {
@@ -188,8 +210,7 @@ async function loadNotes(root, auditId) {
     const draft = readDraft(auditId);
     if (draft !== null && draft === notesState.serverText) clearDraft(auditId);
   } catch (error) {
-    const status = root.querySelector("#ah-notes-status");
-    if (status) status.textContent = `Unable to load notes: ${error.message}`;
+    notesState.error = `Unable to load notes: ${error.message}`;
   } finally {
     if (token === notesState.requestToken) notesState.loading = false;
     const fresh = auditRoot();
@@ -203,6 +224,7 @@ async function saveNotes(root, auditId) {
   const content = editor.value;
   if (content.length > MAX_NOTES_CHARS) return;
   notesState.saving = true;
+  notesState.error = "";
   updateEditorState(root, auditId);
   try {
     const response = await fetch(`/api/v1/audits/${encodeURIComponent(auditId)}/notes`, {
@@ -219,12 +241,14 @@ async function saveNotes(root, auditId) {
     notesState.serverUpdatedAt = saved.notes_updated_at || null;
     clearDraft(auditId);
   } catch (error) {
-    const status = root.querySelector("#ah-notes-status");
-    if (status) status.textContent = `Save failed: ${error.message}`;
+    notesState.error = `Save failed: ${error.message}`;
   } finally {
     notesState.saving = false;
     const fresh = auditRoot();
-    if (fresh && notesState.active && activeAuditId(fresh) === auditId) updateEditorState(fresh, auditId);
+    if (fresh && notesState.active && activeAuditId(fresh) === auditId) {
+      if (notesState.error) renderNotesSurface(fresh);
+      else updateEditorState(fresh, auditId);
+    }
   }
 }
 
@@ -233,6 +257,7 @@ function openNotes(root = auditRoot()) {
   if (!root || !auditId) return;
   notesState.auditId = auditId;
   notesState.active = true;
+  notesState.error = "";
   saveSessionPatch(auditId, { tab: "notes" });
   renderNotesSurface(root);
   if (notesState.loadedAuditId !== auditId) loadNotes(root, auditId);
@@ -251,6 +276,7 @@ function enhance() {
   }
   const auditId = activeAuditId(root);
   ensureNotesTab(root);
+  ensureAuditExit(root);
   const session = readSession(auditId);
   if (session.tab !== "notes" && notesState.active && notesState.auditId === auditId) {
     deactivateNotes();
