@@ -376,9 +376,11 @@ function enhance() {
 }
 
 const mainObserver = new MutationObserver(() => queueMicrotask(enhance));
-if (main) mainObserver.observe(main, { childList: true, subtree: true });
+if (main) mainObserver.observe(main, { childList: true });
 if (commandDialog) new MutationObserver(() => queueMicrotask(injectContextCommands)).observe(commandDialog, { attributes: true, attributeFilter: ["open"] });
-if (commandResults) new MutationObserver(() => queueMicrotask(injectContextCommands)).observe(commandResults, { childList: true });
+if (commandResults) new MutationObserver(() => {
+  if (!commandResults.querySelector(".ah-command-context")) queueMicrotask(injectContextCommands);
+}).observe(commandResults, { childList: true });
 
 document.addEventListener("click", persistClickState, true);
 document.addEventListener("keydown", (event) => {
