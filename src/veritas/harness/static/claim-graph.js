@@ -8,6 +8,11 @@ const graphState = {
   requestToken: 0,
 };
 
+const GRAPH_WIDTH = 640;
+const GRAPH_HEIGHT = 650;
+const NODE_WIDTH = 190;
+const NODE_HEIGHT = 64;
+
 const esc = (value = "") => String(value)
   .replaceAll("&", "&amp;")
   .replaceAll("<", "&lt;")
@@ -54,16 +59,15 @@ function node({ id, x, y, title, value = "", kind = "neutral", field = "", actio
     `aria-label="${esc(`${title}${value ? `: ${value}` : ""}`)}"`,
   ].filter(Boolean).join(" ");
   return `<g class="cg-node cg-${esc(kind)}" transform="translate(${x} ${y})" ${attrs}>
-    <rect width="176" height="64" rx="10"></rect>
-    <text class="cg-node-title" x="13" y="23">${esc(truncate(title, 27))}</text>
-    ${value ? `<text class="cg-node-value" x="13" y="45">${esc(truncate(value, 25))}</text>` : ""}
+    <rect width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="10"></rect>
+    <text class="cg-node-title" x="14" y="23">${esc(truncate(title, 29))}</text>
+    ${value ? `<text class="cg-node-value" x="14" y="46">${esc(truncate(value, 27))}</text>` : ""}
   </g>`;
 }
 
 function edge(x1, y1, x2, y2, label = "") {
-  const midX = (x1 + x2) / 2;
   const midY = (y1 + y2) / 2;
-  return `<g class="cg-edge"><path d="M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}" marker-end="url(#cg-arrow)"></path>${label ? `<text x="${midX}" y="${midY - 6}">${esc(label)}</text>` : ""}</g>`;
+  return `<g class="cg-edge"><path d="M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" marker-end="url(#cg-arrow)"></path>${label ? `<text x="${(x1 + x2) / 2}" y="${midY - 7}">${esc(label)}</text>` : ""}</g>`;
 }
 
 function graphMarkup(audit) {
@@ -93,25 +97,58 @@ function graphMarkup(audit) {
     ["p_value", "p-value", consensus.p_value],
   ].filter(([, , value]) => value !== null && value !== undefined && value !== "");
 
-  const statYs = [52, 136, 220, 304];
-  const checkItems = checks.slice(0, 4);
-  const checkYs = [52, 136, 220, 304];
-  const sourceValue = `${truncate(table || "Paper source", 19)} · p.${page}`;
+  const sourcePosition = { x: 225, y: 24 };
+  const claimPosition = { x: 225, y: 126 };
+  const metricPositions = [
+    { x: 38, y: 252 },
+    { x: 412, y: 252 },
+    { x: 38, y: 350 },
+    { x: 412, y: 350 },
+  ];
+  const checkPositions = [
+    { x: 38, y: 476 },
+    { x: 412, y: 476 },
+    { x: 38, y: 560 },
+    { x: 412, y: 560 },
+  ];
+  const sourceValue = `${truncate(table || "Paper source", 20)} · p.${page}`;
   const status = String(result.status || "review_required");
+  const checkItems = checks.slice(0, 4);
 
-  const edges = [edge(236, 252, 300, 252, "supports")];
-  values.forEach(([, label], index) => edges.push(edge(476, 252, 540, statYs[index] + 32, label === "Estimate" ? "reports" : "tests")));
-  checkItems.forEach((check, index) => edges.push(edge(716, statYs[Math.min(index, statYs.length - 1)] + 32, 776, checkYs[index] + 32, "checked by")));
-  if (!checkItems.length && findings.length) edges.push(edge(476, 252, 776, 220, "reviewed by"));
+  const sourceCenter = sourcePosition.x + NODE_WIDTH / 2;
+  const claimCenter = claimPosition.x + NODE_WIDTH / 2;
+  const edges = [
+    edge(sourceCenter, sourcePosition.y + NODE_HEIGHT, claimCenter, claimPosition.y, "supports"),
+  ];
+  values.forEach(([, label], index) => {
+    const position = metricPositions[index];
+    edges.push(edge(
+      claimCenter,
+      claimPosition.y + NODE_HEIGHT,
+      position.x + NODE_WIDTH / 2,
+      position.y,
+      label === "Estimate" ? "reports" : "tests"
+    ));
+  });
+  checkItems.forEach((check, index) => {
+    const position = checkPositions[index];
+    const metric = values.length ? metricPositions[Math.min(index, values.length - 1)] : claimPosition;
+    edges.push(edge(
+      metric.x + NODE_WIDTH / 2,
+      metric.y + NODE_HEIGHT,
+      position.x + NODE_WIDTH / 2,
+      position.y,
+      "checked by"
+    ));
+  });
 
   const nodes = [
-    node({ id: "source", x: 60, y: 220, title: "Evidence source", value: sourceValue, kind: "source", action: "source" }),
-    node({ id: "claim", x: 300, y: 220, title: row, value: `${Math.round((Number(result.verification_coverage) || 0) * 100)}% verified`, kind: tone(status), action: "source" }),
-    ...values.map(([field, label, value], index) => node({ id: field, x: 540, y: statYs[index], title: label, value, kind: "metric", field, action: "source" })),
+    node({ id: "source", ...sourcePosition, title: "Evidence source", value: sourceValue, kind: "source", action: "source" }),
+    node({ id: "claim", ...claimPosition, title: row, value: `${Math.round((Number(result.verification_coverage) || 0) * 100)}% verified`, kind: tone(status), action: "source" }),
+    ...values.map(([field, label, value], index) => node({ id: field, ...metricPositions[index], title: label, value, kind: "metric", field, action: "source" })),
     ...checkItems.map((check, index) => node({
       id: `check-${index}`,
-      x: 776,
-      y: checkYs[index],
+      ...checkPositions[index],
       title: check.title || check.name || check.kind || check.check || `Check ${index + 1}`,
       value: String(statusValue(check) || "recorded").replaceAll("_", " "),
       kind: tone(statusValue(check)),
@@ -120,10 +157,11 @@ function graphMarkup(audit) {
   ];
 
   if (!checkItems.length) {
+    const fallback = { x: 225, y: 500 };
+    edges.push(edge(claimCenter, claimPosition.y + NODE_HEIGHT, fallback.x + NODE_WIDTH / 2, fallback.y, "reviewed by"));
     nodes.push(node({
       id: "checks",
-      x: 776,
-      y: 220,
+      ...fallback,
       title: findings.length ? `${findings.length} finding${findings.length === 1 ? "" : "s"}` : "Audit checks",
       value: findings.length ? "Open linked findings" : "No persisted checks",
       kind: findings.length ? "bad" : "neutral",
@@ -134,13 +172,13 @@ function graphMarkup(audit) {
   return `<section class="claim-graph" data-reference-claim-graph="true">
     <div class="cg-toolbar"><div><strong>Claim Graph</strong><small>Derived from the latest persisted audit result</small></div><div class="cg-legend"><span><i class="source"></i>evidence</span><span><i class="metric"></i>reported value</span><span><i class="check"></i>verification</span></div></div>
     <div class="cg-canvas" role="region" aria-label="Evidence claim graph">
-      <svg viewBox="0 0 1012 430" role="img" aria-label="Claim graph for ${esc(row)}">
+      <svg viewBox="0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}" role="img" aria-label="Claim graph for ${esc(row)}">
         <defs><marker id="cg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker></defs>
         ${edges.join("")}
         ${nodes.join("")}
       </svg>
     </div>
-    <div class="cg-foot"><span>${esc(parserFamilies.size)} independent parser families represented</span><span>${esc(checks.length)} checks · ${esc(findings.length)} findings</span></div>
+    <div class="cg-foot"><span>${esc(parserFamilies.size)} independent parser families represented · select a value to open evidence</span><span>${esc(checks.length)} checks · ${esc(findings.length)} findings</span></div>
   </section>`;
 }
 
