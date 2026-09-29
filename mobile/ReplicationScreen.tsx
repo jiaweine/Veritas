@@ -108,7 +108,7 @@ type WorkspaceFile = {
   baseline_sha256?: string | null;
   binary?: boolean;
   kind?: string;
-  change: "original" | "created" | "modified" | "deleted" | "unsafe_link";
+  change: "original" | "created" | "modified" | "deleted" | "unsafe_link" | "unsafe_other";
   immutable_input?: boolean;
 };
 
@@ -251,7 +251,7 @@ function RunRow({ run, selected, onPress }: { run: RunSummary; selected: boolean
 
 function WorkspaceFileRow({ file, selected, onPress }: { file: WorkspaceFile; selected: boolean; onPress: () => void }) {
   const changed = file.change !== "original";
-  const unsafe = file.change === "unsafe_link";
+  const unsafe = file.change === "unsafe_link" || file.change === "unsafe_other";
   return <Pressable onPress={onPress} disabled={unsafe} style={[styles.fileRow, selected && styles.fileRowSelected, unsafe && styles.fileRowUnsafe]}>
     <View style={[styles.fileMark, changed && styles.fileMarkChanged]}><Text style={styles.fileMarkText}>{file.kind === "symlink" ? "↗" : file.binary ? "◇" : "≡"}</Text></View>
     <View style={styles.fileCopy}>
