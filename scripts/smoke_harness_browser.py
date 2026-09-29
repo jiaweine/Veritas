@@ -220,9 +220,19 @@ def _capture_mobile(page: Page, base_url: str, audit_id: str, output_dir: Path) 
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto("about:blank", wait_until="load")
     page.goto(f"{base_url}/#audit={quote(audit_id, safe='')}", wait_until="networkidle")
-    page.locator("[data-audit-harness='true']").wait_for(state="visible", timeout=20_000)
+    root = page.locator("[data-audit-harness='true']")
+    root.wait_for(state="visible", timeout=20_000)
     page.locator("[data-ah-notes-tab]").wait_for(state="visible", timeout=10_000)
     page.locator("[data-reference-claim-tab]").wait_for(state="visible", timeout=10_000)
+    if page.locator(".ah-left").is_visible():
+        raise AssertionError("Mobile audit still exposes the duplicate paper/run rail")
+    if page.locator(".ah-header-actions").is_visible():
+        raise AssertionError("Mobile audit still exposes duplicate desktop header actions")
+    title = page.locator(".ah-title-row h1")
+    if "Card (1992)" not in title.inner_text():
+        raise AssertionError("Mobile audit title lost primary paper context")
+    if title.bounding_box() is None:
+        raise AssertionError("Mobile audit title is not visible")
     page.screenshot(path=output_dir / "audit-mobile.png", full_page=True)
 
 
