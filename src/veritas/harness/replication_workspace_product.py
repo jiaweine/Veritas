@@ -87,22 +87,28 @@ def replication_workspace_product_file(
     run_id: str,
     relative_path: str,
 ) -> dict[str, Any]:
-    """Return one bounded file preview plus the inspector's integrity status."""
+    """Return one bounded file preview plus the inspector's integrity status.
+
+    Validate the requested path through the authoritative bounded inspector
+    before looking up product metadata. This preserves traversal and symlink
+    rejection semantics instead of converting invalid paths into a 404.
+    """
 
     audit = find_replication_audit(runtime, run_id)
     audit_id = str(audit["audit_id"])
+    preview = preview_replication_workspace_file(runtime.store, audit_id, run_id, relative_path)
+    normalized_path = str(preview.get("path") or relative_path)
     raw_snapshot = replication_workspace_snapshot(runtime.store, audit_id, run_id)
     metadata = next(
         (
             item
             for item in raw_snapshot.get("files") or []
-            if isinstance(item, dict) and item.get("path") == relative_path
+            if isinstance(item, dict) and item.get("path") == normalized_path
         ),
         None,
     )
     if metadata is None:
-        raise FileNotFoundError(f"workspace file not found: {relative_path}")
-    preview = preview_replication_workspace_file(runtime.store, audit_id, run_id, relative_path)
+        raise FileNotFoundError(f"workspace file not found: {normalized_path}")
     projected = _project_file(metadata)
     return {
         "run_id": run_id,
