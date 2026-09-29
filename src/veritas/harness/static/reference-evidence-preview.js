@@ -130,10 +130,9 @@ function queuePreview() {
 
 window.addEventListener("veritas:evidence-field", (event) => {
   const field = String(event.detail?.field || "");
-  if (!field) return;
   previewState.selectedField = field;
   applyFieldSelection(field);
-  window.setTimeout(() => applyFieldSelection(field), 120);
+  if (field) window.setTimeout(() => applyFieldSelection(field), 120);
 });
 
 window.addEventListener("hashchange", () => {
