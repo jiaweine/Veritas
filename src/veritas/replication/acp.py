@@ -215,6 +215,7 @@ class _InteractiveControlPlane:
                 return False
             control.cancelled = True
             pending = tuple(control.pending.values())
+            control.pending.clear()
         for item in pending:
             item.loop.call_soon_threadsafe(_resolve_future, item.future, None)
         return True
@@ -267,6 +268,8 @@ class _InteractiveControlPlane:
             control = self._runs.get(run_id)
             if control is None:
                 raise KeyError("replication run is not active")
+            if control.cancelled:
+                raise KeyError("replication run cancellation already requested")
             pending = control.pending.get(request_id)
             if pending is None:
                 raise KeyError("permission request is not pending")
@@ -291,6 +294,9 @@ class _InteractiveControlPlane:
                     selected_id = str(allow_once_options[0]["optionId"])
                 else:
                     raise ValueError("option_id is required when multiple allow_once options are offered")
+            consumed = control.pending.pop(request_id, None)
+            if consumed is not pending:
+                raise KeyError("permission request is not pending")
             loop = pending.loop
             future = pending.future
         loop.call_soon_threadsafe(_resolve_future, future, selected_id)
