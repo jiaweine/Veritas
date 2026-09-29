@@ -12,6 +12,7 @@ from uuid import uuid4
 from veritas.replication import (
     AcpTurnRunner,
     PermissionPolicy,
+    ReplicationCancelledError,
     ReplicationDependencyError,
     agent_from_environment,
 )
@@ -407,6 +408,33 @@ class AuditHarness:
             )
             self.store.append_event(finished)
             yield finished.to_dict()
+        except ReplicationCancelledError:
+            duration_ms = round((perf_counter() - started) * 1000, 3)
+            cancelled = HarnessEvent(
+                audit_id=audit_id,
+                kind="tool",
+                title="Replication run cancelled",
+                detail="Cancelled by the user; the agent turn was terminated.",
+                status="review",
+                payload={
+                    "tool": "replication.acp",
+                    "run_kind": "replication",
+                    "run_id": run_id,
+                    "phase": "cancelled",
+                    "duration_ms": duration_ms,
+                    "artifact_id": artifact_id,
+                    "attachment_count": len(attachments),
+                    "agent": agent.name,
+                    "permission_policy": policy.value,
+                    "result": {
+                        "status": "cancelled",
+                        "verification_coverage": 0.0,
+                        "counts": {},
+                    },
+                },
+            )
+            self.store.append_event(cancelled)
+            yield cancelled.to_dict()
         except (OSError, RuntimeError, TypeError, ValueError, ReplicationDependencyError) as exc:
             duration_ms = round((perf_counter() - started) * 1000, 3)
             failed = HarnessEvent(
