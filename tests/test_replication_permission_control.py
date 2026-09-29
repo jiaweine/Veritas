@@ -4,7 +4,6 @@ import asyncio
 
 from veritas.replication.acp import _InteractiveControlPlane
 
-
 _OPTIONS = (
     {"kind": "allow_always", "optionId": "forever", "name": "Always allow"},
     {"kind": "allow_once", "optionId": "once", "name": "Allow once"},
