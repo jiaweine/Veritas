@@ -35,6 +35,7 @@ from .replication_workspace_product import (
 )
 from .run_views import project_run_detail
 from .service import AuditHarness
+from .store import MAX_AUDIT_NOTES_CHARS
 from .telemetry import telemetry_capability
 
 MAX_UPLOAD_BYTES = 80 * 1024 * 1024
@@ -45,6 +46,10 @@ _API_VERSION = "v1"
 
 class MessageRequest(BaseModel):
     message: str
+
+
+class NotesRequest(BaseModel):
+    content: str
 
 
 class ReplicationRequest(BaseModel):
@@ -231,6 +236,27 @@ def create_app(
             return runtime.get_audit(audit_id)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/v1/audits/{audit_id}/notes")
+    def save_audit_notes(audit_id: str, request: NotesRequest) -> dict[str, object]:
+        if len(request.content) > MAX_AUDIT_NOTES_CHARS:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"audit notes exceed the {MAX_AUDIT_NOTES_CHARS:,} character limit"
+                ),
+            )
+        try:
+            record = runtime.store.set_notes(audit_id, request.content)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "audit_id": audit_id,
+            "notes": record["notes"],
+            "notes_updated_at": record["notes_updated_at"],
+        }
 
     @app.post("/api/audits")
     @app.post("/api/v1/audits")
