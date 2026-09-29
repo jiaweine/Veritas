@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from .models import HarnessEvent, utc_now_iso
 
+MAX_AUDIT_NOTES_CHARS = 50_000
+
 
 class HarnessStore:
     """Small local-first audit store used by the web harness.
@@ -49,6 +51,8 @@ class HarnessStore:
             "latest_result": None,
             "attachments": [],
             "events": [],
+            "notes": "",
+            "notes_updated_at": None,
         }
         with self._lock:
             audit_dir = self._audit_dir(audit_id)
@@ -190,6 +194,22 @@ class HarnessStore:
             self._write_record(record)
             return record
 
+    def set_notes(self, audit_id: str, notes: str) -> dict[str, Any]:
+        if not isinstance(notes, str):
+            raise TypeError("audit notes must be text")
+        if len(notes) > MAX_AUDIT_NOTES_CHARS:
+            raise ValueError(
+                f"audit notes exceed the {MAX_AUDIT_NOTES_CHARS:,} character limit"
+            )
+        with self._lock:
+            record = self._read_record(audit_id)
+            now = utc_now_iso()
+            record["notes"] = notes
+            record["notes_updated_at"] = now
+            record["updated_at"] = now
+            self._write_record(record)
+            return record
+
     def _audit_dir(self, audit_id: str) -> Path:
         if not audit_id.startswith("audit_") or not audit_id[6:].isalnum():
             raise ValueError("invalid audit id")
@@ -209,6 +229,12 @@ class HarnessStore:
             raise TypeError("audit metadata attachments must be an array")
         if any(not isinstance(item, dict) for item in attachments):
             raise TypeError("audit metadata attachment entries must be objects")
+        notes = value.setdefault("notes", "")
+        if not isinstance(notes, str):
+            raise TypeError("audit metadata notes must be text")
+        notes_updated_at = value.setdefault("notes_updated_at", None)
+        if notes_updated_at is not None and not isinstance(notes_updated_at, str):
+            raise TypeError("audit metadata notes_updated_at must be text or null")
         return value
 
     def _write_record(self, record: dict[str, Any]) -> None:
