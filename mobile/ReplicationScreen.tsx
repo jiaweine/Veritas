@@ -281,7 +281,6 @@ function RunDetailCard({ detail, loading }: { detail: RunDetail | null; loading:
 async function consumeNdjson(
   response: Response,
   onEvent: (event: HarnessEvent) => void,
-  *,
   requireStreaming: boolean,
 ) {
   const body = response.body as unknown as ReadableResponseBody | null;
@@ -544,7 +543,7 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
           setActiveRunId(runId);
         }
         setEvents((current) => [...current, event]);
-      }, { requireStreaming: capability?.permission_policy === "interactive" });
+      }, capability?.permission_policy === "interactive");
       if (discoveredRunId) {
         setSelectedRunId(discoveredRunId);
         await loadWorkspace(discoveredRunId);
