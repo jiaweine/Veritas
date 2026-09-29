@@ -17,6 +17,10 @@ from .benchmark_catalog import benchmark_catalog, benchmark_definition
 from .benchmark_results import BenchmarkResultStore
 from .parser_stack import parser_stack_capability
 from .replication_guard import stream_replication_guarded
+from .replication_workspace import (
+    preview_replication_workspace_file,
+    replication_workspace_snapshot,
+)
 from .run_views import project_run_detail
 from .service import AuditHarness
 from .telemetry import telemetry_capability
@@ -315,6 +319,32 @@ def create_app(
                 yield (json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+    @app.get("/api/v1/audits/{audit_id}/replication-runs/{run_id}/workspace")
+    def replication_workspace(audit_id: str, run_id: str) -> dict[str, object]:
+        try:
+            return replication_workspace_snapshot(runtime.store, audit_id, run_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+
+    @app.get("/api/v1/audits/{audit_id}/replication-runs/{run_id}/workspace/file")
+    def replication_workspace_file(
+        audit_id: str,
+        run_id: str,
+        path: Annotated[str, Query(min_length=1, max_length=512)],
+    ) -> dict[str, object]:
+        try:
+            return preview_replication_workspace_file(runtime.store, audit_id, run_id, path)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.get("/manifest.webmanifest", include_in_schema=False)
     def manifest() -> FileResponse:
