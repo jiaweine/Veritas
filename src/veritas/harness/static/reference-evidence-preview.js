@@ -135,6 +135,13 @@ window.addEventListener("veritas:evidence-field", (event) => {
   if (field) window.setTimeout(() => applyFieldSelection(field), 120);
 });
 
+document.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target.closest("[data-ah-page], [data-ah-tab='source']") : null;
+  if (!target || !auditRoot()?.contains(target)) return;
+  previewState.selectedField = "";
+  applyFieldSelection("");
+}, true);
+
 window.addEventListener("hashchange", () => {
   previewState.selectedField = "";
 });
