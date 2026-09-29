@@ -12,25 +12,35 @@ from playwright.sync_api import Page, sync_playwright
 
 
 def _demo_pdf() -> bytes:
+    """Build a deterministic PDF that both native parsers recognize as a regression table."""
     doc = pymupdf.open()
     page = doc.new_page(width=612, height=792)
-    page.insert_text((54, 58), "Card (1992) — Minimum Wages and Employment", fontsize=16)
-    page.insert_text((54, 92), "Table 4. County-Level Estimates", fontsize=12)
-    rows = [
-        "Dependent variable      Total employment      Teenage employment",
-        "Minimum wage           -0.021 (0.026)       -0.087 (0.043)",
-        "Teenage share          -0.412 (0.228)       -1.102 (0.342)",
-        "Unemployment rate      -0.073 (0.031)       -0.221 (0.052)",
-        "County population      0.021 (0.007)        0.013 (0.011)",
-        "N                      3,108                 3,108",
-    ]
-    y = 126
-    for row in rows:
-        page.insert_text((54, y), row, fontsize=9)
-        y += 22
+    page.insert_text((54, 54), "Card (1992) — Minimum Wages and Employment", fontsize=16)
+    page.insert_text((54, 88), "Table 4. County-Level Estimates", fontsize=12)
     page.insert_text(
-        (54, y + 14),
-        "Notes: Robust standard errors in parentheses. County and year fixed effects.",
+        (54, 106),
+        "Dependent variable: total employment. County and year controls included.",
+        fontsize=8,
+    )
+
+    xs = (54, 230, 315, 390, 465, 550)
+    ys = (122, 154, 188)
+    for x in xs:
+        page.draw_line((x, ys[0]), (x, ys[-1]), width=0.8)
+    for y in ys:
+        page.draw_line((xs[0], y), (xs[-1], y), width=0.8)
+
+    header = ("Variable", "Coef.", "SE", "z", "p")
+    data = ("Minimum wage", "-0.021", "0.026", "-0.808", "0.419")
+    for column, text in enumerate(header):
+        page.insert_text((xs[column] + 5, 145), text, fontsize=9)
+    for column, text in enumerate(data):
+        page.insert_text((xs[column] + 5, 179), text, fontsize=9)
+
+    page.insert_text((54, 218), "N = 3,108", fontsize=9)
+    page.insert_text(
+        (54, 238),
+        "Notes: Robust standard errors. This synthetic fixture exists only for browser acceptance.",
         fontsize=8,
     )
     payload = doc.tobytes(garbage=4, deflate=True)
@@ -52,6 +62,17 @@ def _wait_for_server(client: httpx.Client, timeout_seconds: float = 30.0) -> Non
     raise RuntimeError(f"Veritas harness did not become ready: {last_error}")
 
 
+def _drain_message(client: httpx.Client, audit_id: str, message: str) -> None:
+    with client.stream(
+        "POST",
+        f"/api/v1/audits/{audit_id}/messages",
+        json={"message": message},
+    ) as response:
+        response.raise_for_status()
+        for _line in response.iter_lines():
+            pass
+
+
 def _seed_audit(client: httpx.Client) -> str:
     created = client.post(
         "/api/v1/audits",
@@ -59,7 +80,10 @@ def _seed_audit(client: httpx.Client) -> str:
         files={"file": ("card-1992.pdf", _demo_pdf(), "application/pdf")},
     )
     created.raise_for_status()
-    audit_id = created.json()["audit_id"]
+    created_payload = created.json()
+    audit_id = created_payload["audit_id"]
+    if int((created_payload.get("paper_summary") or {}).get("tables_detected") or 0) < 1:
+        raise AssertionError("Browser fixture did not reach the real table parser")
 
     attachment = client.post(
         f"/api/v1/audits/{audit_id}/attachments",
@@ -73,14 +97,17 @@ def _seed_audit(client: httpx.Client) -> str:
     )
     attachment.raise_for_status()
 
-    with client.stream(
-        "POST",
-        f"/api/v1/audits/{audit_id}/messages",
-        json={"message": "/inspect"},
-    ) as response:
-        response.raise_for_status()
-        for _line in response.iter_lines():
-            pass
+    _drain_message(client, audit_id, "/inspect")
+    _drain_message(client, audit_id, '/audit row="Minimum wage" table=4 page=1')
+
+    audit = client.get(f"/api/v1/audits/{audit_id}")
+    audit.raise_for_status()
+    result = audit.json().get("latest_result") or {}
+    consensus = result.get("consensus") or {}
+    if consensus.get("beta") != "-0.021" or consensus.get("se") != "0.026":
+        raise AssertionError(f"Real detector result did not round-trip into audit state: {consensus}")
+    if result.get("status") not in {"verified", "review_required", "contradiction"}:
+        raise AssertionError(f"Unexpected detector state: {result.get('status')!r}")
     return audit_id
 
 
@@ -96,12 +123,25 @@ def _assert_product_information_architecture(page: Page) -> None:
         raise AssertionError(f"Provenance missing from Evidence Inspector: {inspector_labels}")
 
 
+def _assert_reference_topology(page: Page) -> None:
+    page.locator("[data-reference-sidebar]").wait_for(state="visible", timeout=10_000)
+    analysis = page.locator("[data-reference-analysis='true']")
+    analysis.wait_for(state="visible", timeout=10_000)
+    if "-0.021" not in analysis.inner_text() or "0.026" not in analysis.inner_text():
+        raise AssertionError("Selected Cell Analysis is not backed by the persisted detector consensus")
+    if page.locator(".ah-left").is_visible():
+        raise AssertionError("Legacy nested project rail is still visible in the desktop audit workbench")
+    if not page.evaluate("document.body.classList.contains('reference-audit-active')"):
+        raise AssertionError("Reference-aligned audit shell did not activate")
+
+
 def _capture_desktop(page: Page, base_url: str, audit_id: str, output_dir: Path) -> None:
     audit_url = f"{base_url}/#audit={quote(audit_id, safe='')}"
     page.goto(audit_url, wait_until="networkidle")
     page.locator("[data-audit-harness='true']").wait_for(state="visible", timeout=20_000)
     page.locator("[data-ah-notes-tab]").wait_for(state="visible", timeout=10_000)
     _assert_product_information_architecture(page)
+    _assert_reference_topology(page)
     page.screenshot(path=output_dir / "audit-workspace.png", full_page=True)
 
     page.locator("[data-ah-notes-tab]").click()
@@ -131,6 +171,19 @@ def _capture_desktop(page: Page, base_url: str, audit_id: str, output_dir: Path)
     page.locator("[data-ah-nav='reproduction']").first.click()
     page.locator("[data-reproduction-surface='true']").wait_for(state="visible", timeout=20_000)
     page.screenshot(path=output_dir / "replication-workspace.png", full_page=True)
+
+
+def _capture_runs(page: Page, base_url: str, output_dir: Path) -> None:
+    page.goto(base_url, wait_until="networkidle")
+    page.locator("[data-view='runs']").first.click()
+    page.locator("[data-runs-surface='true']").wait_for(state="visible", timeout=20_000)
+    page.locator(".run-inspector-row").first.wait_for(state="visible", timeout=10_000)
+    page.locator("#run-inspector-detail").wait_for(state="visible", timeout=10_000)
+    page.wait_for_function(
+        """() => document.body.classList.contains('reference-runs-active')""",
+        timeout=10_000,
+    )
+    page.screenshot(path=output_dir / "runs-workspace.png", full_page=True)
 
 
 def _capture_mobile(page: Page, base_url: str, audit_id: str, output_dir: Path) -> None:
@@ -170,14 +223,18 @@ def main() -> None:
             page = context.new_page()
             page.on("pageerror", lambda error: page_errors.append(str(error)))
             _capture_desktop(page, base_url, audit_id, output_dir)
+            _capture_runs(page, base_url, output_dir)
             _capture_mobile(page, base_url, audit_id, output_dir)
             context.close()
             browser.close()
 
         audit = client.get(f"/api/v1/audits/{audit_id}")
         audit.raise_for_status()
-        if not str(audit.json().get("notes") or "").startswith("Visual smoke fixture"):
+        payload = audit.json()
+        if not str(payload.get("notes") or "").startswith("Visual smoke fixture"):
             raise AssertionError("Notes did not persist through the real browser save path")
+        if (payload.get("latest_result") or {}).get("consensus", {}).get("beta") != "-0.021":
+            raise AssertionError("Detector result did not persist through the browser acceptance workflow")
 
     if page_errors:
         raise AssertionError("Browser page errors: " + " | ".join(page_errors))
@@ -188,6 +245,7 @@ def main() -> None:
         "audit-notes.png",
         "audit-workspace.png",
         "replication-workspace.png",
+        "runs-workspace.png",
     ]:
         raise AssertionError(f"Unexpected screenshot set: {captures}")
 
