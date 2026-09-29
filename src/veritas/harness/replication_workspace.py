@@ -341,7 +341,7 @@ def _expected_staged_objects(record: dict[str, Any], run_id: str) -> dict[str, d
     attachment_manifest: list[dict[str, Any]] = []
     for metadata in record.get("attachments") or []:
         if not isinstance(metadata, dict):
-            raise ValueError("audit attachment metadata is invalid")
+            raise TypeError("audit attachment metadata is invalid")
         attachment_id = str(metadata.get("attachment_id") or "")
         if not attachment_id.startswith("att_") or not attachment_id[4:].isalnum():
             raise ValueError("audit attachment id is invalid")
@@ -398,7 +398,7 @@ def _expected_staged_objects(record: dict[str, Any], run_id: str) -> dict[str, d
 
 def _safe_relative_parts(relative_path: str) -> tuple[str, ...]:
     if not isinstance(relative_path, str):
-        raise ValueError("workspace path must be text")
+        raise TypeError("workspace path must be text")
     if not relative_path or len(relative_path) > 512 or "\x00" in relative_path:
         raise ValueError("workspace path is invalid")
     if "\\" in relative_path:
