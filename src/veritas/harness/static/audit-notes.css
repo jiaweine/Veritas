@@ -7,6 +7,10 @@
   white-space: nowrap;
 }
 
+.ah-right.ah-notes-active .ah-tabs {
+  display: none;
+}
+
 .ah-notes-pane {
   min-height: 100%;
   display: flex;

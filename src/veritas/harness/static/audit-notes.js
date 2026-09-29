@@ -135,7 +135,7 @@ function renderNotesSurface(root) {
   setTopTabState(root, true);
   right.classList.add("ah-notes-active");
   tabs.hidden = true;
-  head.innerHTML = `<div><strong>Audit Notes</strong><small>working context for this paper</small></div><span>${esc(formatTimestamp(notesState.serverUpdatedAt))}</span>`;
+  head.innerHTML = `<div><strong>Audit Notes</strong><small>working context for this paper</small></div><span id="ah-notes-saved-at">${esc(formatTimestamp(notesState.serverUpdatedAt))}</span>`;
 
   if (notesState.loading) {
     inspector.innerHTML = `<div class="ah-notes-loading"><span class="ah-notes-spinner"></span><strong>Loading notes…</strong></div>`;
@@ -163,10 +163,12 @@ function updateEditorState(root, auditId) {
   const status = root.querySelector("#ah-notes-status");
   const count = root.querySelector("#ah-notes-count");
   const save = root.querySelector("#ah-notes-save");
+  const savedAt = root.querySelector("#ah-notes-saved-at");
   if (!editor || !status || !count || !save) return;
   const dirty = editor.value !== notesState.serverText;
   count.textContent = editor.value.length.toLocaleString();
   status.textContent = notesState.error || (dirty ? "Unsaved changes" : formatTimestamp(notesState.serverUpdatedAt));
+  if (savedAt) savedAt.textContent = formatTimestamp(notesState.serverUpdatedAt);
   save.disabled = !dirty || notesState.saving;
   save.textContent = notesState.saving ? "Saving…" : "Save notes";
   if (dirty) writeDraft(auditId, editor.value);
