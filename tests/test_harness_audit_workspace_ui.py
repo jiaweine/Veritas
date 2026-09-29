@@ -12,6 +12,8 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert index.status_code == 200
     assert '/static/audit-harness.css' in index.text
     assert '/static/audit-harness.js' in index.text
+    assert '/static/audit-harness-product.css' in index.text
+    assert '/static/audit-harness-product.js' in index.text
 
     script = client.get("/static/audit-harness.js")
     assert script.status_code == 200
@@ -29,6 +31,8 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'veritas-shell-v13' in service_worker.text
+    assert 'veritas-shell-v14' in service_worker.text
     assert '/static/audit-harness.js' in service_worker.text
     assert '/static/audit-harness.css' in service_worker.text
+    assert '/static/audit-harness-product.js' in service_worker.text
+    assert '/static/audit-harness-product.css' in service_worker.text
