@@ -107,6 +107,8 @@ def _capture_desktop(page: Page, base_url: str, audit_id: str, output_dir: Path)
     page.locator("[data-ah-notes-tab]").click()
     editor = page.locator("#ah-notes-editor")
     editor.wait_for(state="visible", timeout=10_000)
+    if page.locator(".ah-tabs").is_visible():
+        raise AssertionError("Evidence Inspector tabs remain visible while Notes is active")
     note = (
         "Visual smoke fixture.\n"
         "Confirm the selected Table 4 evidence before handoff.\n"
@@ -121,6 +123,9 @@ def _capture_desktop(page: Page, base_url: str, audit_id: str, output_dir: Path)
         }""",
         timeout=10_000,
     )
+    saved_at = page.locator("#ah-notes-saved-at").inner_text()
+    if not saved_at.startswith("Saved"):
+        raise AssertionError(f"Notes header timestamp did not refresh after save: {saved_at!r}")
     page.screenshot(path=output_dir / "audit-notes.png", full_page=True)
 
     page.locator("[data-ah-nav='reproduction']").first.click()
@@ -130,6 +135,7 @@ def _capture_desktop(page: Page, base_url: str, audit_id: str, output_dir: Path)
 
 def _capture_mobile(page: Page, base_url: str, audit_id: str, output_dir: Path) -> None:
     page.set_viewport_size({"width": 390, "height": 844})
+    page.goto("about:blank", wait_until="load")
     page.goto(f"{base_url}/#audit={quote(audit_id, safe='')}", wait_until="networkidle")
     page.locator("[data-audit-harness='true']").wait_for(state="visible", timeout=20_000)
     page.locator("[data-ah-notes-tab]").wait_for(state="visible", timeout=10_000)
