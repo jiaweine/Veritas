@@ -7,7 +7,7 @@ Research Audit Agent  -> paper/evidence tools -> read + verify
 Replication Workspace -> ACP coding agent    -> execute + inspect + review
 ```
 
-The browser submits a natural-language reproduction goal. It never supplies an executable command or an agent process command. The server operator chooses the ACP backend.
+Product clients submit a natural-language reproduction goal. They never supply an executable command or an agent process command. The server operator chooses the ACP backend.
 
 ## Recommended Codex setup
 
@@ -34,7 +34,7 @@ Veritas does not forward arbitrary parent-process environment variables.
 
 - `deny` — default. Every ACP permission request is rejected.
 - `allow_once` — automatically selects only an explicit `allow_once` option offered by the agent. It never selects `allow_always`.
-- `interactive` — Web Harness runs may pause for a human decision. The UI can reject or select only an `allow_once` option that the agent actually offered. Without an explicitly activated Web Harness control plane this mode fails closed.
+- `interactive` — an explicitly activated product run may pause for a human decision. A connected UI can reject or select only an `allow_once` option that the agent actually offered. Without an explicitly activated control plane this mode fails closed.
 
 Interactive approval is a run-time control, not evidence of reviewer independence or external authority.
 
@@ -67,7 +67,7 @@ The lower-level inspector:
 
 Its integrity result is intentionally narrow: it covers only the Veritas-staged paper, attachments and `artifacts.json`. Generated files remain untrusted reproduction outputs until separately reviewed.
 
-The product adapter projects those bounded results into `original`, `created`, `modified`, `deleted`, `unsafe_link`, and `unsafe_other` states for the three-pane UI. A changed staged input is surfaced as staged-input drift; this means only that the run copy changed, not that the immutable source artifact changed.
+The product adapter projects those bounded results into `original`, `created`, `modified`, `deleted`, `unsafe_link`, and `unsafe_other` states for the UI. A changed staged input is surfaced as staged-input drift; this means only that the run copy changed, not that the immutable source artifact changed.
 
 ## Product API
 
@@ -112,7 +112,7 @@ GET /api/v1/runs/{run_id}
 
 ## Web UI
 
-The Reproduction surface is a three-pane Replication Workspace:
+The web Reproduction surface is a three-pane Replication Workspace:
 
 1. **Project rail** — paper selection, immutable attachments and prior replication runs.
 2. **Agent conversation** — streamed agent messages, reasoning, plans, tool/terminal events, permission cards and run lifecycle state.
@@ -120,9 +120,19 @@ The Reproduction surface is a three-pane Replication Workspace:
 
 The workspace can reopen prior runs from persisted Harness events and the retained run-specific workspace directory. Historical pending-permission events are evidence of what happened in the run; only a currently active streamed run can resolve a live permission request.
 
+## Mobile UI
+
+The Expo client uses the same product contract rather than a separate execution path. Its narrower screen stacks the same three logical surfaces vertically:
+
+1. **Project** — paper selection and immutable reproduction artifacts.
+2. **Agent conversation** — incremental NDJSON consumption, live ACP events, human permission cards, and cancel control.
+3. **Workspace inspector** — Changes, Files and Run tabs using the same server-side snapshot, safe preview, and unified-diff endpoints as the web client.
+
+For `interactive` permission policy, the mobile runtime must expose streaming fetch support so a permission event can be rendered while the server-side ACP request is paused. The client fails closed instead of falling back to a whole-response read when interactive streaming is unavailable. `deny` and `allow_once` runs can still use the non-streaming fallback.
+
 ## Cancellation
 
-An active Web Harness run can request cancellation through the run control API. Veritas resolves any pending permission fail-closed, cancels the active ACP prompt and tears down the child-agent process context. Persisted product views normalize this terminal condition as `cancelled`; it is not reported as successful reproduction.
+An active product run can request cancellation through the run control API. Veritas resolves any pending permission fail-closed, cancels the active ACP prompt and tears down the child-agent process context. Persisted product views normalize this terminal condition as `cancelled`; it is not reported as successful reproduction.
 
 ## Non-goals
 
