@@ -41,6 +41,20 @@ function statusValue(check = {}) {
   return typeof check.status === "object" ? check.status?.value : check.status;
 }
 
+function checkDetail(check = {}) {
+  return check.explanation || check.detail || check.message || check.reason || "";
+}
+
+function checkTitle(check = {}, index = 0) {
+  return check.title
+    || check.name
+    || check.kind
+    || check.check
+    || check.rule
+    || checkDetail(check)
+    || `Verification check ${index + 1}`;
+}
+
 async function requestAudit(auditId) {
   const response = await fetch(`/api/v1/audits/${encodeURIComponent(auditId)}`, {
     headers: { Accept: "application/json" },
@@ -149,7 +163,7 @@ function graphMarkup(audit) {
     ...checkItems.map((check, index) => node({
       id: `check-${index}`,
       ...checkPositions[index],
-      title: check.title || check.name || check.kind || check.check || `Check ${index + 1}`,
+      title: checkTitle(check, index),
       value: String(statusValue(check) || "recorded").replaceAll("_", " "),
       kind: tone(statusValue(check)),
       action: statusValue(check) === "fail" ? "findings" : "source",
