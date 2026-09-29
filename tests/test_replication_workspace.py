@@ -238,7 +238,7 @@ def test_replication_workspace_ui_contract() -> None:
         "Allow once",
         "/workspace/file?path=",
         "/cancel",
-        "workspace_is_security_boundary",
+        "agent-owned",
     ):
         assert contract in javascript or contract in css
     assert "client-supplied executable command" not in javascript
