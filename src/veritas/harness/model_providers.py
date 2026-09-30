@@ -5,6 +5,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from fastapi import FastAPI
+
 
 @dataclass(frozen=True)
 class ModelProviderDescriptor:
@@ -172,3 +174,9 @@ def model_provider_capability(environ: Mapping[str, str] | None = None) -> dict[
             "base_url_env": "VERITAS_MODEL_BASE_URL",
         },
     }
+
+
+def register_model_provider_routes(app: FastAPI) -> None:
+    @app.get("/api/v1/model-providers")
+    def get_model_providers() -> dict[str, Any]:
+        return model_provider_capability()
