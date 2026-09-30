@@ -8,6 +8,7 @@ on:
       - "tests/test_harness_store_stress.py"
       - "tests/test_benchmark_result_store_stress.py"
       - "tests/test_harness_workspace_descriptor_safety.py"
+      - "tests/test_harness_request_limits.py"
       - "tests/test_replication_acp.py"
       - "tests/test_replication_permission_control.py"
       - "scripts/stress_harness_runtime.py"
@@ -20,6 +21,7 @@ on:
       - "tests/test_harness_store_stress.py"
       - "tests/test_benchmark_result_store_stress.py"
       - "tests/test_harness_workspace_descriptor_safety.py"
+      - "tests/test_harness_request_limits.py"
       - "tests/test_replication_acp.py"
       - "tests/test_replication_permission_control.py"
       - "scripts/stress_harness_runtime.py"
@@ -39,7 +41,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
-      - run: pip install -e '.[dev,replication]'
+      - run: pip install -e '.[dev,web,replication]'
       - name: Concurrent store, control-plane, and ACP payload stress
         run: python scripts/stress_harness_runtime.py
       - name: Repeat audit-store concurrency tests
@@ -59,6 +61,12 @@ jobs:
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             echo "workspace descriptor race attempt ${attempt}"
             pytest -q tests/test_harness_workspace_descriptor_safety.py
+          done
+      - name: Repeat request-body guard tests
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            echo "request-body guard attempt ${attempt}"
+            pytest -q tests/test_harness_request_limits.py
           done
       - name: Repeat replication control-plane tests
         run: |
