@@ -3,6 +3,8 @@ const main = document.querySelector("#main-content");
 const providerLabel = (card) => card.querySelector(".provider-node-name strong")?.textContent?.trim() || card.dataset.modelProvider || "Provider";
 const providerFamily = (card) => card.querySelector(".provider-node-name span")?.textContent?.trim() || "Model family";
 const providerMeta = (card) => [...card.querySelectorAll(".provider-node-meta span")].map((node) => node.textContent.trim()).filter(Boolean);
+const finePointer = window.matchMedia("(pointer: fine)");
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function setCardPointer(card, event) {
   const rect = card.getBoundingClientRect();
@@ -38,6 +40,180 @@ function renderInspector(inspector, card, mode = "hover") {
   inspector.dataset.mode = mode;
 }
 
+function createNetworkField(router) {
+  const noop = {
+    setPointer() {},
+    clearPointer() {},
+    focus() {},
+  };
+  if (!finePointer.matches || reducedMotion.matches) return noop;
+
+  const canvas = document.createElement("canvas");
+  canvas.className = "router-network-field";
+  canvas.setAttribute("data-router-network-field", "true");
+  canvas.setAttribute("aria-hidden", "true");
+  router.prepend(canvas);
+
+  const ctx = canvas.getContext("2d", { alpha: true });
+  if (!ctx) return noop;
+
+  const seeds = [
+    [.06, .18, 0.2], [.17, .09, 1.4], [.29, .19, 2.6], [.41, .10, 3.2],
+    [.53, .20, 4.5], [.66, .08, 5.3], [.78, .20, 6.1], [.91, .12, 7.4],
+    [.10, .48, 8.1], [.24, .39, 9.2], [.38, .52, 10.4], [.51, .40, 11.1],
+    [.63, .55, 12.3], [.76, .42, 13.7], [.89, .51, 14.4],
+    [.08, .78, 15.2], [.21, .68, 16.1], [.35, .82, 17.3], [.49, .70, 18.2],
+    [.62, .84, 19.1], [.75, .70, 20.4], [.91, .80, 21.3],
+  ];
+  const pointer = { x: 0, y: 0, active: false };
+  let focusCard = null;
+  let focusMode = "idle";
+  let width = 0;
+  let height = 0;
+  let dpr = 1;
+  let frame = 0;
+  let lastPaint = 0;
+
+  const localPoint = (element) => {
+    if (!element?.isConnected) return null;
+    const routerRect = router.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.left - routerRect.left + rect.width / 2,
+      y: rect.top - routerRect.top + rect.height / 2,
+    };
+  };
+
+  const nodePositions = (time) => seeds.map(([nx, ny, phase]) => ({
+    x: nx * width + Math.sin(time / 2200 + phase) * 4.5,
+    y: ny * height + Math.cos(time / 2600 + phase * .73) * 3.5,
+    phase,
+  }));
+
+  const paint = (time = performance.now()) => {
+    if (!canvas.isConnected) return;
+    frame = requestAnimationFrame(paint);
+    if (time - lastPaint < 32) return;
+    lastPaint = time;
+    if (!width || !height) return;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const nodes = nodePositions(time);
+    let links = 0;
+
+    ctx.lineWidth = .65;
+    for (let i = 0; i < nodes.length; i += 1) {
+      for (let j = i + 1; j < nodes.length; j += 1) {
+        const a = nodes[i];
+        const b = nodes[j];
+        const distance = Math.hypot(a.x - b.x, a.y - b.y);
+        if (distance > 145) continue;
+        const alpha = Math.max(0, (145 - distance) / 145) * .17;
+        ctx.strokeStyle = `rgba(96, 224, 214, ${alpha.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        links += 1;
+      }
+    }
+
+    nodes.forEach((node) => {
+      const pulse = .52 + Math.sin(time / 820 + node.phase) * .2;
+      ctx.fillStyle = `rgba(111, 232, 222, ${Math.max(.12, pulse * .42).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, 1.15, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    if (pointer.active) {
+      const nearest = [...nodes]
+        .map((node) => ({ node, distance: Math.hypot(node.x - pointer.x, node.y - pointer.y) }))
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, 3);
+      nearest.forEach(({ node, distance }, index) => {
+        const alpha = Math.max(.08, .38 - distance / 700) * (1 - index * .17);
+        const gradient = ctx.createLinearGradient(pointer.x, pointer.y, node.x, node.y);
+        gradient.addColorStop(0, `rgba(139, 255, 243, ${alpha.toFixed(3)})`);
+        gradient.addColorStop(1, "rgba(91, 211, 204, .04)");
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = index === 0 ? 1 : .65;
+        ctx.beginPath();
+        ctx.moveTo(pointer.x, pointer.y);
+        ctx.lineTo(node.x, node.y);
+        ctx.stroke();
+      });
+      ctx.strokeStyle = "rgba(140, 255, 244, .48)";
+      ctx.lineWidth = .75;
+      ctx.beginPath();
+      ctx.arc(pointer.x, pointer.y, 8 + Math.sin(time / 360) * 1.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    const flowSource = localPoint(router.querySelector(".router-flow-node.provider"));
+    const target = localPoint(focusCard);
+    if (flowSource && target) {
+      const gradient = ctx.createLinearGradient(flowSource.x, flowSource.y, target.x, target.y);
+      gradient.addColorStop(0, "rgba(104, 233, 222, .72)");
+      gradient.addColorStop(.5, focusMode === "pinned" ? "rgba(124, 255, 235, .52)" : "rgba(91, 214, 206, .31)");
+      gradient.addColorStop(1, "rgba(85, 189, 187, .07)");
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = focusMode === "pinned" ? 1.35 : .85;
+      ctx.setLineDash([4, 7]);
+      ctx.lineDashOffset = -(time / 75) % 11;
+      ctx.beginPath();
+      ctx.moveTo(flowSource.x, flowSource.y);
+      const midY = Math.min(flowSource.y, target.y) - 18;
+      ctx.bezierCurveTo(flowSource.x, midY, target.x, midY, target.x, target.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = focusMode === "pinned" ? "rgba(143, 255, 239, .92)" : "rgba(111, 226, 217, .68)";
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, focusMode === "pinned" ? 2.8 : 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    canvas.dataset.networkLinks = String(links);
+  };
+
+  const resize = () => {
+    const rect = router.getBoundingClientRect();
+    width = Math.max(1, Math.round(rect.width));
+    height = Math.max(1, Math.round(rect.height));
+    dpr = Math.min(window.devicePixelRatio || 1, 1.75);
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    canvas.dataset.networkReady = "true";
+  };
+
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(router);
+  resize();
+  frame = requestAnimationFrame(paint);
+
+  return {
+    setPointer(x, y) {
+      pointer.x = x;
+      pointer.y = y;
+      pointer.active = true;
+      canvas.dataset.networkPointer = "active";
+    },
+    clearPointer() {
+      pointer.active = false;
+      canvas.dataset.networkPointer = "idle";
+    },
+    focus(card, mode = "hover") {
+      focusCard = card || null;
+      focusMode = card ? mode : "idle";
+      canvas.dataset.networkFocus = card?.dataset.modelProvider || "";
+      canvas.dataset.networkFocusMode = focusMode;
+    },
+  };
+}
+
 function bindRouter(router) {
   if (!router || router.dataset.pointerInteractions === "true") return;
   router.dataset.pointerInteractions = "true";
@@ -48,11 +224,13 @@ function bindRouter(router) {
 
   const inspector = document.createElement("aside");
   inspector.className = "router-pointer-inspector";
+  inspector.id = "router-pointer-inspector";
   inspector.setAttribute("data-router-pointer-inspector", "true");
   inspector.setAttribute("aria-live", "polite");
   grid.insertAdjacentElement("afterend", inspector);
   renderInspector(inspector, null);
 
+  const network = createNetworkField(router);
   let pinned = null;
   let frame = 0;
   let lastPointer = null;
@@ -66,6 +244,7 @@ function bindRouter(router) {
     router.style.setProperty("--router-x", `${x}px`);
     router.style.setProperty("--router-y", `${y}px`);
     router.dataset.cursorActive = "true";
+    network.setPointer(x, y);
   };
 
   router.addEventListener("pointermove", (event) => {
@@ -76,26 +255,47 @@ function bindRouter(router) {
   router.addEventListener("pointerleave", () => {
     router.dataset.cursorActive = "false";
     lastPointer = null;
+    network.clearPointer();
+  });
+  router.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !pinned) return;
+    pinned.dataset.pinned = "false";
+    pinned.setAttribute("aria-pressed", "false");
+    pinned = null;
+    renderInspector(inspector, null);
+    network.focus(null);
   });
 
   cards.forEach((card) => {
     card.tabIndex = 0;
     card.setAttribute("role", "button");
     card.setAttribute("aria-pressed", "false");
+    card.setAttribute("aria-controls", inspector.id);
     card.setAttribute("aria-label", `${providerLabel(card)} provider configuration`);
 
-    card.addEventListener("pointerenter", () => {
+    const previewCard = () => {
       card.dataset.hovered = "true";
-      if (!pinned) renderInspector(inspector, card, "hover");
-    });
+      if (!pinned) {
+        renderInspector(inspector, card, "hover");
+        network.focus(card, "hover");
+      }
+    };
+    const releaseCard = () => {
+      card.dataset.hovered = "false";
+      resetCardPointer(card);
+      if (!pinned) {
+        renderInspector(inspector, null);
+        network.focus(null);
+      }
+    };
+
+    card.addEventListener("pointerenter", previewCard);
+    card.addEventListener("focus", previewCard);
     card.addEventListener("pointermove", (event) => {
       if (event.pointerType !== "touch") setCardPointer(card, event);
     });
-    card.addEventListener("pointerleave", () => {
-      card.dataset.hovered = "false";
-      resetCardPointer(card);
-      if (!pinned) renderInspector(inspector, null);
-    });
+    card.addEventListener("pointerleave", releaseCard);
+    card.addEventListener("blur", releaseCard);
 
     const togglePin = () => {
       const next = pinned === card ? null : card;
@@ -106,6 +306,7 @@ function bindRouter(router) {
       });
       pinned = next;
       renderInspector(inspector, pinned, pinned ? "pinned" : "idle");
+      network.focus(pinned, pinned ? "pinned" : "idle");
     };
 
     card.addEventListener("click", togglePin);
