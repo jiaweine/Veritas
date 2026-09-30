@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 from veritas.harness.models import HarnessEvent
@@ -152,6 +153,76 @@ def test_streaming_scanner_visits_large_journal_in_order(tmp_path) -> None:
     assert seen == 5001
     assert first_event_id is not None and first_event_id.startswith("evt_")
     assert last_event_id == f"evt_{audit_id}_4999"
+
+
+def test_streaming_scanner_releases_root_lock_before_visiting_snapshot(tmp_path) -> None:
+    runtime = ProductAuditHarness(tmp_path)
+    audit_id = _create_audit(runtime, "Concurrent")
+    runtime.store.append_event(
+        HarnessEvent(
+            audit_id=audit_id,
+            kind="paper",
+            title="Seed event",
+            detail="snapshot boundary",
+        )
+    )
+
+    visitor_entered = threading.Event()
+    release_visitor = threading.Event()
+    append_done = threading.Event()
+    seen: list[str] = []
+    scan_errors: list[BaseException] = []
+    append_errors: list[BaseException] = []
+
+    def visitor(event: dict[str, object]) -> None:
+        seen.append(str(event.get("title") or ""))
+        visitor_entered.set()
+        if not release_visitor.wait(timeout=5):
+            raise TimeoutError("test visitor was not released")
+
+    def scan() -> None:
+        try:
+            runtime.store.scan_events(audit_id, visitor)
+        except BaseException as exc:  # pragma: no cover - surfaced by assertion below
+            scan_errors.append(exc)
+
+    def append() -> None:
+        try:
+            runtime.store.append_event(
+                HarnessEvent(
+                    audit_id=audit_id,
+                    kind="replication",
+                    title="Concurrent append",
+                    detail="must not wait for the dashboard visitor",
+                )
+            )
+        except BaseException as exc:  # pragma: no cover - surfaced by assertion below
+            append_errors.append(exc)
+        finally:
+            append_done.set()
+
+    scan_thread = threading.Thread(target=scan, daemon=True)
+    scan_thread.start()
+    assert visitor_entered.wait(timeout=2)
+
+    append_thread = threading.Thread(target=append, daemon=True)
+    append_thread.start()
+    try:
+        assert append_done.wait(timeout=2), "event append blocked behind product scan visitor"
+    finally:
+        release_visitor.set()
+
+    scan_thread.join(timeout=2)
+    append_thread.join(timeout=2)
+    assert not scan_thread.is_alive()
+    assert not append_thread.is_alive()
+    assert scan_errors == []
+    assert append_errors == []
+    assert seen == ["Seed event"]
+    assert [event["title"] for event in runtime.store.get_events(audit_id)] == [
+        "Seed event",
+        "Concurrent append",
+    ]
 
 
 def test_overview_scans_all_events_but_retains_only_activity_tail(tmp_path, monkeypatch) -> None:
