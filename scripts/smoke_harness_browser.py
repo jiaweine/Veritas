@@ -220,6 +220,7 @@ def _exercise_finding_roundtrip(
     finding_id: str,
     output_dir: Path,
 ) -> None:
+    page.goto("about:blank", wait_until="load")
     page.goto(f"{base_url}/#audit={quote(audit_id, safe='')}", wait_until="networkidle")
     root = page.locator("[data-audit-harness='true']")
     root.wait_for(state="visible", timeout=20_000)
