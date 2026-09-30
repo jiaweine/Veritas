@@ -20,6 +20,9 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/static/reference-workbench.js' in index.text
     assert '/static/reference-surfaces.css' in index.text
     assert '/static/reference-evidence-preview.js' in index.text
+    assert '/static/claim-graph.css' in index.text
+    assert '/static/claim-graph.js' in index.text
+    assert '/static/mobile-polish.css' in index.text
 
     script = client.get("/static/audit-harness.js")
     assert script.status_code == 200
@@ -35,6 +38,13 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/notes' in notes_script.text
     assert 'Save notes' in notes_script.text
 
+    claim_script = client.get("/static/claim-graph.js")
+    assert claim_script.status_code == 200
+    assert 'data-reference-claim-tab' in claim_script.text
+    assert 'data-reference-claim-graph' in claim_script.text
+    assert '/api/v1/audits/${encodeURIComponent(auditId)}' in claim_script.text
+    assert 'veritas:evidence-field' in claim_script.text
+
     stylesheet = client.get("/static/audit-harness.css")
     assert stylesheet.status_code == 200
     assert '.audit-harness-active' in stylesheet.text
@@ -46,9 +56,20 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '.ah-notes-pane' in notes_stylesheet.text
     assert '#ah-notes-editor' in notes_stylesheet.text
 
+    claim_stylesheet = client.get("/static/claim-graph.css")
+    assert claim_stylesheet.status_code == 200
+    assert '.claim-graph' in claim_stylesheet.text
+    assert '.is-linked-selection' in claim_stylesheet.text
+
+    mobile_stylesheet = client.get("/static/mobile-polish.css")
+    assert mobile_stylesheet.status_code == 200
+    assert "@media (max-width: 620px)" in mobile_stylesheet.text
+    assert ".ah-header-actions" in mobile_stylesheet.text
+    assert ".audit-harness .ah-left" in mobile_stylesheet.text
+
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'veritas-shell-v17' in service_worker.text
+    assert 'veritas-shell-v19' in service_worker.text
     assert '/static/audit-harness.js' in service_worker.text
     assert '/static/audit-harness.css' in service_worker.text
     assert '/static/audit-harness-product.js' in service_worker.text
@@ -59,3 +80,6 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/static/reference-workbench.css' in service_worker.text
     assert '/static/reference-evidence-preview.js' in service_worker.text
     assert '/static/reference-surfaces.css' in service_worker.text
+    assert '/static/claim-graph.js' in service_worker.text
+    assert '/static/claim-graph.css' in service_worker.text
+    assert '/static/mobile-polish.css' in service_worker.text

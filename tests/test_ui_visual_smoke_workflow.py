@@ -13,6 +13,7 @@ def test_ui_visual_smoke_workflow_captures_product_surfaces() -> None:
     assert "veritas-ui-screenshots" in workflow
 
     assert '"audit-workspace.png"' in script
+    assert '"claim-graph.png"' in script
     assert '"audit-notes.png"' in script
     assert '"replication-workspace.png"' in script
     assert '"runs-workspace.png"' in script
@@ -20,6 +21,9 @@ def test_ui_visual_smoke_workflow_captures_product_surfaces() -> None:
     assert "[data-audit-harness='true']" in script
     assert "[data-reproduction-surface='true']" in script
     assert "[data-reference-analysis='true']" in script
+    assert "[data-reference-claim-graph='true']" in script
+    assert "[data-cg-field='beta']" in script
+    assert "[data-ref-field='beta'].is-linked-selection" in script
     assert "[data-runs-surface='true']" in script
     assert '/audit row="Minimum wage" table=4 page=1' in script
     assert 'consensus.get("beta") != "-0.021"' in script
@@ -35,8 +39,10 @@ def test_reference_workbench_uses_live_backend_contracts() -> None:
     evidence = (ROOT / "src/veritas/harness/static/reference-evidence-preview.js").read_text(
         encoding="utf-8"
     )
+    graph = (ROOT / "src/veritas/harness/static/claim-graph.js").read_text(encoding="utf-8")
     styles = (ROOT / "src/veritas/harness/static/reference-workbench.css").read_text(encoding="utf-8")
     surfaces = (ROOT / "src/veritas/harness/static/reference-surfaces.css").read_text(encoding="utf-8")
+    graph_styles = (ROOT / "src/veritas/harness/static/claim-graph.css").read_text(encoding="utf-8")
     shell = (ROOT / "src/veritas/harness/static/index.html").read_text(encoding="utf-8")
 
     assert 'json("/api/v1/audits")' in script
@@ -48,14 +54,25 @@ def test_reference_workbench_uses_live_backend_contracts() -> None:
     assert "/api/v1/audits/${encodeURIComponent(auditId)}" in evidence
     assert "result.fields" in evidence
     assert "data-reference-evidence-preview" in evidence
+    assert 'data-ref-field="beta"' in evidence
+    assert "veritas:evidence-field" in evidence
+    assert "/api/v1/audits/${encodeURIComponent(auditId)}" in graph
+    assert "result.consensus" in graph
+    assert "result.checks" in graph
+    assert "result.findings" in graph
+    assert "data-reference-claim-graph" in graph
     assert ".audit-harness .ah-left" in styles
     assert "display: none !important" in styles
     assert "ref-evidence-preview" in surfaces
     assert "data-reproduction-surface" in surfaces
+    assert ".claim-graph" in graph_styles
+    assert ".is-linked-selection" in graph_styles
     assert "/static/reference-workbench.css" in shell
     assert "/static/reference-workbench.js" in shell
     assert "/static/reference-surfaces.css" in shell
     assert "/static/reference-evidence-preview.js" in shell
+    assert "/static/claim-graph.css" in shell
+    assert "/static/claim-graph.js" in shell
 
 
 def test_notes_workspace_has_explicit_visual_state_contracts() -> None:
@@ -81,6 +98,7 @@ def test_mobile_workflow_syntax_checks_all_workbench_modules() -> None:
         "benchmarks.js",
         "reference-workbench.js",
         "reference-evidence-preview.js",
+        "claim-graph.js",
     }
 
     for module in expected_modules:

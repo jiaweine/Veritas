@@ -121,6 +121,8 @@ def _assert_product_information_architecture(page: Page) -> None:
     inspector_labels = [value.strip() for value in page.locator(".ah-tabs button").all_inner_texts()]
     if not any(label.startswith("Provenance") for label in inspector_labels):
         raise AssertionError(f"Provenance missing from Evidence Inspector: {inspector_labels}")
+    if not any(label.startswith("Claim Graph") for label in inspector_labels):
+        raise AssertionError(f"Claim Graph missing from Evidence Inspector: {inspector_labels}")
 
 
 def _assert_reference_topology(page: Page) -> None:
@@ -141,14 +143,36 @@ def _assert_reference_topology(page: Page) -> None:
         raise AssertionError("Reference-aligned audit shell did not activate")
 
 
+def _exercise_claim_graph(page: Page, output_dir: Path) -> None:
+    page.locator("[data-reference-claim-tab]").click()
+    graph = page.locator("[data-reference-claim-graph='true']")
+    graph.wait_for(state="visible", timeout=10_000)
+    graph_text = graph.inner_text()
+    for expected in ("Minimum wage", "-0.021", "0.026", "Evidence source"):
+        if expected not in graph_text:
+            raise AssertionError(f"Claim graph is missing persisted audit content: {expected!r}")
+    page.screenshot(path=output_dir / "claim-graph.png", full_page=True)
+
+    page.locator("[data-cg-field='beta']").click()
+    linked = page.locator("[data-ref-field='beta'].is-linked-selection")
+    linked.wait_for(state="visible", timeout=10_000)
+    if linked.inner_text().strip() != "-0.021":
+        raise AssertionError("Claim graph did not navigate back to the matching evidence cell")
+    if not page.locator("[data-ah-tab='source']").evaluate("node => node.classList.contains('active')"):
+        raise AssertionError("Claim graph evidence navigation did not reactivate Source")
+
+
 def _capture_desktop(page: Page, base_url: str, audit_id: str, output_dir: Path) -> None:
     audit_url = f"{base_url}/#audit={quote(audit_id, safe='')}"
     page.goto(audit_url, wait_until="networkidle")
     page.locator("[data-audit-harness='true']").wait_for(state="visible", timeout=20_000)
     page.locator("[data-ah-notes-tab]").wait_for(state="visible", timeout=10_000)
+    page.locator("[data-reference-claim-tab]").wait_for(state="visible", timeout=10_000)
     _assert_product_information_architecture(page)
     _assert_reference_topology(page)
     page.screenshot(path=output_dir / "audit-workspace.png", full_page=True)
+
+    _exercise_claim_graph(page, output_dir)
 
     page.locator("[data-ah-notes-tab]").click()
     editor = page.locator("#ah-notes-editor")
@@ -196,8 +220,19 @@ def _capture_mobile(page: Page, base_url: str, audit_id: str, output_dir: Path) 
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto("about:blank", wait_until="load")
     page.goto(f"{base_url}/#audit={quote(audit_id, safe='')}", wait_until="networkidle")
-    page.locator("[data-audit-harness='true']").wait_for(state="visible", timeout=20_000)
+    root = page.locator("[data-audit-harness='true']")
+    root.wait_for(state="visible", timeout=20_000)
     page.locator("[data-ah-notes-tab]").wait_for(state="visible", timeout=10_000)
+    page.locator("[data-reference-claim-tab]").wait_for(state="visible", timeout=10_000)
+    if page.locator(".ah-left").is_visible():
+        raise AssertionError("Mobile audit still exposes the duplicate paper/run rail")
+    if page.locator(".ah-header-actions").is_visible():
+        raise AssertionError("Mobile audit still exposes duplicate desktop header actions")
+    title = page.locator(".ah-title-row h1")
+    if "Card (1992)" not in title.inner_text():
+        raise AssertionError("Mobile audit title lost primary paper context")
+    if title.bounding_box() is None:
+        raise AssertionError("Mobile audit title is not visible")
     page.screenshot(path=output_dir / "audit-mobile.png", full_page=True)
 
 
@@ -250,6 +285,7 @@ def main() -> None:
         "audit-mobile.png",
         "audit-notes.png",
         "audit-workspace.png",
+        "claim-graph.png",
         "replication-workspace.png",
         "runs-workspace.png",
     ]:

@@ -1,0 +1,213 @@
+/* Mobile product hierarchy: keep the audit title and evidence path primary, and remove
+   duplicate desktop navigation from the constrained viewport. */
+@media (max-width: 880px) {
+  body.reference-audit-active .audit-harness .ah-left {
+    display: none !important;
+  }
+
+  body.reference-audit-active .audit-harness .ah-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body.reference-audit-active .audit-harness .ah-center,
+  body.reference-audit-active .audit-harness .ah-right {
+    grid-column: 1 !important;
+    min-width: 0;
+  }
+
+  body.reference-audit-active .ah-workspace-tabs,
+  body.reference-audit-active .ah-tabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body.reference-audit-active .ah-workspace-tabs::-webkit-scrollbar,
+  body.reference-audit-active .ah-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  body.reference-audit-active .ah-workspace-tabs button,
+  body.reference-audit-active .ah-tabs button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 620px) {
+  body.reference-audit-active .topbar {
+    height: 48px;
+    padding: 0 9px;
+  }
+
+  body.reference-audit-active .topbar .command-trigger {
+    width: min(250px, 66vw);
+    height: 31px;
+  }
+
+  body.reference-audit-active .topbar .command-placeholder {
+    font-size: 9px;
+  }
+
+  body.reference-audit-active .topbar .sync-status,
+  body.reference-audit-active .topbar .desktop-only,
+  body.reference-audit-active .topbar #agent-toggle {
+    display: none !important;
+  }
+
+  body.reference-audit-active .audit-harness {
+    min-height: calc(100dvh - 48px);
+  }
+
+  body.reference-audit-active .ah-header {
+    min-height: 62px;
+    height: auto;
+    padding: 8px 10px 7px;
+    align-items: center;
+  }
+
+  body.reference-audit-active .ah-header-main {
+    width: 100%;
+    min-width: 0;
+    align-items: flex-start;
+  }
+
+  body.reference-audit-active .ah-paper-mark {
+    width: 26px;
+    height: 26px;
+    margin-top: 1px;
+    flex: 0 0 auto;
+  }
+
+  body.reference-audit-active .ah-header-main > div:last-child {
+    min-width: 0;
+    flex: 1;
+  }
+
+  body.reference-audit-active .ah-title-row {
+    width: 100%;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  body.reference-audit-active .ah-title-row h1 {
+    max-width: none;
+    min-width: 0;
+    flex: 1;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    text-overflow: ellipsis;
+    font-size: 10.5px;
+    line-height: 1.25;
+  }
+
+  body.reference-audit-active .ah-title-row .ah-badge {
+    flex: 0 0 auto;
+    margin-top: 1px;
+  }
+
+  body.reference-audit-active .ah-header-main p {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 6.6px;
+  }
+
+  body.reference-audit-active .ah-header-actions {
+    display: none !important;
+  }
+
+  body.reference-audit-active .ah-workspace-tabs {
+    height: 35px;
+    padding: 0 8px;
+    gap: 2px;
+  }
+
+  body.reference-audit-active .ah-workspace-tabs button {
+    height: 34px;
+    padding: 0 7px;
+    font-size: 7.4px;
+  }
+
+  body.reference-audit-active .ah-center-head,
+  body.reference-audit-active .ah-inspector-head {
+    height: 42px;
+    padding: 0 10px;
+  }
+
+  body.reference-audit-active .ah-thread {
+    padding: 10px 9px 14px;
+    overflow-x: hidden;
+  }
+
+  body.reference-audit-active .ah-message.user {
+    max-width: 100%;
+  }
+
+  body.reference-audit-active .ah-event {
+    grid-template-columns: 20px minmax(0, 1fr);
+    margin-left: 22px;
+    padding-left: 10px;
+    padding-right: 4px;
+  }
+
+  body.reference-audit-active .ah-event > .ah-badge,
+  body.reference-audit-active .ah-event > time {
+    display: none;
+  }
+
+  body.reference-audit-active .ah-event-icon {
+    margin-left: -20px;
+  }
+
+  body.reference-audit-active .ah-event-copy {
+    min-width: 0;
+  }
+
+  body.reference-audit-active .ah-event-copy strong,
+  body.reference-audit-active .ah-event-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  body.reference-audit-active .ah-composer-wrap {
+    padding: 6px 8px 9px;
+  }
+
+  body.reference-audit-active .ah-command-row > span {
+    display: none;
+  }
+
+  body.reference-audit-active .ah-tabs {
+    padding: 0 7px;
+    gap: 2px;
+  }
+
+  body.reference-audit-active .ah-tabs button {
+    padding: 0 7px;
+    font-size: 7.2px;
+  }
+
+  .ref-analysis-head {
+    align-items: flex-start;
+  }
+
+  .ref-analysis-head small {
+    max-width: 68vw;
+  }
+
+  .ref-analysis-metrics > div {
+    padding: 7px 8px;
+  }
+
+  .ref-analysis-checks {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}

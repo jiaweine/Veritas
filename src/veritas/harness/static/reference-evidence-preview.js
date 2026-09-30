@@ -3,6 +3,7 @@ const main = document.querySelector("#main-content");
 const previewState = {
   requestToken: 0,
   queued: false,
+  selectedField: "",
 };
 
 const esc = (value = "") => String(value)
@@ -67,7 +68,7 @@ function previewMarkup(audit) {
         <div class="ref-paper-subhead"><span>Reported regression result</span><em>${parserFamilies.size || 0} parser families agree</em></div>
         <div class="ref-paper-table" role="table" aria-label="Evidence extraction preview">
           <div class="ref-paper-tr ref-paper-th" role="row"><span>Variable</span><span>Estimate</span><span>Std. Error</span><span>Test stat</span><span>p-value</span></div>
-          <div class="ref-paper-tr" role="row"><strong>${esc(row)}</strong><mark>${esc(consensus.beta)}</mark><span>${esc(consensus.se)}</span><span>${esc(consensus.t_stat)}</span><span>${esc(consensus.p_value ?? "—")}</span></div>
+          <div class="ref-paper-tr" role="row"><strong>${esc(row)}</strong><mark data-ref-field="beta">${esc(consensus.beta)}</mark><span data-ref-field="se">${esc(consensus.se)}</span><span data-ref-field="t_stat">${esc(consensus.t_stat)}</span><span data-ref-field="p_value">${esc(consensus.p_value ?? "—")}</span></div>
         </div>
         <div class="ref-paper-rule"></div>
         <p class="ref-paper-note">Source-bound preview from the persisted detector result. Inference: ${esc(distribution)}. Open the original PDF above for the immutable page artifact.</p>
@@ -76,12 +77,30 @@ function previewMarkup(audit) {
   </section>`;
 }
 
+function applyFieldSelection(field = previewState.selectedField) {
+  previewState.selectedField = field || "";
+  const pane = auditRoot()?.querySelector(".ah-source-pane");
+  if (!pane) return;
+  pane.querySelectorAll("[data-ref-field]").forEach((node) => {
+    const selected = Boolean(field) && node.dataset.refField === field;
+    node.classList.toggle("is-linked-selection", selected);
+    if (selected) node.setAttribute("aria-current", "true");
+    else node.removeAttribute("aria-current");
+  });
+  const selected = field ? pane.querySelector(`[data-ref-field="${CSS.escape(field)}"]`) : null;
+  selected?.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+}
+
 async function ensurePreview() {
   previewState.queued = false;
   const root = auditRoot();
   const pane = root?.querySelector(".ah-source-pane");
   const frame = pane?.querySelector("#ah-pdf");
-  if (!root || !pane || !frame || pane.querySelector("[data-reference-evidence-preview]")) return;
+  if (!root || !pane || !frame) return;
+  if (pane.querySelector("[data-reference-evidence-preview]")) {
+    applyFieldSelection();
+    return;
+  }
 
   const auditId = root.dataset.auditId || "";
   if (!auditId) return;
@@ -97,6 +116,7 @@ async function ensurePreview() {
     const freshPane = freshRoot?.querySelector(".ah-source-pane");
     if (!freshRoot || freshRoot.dataset.auditId !== auditId || !freshPane || freshPane.querySelector("[data-reference-evidence-preview]")) return;
     freshPane.querySelector(".ah-pdf-bar")?.insertAdjacentHTML("afterend", markup);
+    applyFieldSelection();
   } catch (error) {
     console.error("Unable to render evidence extraction preview", error);
   }
@@ -107,6 +127,24 @@ function queuePreview() {
   previewState.queued = true;
   queueMicrotask(ensurePreview);
 }
+
+window.addEventListener("veritas:evidence-field", (event) => {
+  const field = String(event.detail?.field || "");
+  previewState.selectedField = field;
+  applyFieldSelection(field);
+  if (field) window.setTimeout(() => applyFieldSelection(field), 120);
+});
+
+document.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target.closest("[data-ah-page], [data-ah-tab='source']") : null;
+  if (!target || !auditRoot()?.contains(target)) return;
+  previewState.selectedField = "";
+  applyFieldSelection("");
+}, true);
+
+window.addEventListener("hashchange", () => {
+  previewState.selectedField = "";
+});
 
 const observer = new MutationObserver(queuePreview);
 if (main) observer.observe(main, { childList: true, subtree: true });
