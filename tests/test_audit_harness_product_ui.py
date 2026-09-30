@@ -18,6 +18,8 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "/static/reference-evidence-preview.js" in shell.text
     assert "/static/claim-graph.css" in shell.text
     assert "/static/claim-graph.js" in shell.text
+    assert "/static/finding-navigation.css" in shell.text
+    assert "/static/finding-navigation.js" in shell.text
     assert "/static/mobile-polish.css" in shell.text
 
     script = client.get("/static/audit-harness-product.js")
@@ -53,8 +55,23 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "data-reference-claim-graph" in claim_script.text
     assert "data-cg-detail-panel" in claim_script.text
     assert "data-cg-detail-action" in claim_script.text
+    assert "data-cg-finding-id" in claim_script.text
+    assert "veritas:claim-finding" in claim_script.text
+    assert "veritas:finding-select" in claim_script.text
     assert "aria-current" in claim_script.text
     assert "veritas:evidence-field" in claim_script.text
+
+    finding_script = client.get("/static/finding-navigation.js")
+    assert finding_script.status_code == 200
+    assert "data-fn-finding-id" in finding_script.text
+    assert "data-fn-graph" in finding_script.text
+    assert "veritas:claim-finding" in finding_script.text
+    assert "veritas:finding-select" in finding_script.text
+
+    finding_styles = client.get("/static/finding-navigation.css")
+    assert finding_styles.status_code == 200
+    assert ".fn-finding-row" in finding_styles.text
+    assert ".is-linked-finding" in finding_styles.text
 
     reference_styles = client.get("/static/reference-workbench.css")
     assert reference_styles.status_code == 200
@@ -74,7 +91,7 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'const CACHE = "veritas-shell-v20"' in service_worker.text
+    assert 'const CACHE = "veritas-shell-v21"' in service_worker.text
     assert "/static/audit-harness-product.css" in service_worker.text
     assert "/static/audit-harness-product.js" in service_worker.text
     assert "/static/reference-workbench.css" in service_worker.text
@@ -83,4 +100,6 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "/static/reference-evidence-preview.js" in service_worker.text
     assert "/static/claim-graph.css" in service_worker.text
     assert "/static/claim-graph.js" in service_worker.text
+    assert "/static/finding-navigation.css" in service_worker.text
+    assert "/static/finding-navigation.js" in service_worker.text
     assert "/static/mobile-polish.css" in service_worker.text
