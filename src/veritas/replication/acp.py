@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-_EVENT_QUEUE_MAXSIZE = 256
+_MAX_EVENTS_PER_TURN = 2_048
 _EVENT_DRAIN_QUIET_SECONDS = 0.25
 _JSON_MAX_DEPTH = 8
 _JSON_MAX_STRING_CHARS = 32_768
@@ -400,9 +400,22 @@ class AcpTurnRunner:
                 "ACP replication support requires `pip install -e '.[replication]'`"
             ) from exc
 
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=_EVENT_QUEUE_MAXSIZE)
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         policy = self.permission_policy
         inflight_updates = 0
+        accepted_events = 0
+        event_limit_exceeded = False
+
+        def enqueue_event(event: dict[str, Any]) -> bool:
+            nonlocal accepted_events, event_limit_exceeded
+            if event_limit_exceeded:
+                return False
+            if accepted_events >= _MAX_EVENTS_PER_TURN:
+                event_limit_exceeded = True
+                return False
+            accepted_events += 1
+            queue.put_nowait(event)
+            return True
 
         class StreamingClient(Client):
             async def session_update(
@@ -421,7 +434,7 @@ class AcpTurnRunner:
                         or type(update).__name__
                     )
                     detail = _update_detail(payload)
-                    await queue.put(
+                    enqueue_event(
                         ReplicationEvent(
                             kind="agent_update",
                             title=update_kind,
@@ -459,7 +472,7 @@ class AcpTurnRunner:
                     and run_id
                     and _CONTROL_PLANE.interactive(run_id)
                 ):
-                    await queue.put(
+                    queued = enqueue_event(
                         ReplicationEvent(
                             kind="permission",
                             title=title,
@@ -475,17 +488,18 @@ class AcpTurnRunner:
                             },
                         ).to_dict()
                     )
-                    selected_id = await _CONTROL_PLANE.request(
-                        run_id,
-                        request_id,
-                        option_payloads,
-                    )
-                    selected = _select_allow_once_by_id(options, selected_id)
-                elif policy is PermissionPolicy.ALLOW_ONCE:
+                    if queued:
+                        selected_id = await _CONTROL_PLANE.request(
+                            run_id,
+                            request_id,
+                            option_payloads,
+                        )
+                        selected = _select_allow_once_by_id(options, selected_id)
+                elif policy is PermissionPolicy.ALLOW_ONCE and not event_limit_exceeded:
                     selected = _select_allow_once(options)
 
                 decision = "selected" if selected is not None else "cancelled"
-                await queue.put(
+                enqueue_event(
                     ReplicationEvent(
                         kind="permission",
                         title=title,
@@ -522,6 +536,7 @@ class AcpTurnRunner:
                 "permission_policy": self.permission_policy.value,
                 "workspace_scope": "run_specific",
                 "workspace_is_security_boundary": False,
+                "max_stream_events": _MAX_EVENTS_PER_TURN,
             },
         ).to_dict()
 
@@ -543,6 +558,25 @@ class AcpTurnRunner:
             quiet_deadline: float | None = None
 
             while True:
+                if event_limit_exceeded:
+                    if not prompt_task.done():
+                        prompt_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await prompt_task
+                    while not queue.empty():
+                        yield queue.get_nowait()
+                    yield ReplicationEvent(
+                        kind="transport_limit",
+                        title="Replication event limit exceeded",
+                        detail=(
+                            f"The ACP agent emitted more than {_MAX_EVENTS_PER_TURN:,} streamed events; "
+                            "the turn was stopped to bound memory and persisted event growth."
+                        ),
+                        status="blocked",
+                        payload={"session_id": session.session_id, "limit": _MAX_EVENTS_PER_TURN},
+                    ).to_dict()
+                    raise RuntimeError("ACP replication event limit exceeded")
+
                 if run_id and _CONTROL_PLANE.cancelled(run_id):
                     prompt_task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
