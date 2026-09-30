@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+from collections import deque
+from pathlib import Path
 from typing import Any
 
+from .product_store import ProductHarnessStore
+from .run_views import project_run_detail
 from .service import AuditHarness
+from .tools import PaperToolbox
 
 _INTEGRITY_ERRORS = (OSError, ValueError, TypeError, json.JSONDecodeError)
 
@@ -12,10 +17,19 @@ class ProductAuditHarness(AuditHarness):
     """Web/mobile Harness with bounded-memory derived product views.
 
     The compatibility methods inherited from :class:`AuditHarness` still return
-    fully hydrated audit records. Product dashboards do not need every event from
-    every audit at once, so these projections keep audit metadata separate from
-    event-history reads and validate journals one audit at a time.
+    fully hydrated audit records. Product dashboards instead stream persisted
+    events through ``ProductHarnessStore.scan_events`` and retain only the small
+    projection each view actually needs.
     """
+
+    def __init__(
+        self,
+        data_dir: str | Path,
+        *,
+        toolbox: PaperToolbox | None = None,
+    ) -> None:
+        super().__init__(data_dir, toolbox=toolbox)
+        self.store = ProductHarnessStore(self.store.root)
 
     def _metadata_audits(self) -> list[dict[str, Any]]:
         return self.store.list_audits(include_events=False)
@@ -34,15 +48,12 @@ class ProductAuditHarness(AuditHarness):
 
         for audit in audits:
             audit_id = str(audit.get("audit_id") or "")
+            retain = 4 if len(recent_activity) < 8 else 0
+            tail: deque[dict[str, Any]] = deque(maxlen=retain)
             try:
-                # Preserve the historical integrity behavior of list_audits():
-                # malformed journals are omitted from derived views. Retain at
-                # most four events only while the activity feed still needs them;
-                # otherwise validate the complete journal without retaining it.
-                tail = self.store.get_events(
-                    audit_id,
-                    limit=4 if len(recent_activity) < 8 else 0,
-                )
+                # Scan the complete journal so malformed history still excludes
+                # an audit, while retaining at most the tiny activity tail.
+                self.store.scan_events(audit_id, tail.append)
             except _INTEGRITY_ERRORS:
                 continue
 
@@ -111,7 +122,7 @@ class ProductAuditHarness(AuditHarness):
         items: list[dict[str, Any]] = []
         for audit in self._metadata_audits():
             try:
-                self.store.get_events(str(audit["audit_id"]), limit=0)
+                self.store.scan_events(str(audit["audit_id"]), lambda _event: None)
             except _INTEGRITY_ERRORS:
                 continue
             result = audit.get("latest_result") or {}
@@ -135,18 +146,14 @@ class ProductAuditHarness(AuditHarness):
     def runs(self) -> list[dict[str, Any]]:
         runs: list[dict[str, Any]] = []
         for audit in self._metadata_audits():
-            try:
-                events = self.store.get_events(str(audit["audit_id"]))
-            except _INTEGRITY_ERRORS:
-                continue
-            for event in events:
+            def collect_run(event: dict[str, Any]) -> None:
                 if event.get("kind") != "tool":
-                    continue
+                    return
                 payload = event.get("payload") or {}
                 result = payload.get("result") or {}
                 phase = payload.get("phase")
                 if not result and phase not in {"finish", "error"}:
-                    continue
+                    return
                 runs.append(
                     {
                         "run_id": payload.get("run_id") or event.get("event_id"),
@@ -167,11 +174,41 @@ class ProductAuditHarness(AuditHarness):
                         "created_at": event.get("created_at"),
                     }
                 )
-            # Drop the per-audit history before opening the next journal. This is
-            # deliberate even though CPython would release it on reassignment.
-            del events
+
+            try:
+                self.store.scan_events(str(audit["audit_id"]), collect_run)
+            except _INTEGRITY_ERRORS:
+                # Match list_audits()' historical behavior: a corrupt audit is
+                # absent from the derived view rather than partially projected.
+                runs[:] = [item for item in runs if item.get("audit_id") != audit.get("audit_id")]
+                continue
         runs.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
         return runs
+
+    def run_detail(self, run_id: str) -> dict[str, Any] | None:
+        """Project one correlated run without hydrating unrelated histories."""
+
+        for audit in self._metadata_audits():
+            matched: list[dict[str, Any]] = []
+
+            def collect_match(event: dict[str, Any]) -> None:
+                payload = event.get("payload") or {}
+                event_run_id = payload.get("run_id") if isinstance(payload, dict) else None
+                if event_run_id == run_id or (
+                    not event_run_id and event.get("event_id") == run_id
+                ):
+                    matched.append(event)
+
+            try:
+                self.store.scan_events(str(audit["audit_id"]), collect_match)
+            except _INTEGRITY_ERRORS:
+                continue
+            if not matched:
+                continue
+            projected_audit = dict(audit)
+            projected_audit["events"] = matched
+            return project_run_detail([projected_audit], run_id)
+        return None
 
     def search(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
         needle = query.strip().casefold()
@@ -179,18 +216,14 @@ class ProductAuditHarness(AuditHarness):
             return []
         results: list[dict[str, Any]] = []
         for audit in self._metadata_audits():
-            audit_id = str(audit.get("audit_id") or "")
-            try:
-                events = self.store.get_events(audit_id)
-            except _INTEGRITY_ERRORS:
-                continue
-
             audit_text = " ".join(
                 str(value or "")
                 for value in (audit.get("title"), audit.get("filename"), audit.get("audit_id"))
             ).casefold()
-            if needle in audit_text:
-                results.append(
+            audit_match = needle in audit_text
+            pending: list[dict[str, Any]] = []
+            if audit_match and len(results) < limit:
+                pending.append(
                     {
                         "kind": "audit",
                         "id": audit.get("audit_id"),
@@ -201,10 +234,12 @@ class ProductAuditHarness(AuditHarness):
                     }
                 )
 
-            for event in events:
+            def collect_match(event: dict[str, Any]) -> None:
+                if len(results) + len(pending) >= limit:
+                    return
                 haystack = f'{event.get("title", "")} {event.get("detail", "")}'.casefold()
                 if needle in haystack:
-                    results.append(
+                    pending.append(
                         {
                             "kind": "event",
                             "id": event.get("event_id"),
@@ -214,7 +249,15 @@ class ProductAuditHarness(AuditHarness):
                             "status": event.get("status"),
                         }
                     )
-                if len(results) >= limit:
-                    return results[:limit]
-            del events
+
+            try:
+                # Continue scanning after the result cap is reached so corruption
+                # later in the visited journal cannot be hidden by an early hit.
+                self.store.scan_events(str(audit["audit_id"]), collect_match)
+            except _INTEGRITY_ERRORS:
+                continue
+
+            results.extend(pending)
+            if len(results) >= limit:
+                return results[:limit]
         return results[:limit]
