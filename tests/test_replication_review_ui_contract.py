@@ -18,8 +18,8 @@ def test_replication_review_ui_keeps_human_annotation_boundary_explicit() -> Non
     assert "does not resolve the finding" in script
     assert "promote generated output to paper evidence" in script
     assert "/api/v1/runs/${encodeURIComponent(runId)}/review" in script
-    assert "dataRepReviewSaved" in script
-    assert "dataRepReviewDisposition" in script
+    assert "repReviewSaved" in script
+    assert "repReviewDisposition" in script
     assert "data-rep-review-boundary" in script
     assert ".rep-review-card" in styles
     assert ".rep-review-option.selected" in styles
