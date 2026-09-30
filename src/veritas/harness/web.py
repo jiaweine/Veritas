@@ -22,6 +22,7 @@ from ..version import package_version
 from .benchmark_catalog import benchmark_catalog, benchmark_definition
 from .benchmark_results import BenchmarkResultStore
 from .parser_stack import parser_stack_capability
+from .projects import MAX_PROJECT_NAME_CHARS, ProjectStore
 from .replication_guard import stream_replication_guarded
 from .replication_workspace import (
     preview_replication_workspace_file,
@@ -50,6 +51,14 @@ class MessageRequest(BaseModel):
 
 class NotesRequest(BaseModel):
     content: str
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str
+
+
+class ProjectAssignmentRequest(BaseModel):
+    project_id: str | None = None
 
 
 class ReplicationRequest(BaseModel):
@@ -95,6 +104,7 @@ def create_app(
     ).expanduser()
     runtime = harness or AuditHarness(resolved_data_dir)
     benchmark_results = BenchmarkResultStore(resolved_data_dir)
+    projects = ProjectStore(resolved_data_dir)
     static_dir = Path(__file__).with_name("static")
     product_version = package_version()
 
@@ -106,6 +116,7 @@ def create_app(
     )
     app.state.harness = runtime
     app.state.benchmark_results = benchmark_results
+    app.state.projects = projects
 
     origins = _cors_origins()
     if origins:
@@ -236,6 +247,91 @@ def create_app(
             return runtime.get_audit(audit_id)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    def project_snapshot() -> dict[str, object]:
+        try:
+            audit_ids = [str(item["audit_id"]) for item in runtime.list_audits()]
+            return projects.snapshot(audit_ids)
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"project metadata integrity error: {exc}",
+            ) from exc
+
+    @app.get("/api/v1/projects")
+    def list_projects() -> dict[str, object]:
+        return project_snapshot()
+
+    @app.post("/api/v1/projects")
+    def create_project(request: ProjectCreateRequest) -> dict[str, object]:
+        if len(request.name) > MAX_PROJECT_NAME_CHARS * 4:
+            raise HTTPException(status_code=422, detail="project name is too long")
+        project_snapshot()
+        try:
+            project = projects.create_project(request.name)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"project metadata integrity error: {exc}",
+            ) from exc
+        return project
+
+    @app.get("/api/v1/audits/{audit_id}/project")
+    def audit_project(audit_id: str) -> dict[str, object]:
+        try:
+            runtime.get_audit(audit_id)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        try:
+            project_id = projects.project_for_audit(audit_id)
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"project metadata integrity error: {exc}",
+            ) from exc
+        project = None
+        if project_id is not None:
+            try:
+                project = projects.get_project(project_id)
+            except (OSError, TypeError, ValueError, json.JSONDecodeError, FileNotFoundError) as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"project metadata integrity error: {exc}",
+                ) from exc
+        return {"audit_id": audit_id, "project_id": project_id, "project": project}
+
+    @app.post("/api/v1/audits/{audit_id}/project")
+    def assign_audit_project(
+        audit_id: str,
+        request: ProjectAssignmentRequest,
+    ) -> dict[str, object]:
+        try:
+            runtime.get_audit(audit_id)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        project_snapshot()
+        if request.project_id is not None:
+            try:
+                projects.get_project(request.project_id)
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            project_id = projects.assign_audit(audit_id, request.project_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"project metadata integrity error: {exc}",
+            ) from exc
+        project = projects.get_project(project_id) if project_id else None
+        return {"audit_id": audit_id, "project_id": project_id, "project": project}
 
     @app.post("/api/v1/audits/{audit_id}/notes")
     def save_audit_notes(audit_id: str, request: NotesRequest) -> dict[str, object]:
