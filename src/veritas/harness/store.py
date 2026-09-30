@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import threading
 from hashlib import sha256
 from pathlib import Path
@@ -13,6 +14,10 @@ from .models import HarnessEvent, utc_now_iso
 MAX_AUDIT_NOTES_CHARS = 50_000
 EVENT_JOURNAL_FILENAME = "events.ndjson"
 EVENT_JOURNAL_SCHEMA_VERSION = "1"
+_JOURNAL_READ_FLAGS = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+_JOURNAL_APPEND_FLAGS = (
+    os.O_WRONLY | os.O_APPEND | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+)
 
 _ROOT_LOCKS_GUARD = threading.Lock()
 _ROOT_LOCKS: dict[Path, threading.RLock] = {}
@@ -189,7 +194,7 @@ class HarnessStore:
         with self._lock:
             audit_id = event.audit_id
             journal = self._event_journal_path(audit_id)
-            if journal.exists():
+            if self._event_journal_exists(journal):
                 record = self._read_record(audit_id, include_events=False)
             else:
                 # Legacy audit.json files stored the complete event history inline.
@@ -257,6 +262,18 @@ class HarnessStore:
     def _event_journal_path(self, audit_id: str) -> Path:
         return self._audit_dir(audit_id) / EVENT_JOURNAL_FILENAME
 
+    @staticmethod
+    def _event_journal_exists(path: Path) -> bool:
+        try:
+            entry_stat = os.lstat(path)
+        except FileNotFoundError:
+            return False
+        except OSError as exc:
+            raise RuntimeError("unable to inspect audit event journal") from exc
+        if stat.S_ISLNK(entry_stat.st_mode) or not stat.S_ISREG(entry_stat.st_mode):
+            raise ValueError("audit event journal must be a regular file")
+        return True
+
     def _read_record(self, audit_id: str, *, include_events: bool = True) -> dict[str, Any]:
         path = self._audit_dir(audit_id) / "audit.json"
         if not path.is_file():
@@ -270,18 +287,24 @@ class HarnessStore:
         if any(not isinstance(item, dict) for item in embedded_events):
             raise TypeError("audit metadata event entries must be objects")
 
-        journal = self._event_journal_path(audit_id)
-        if journal.exists():
-            marker = value.setdefault(
-                "event_journal",
-                {"schema_version": EVENT_JOURNAL_SCHEMA_VERSION, "path": EVENT_JOURNAL_FILENAME},
-            )
+        marker = value.get("event_journal")
+        if marker is not None:
             if not isinstance(marker, dict):
                 raise TypeError("audit metadata event_journal must be an object")
             if marker.get("schema_version") not in {None, EVENT_JOURNAL_SCHEMA_VERSION}:
                 raise ValueError("unsupported audit event journal schema")
             if marker.get("path") not in {None, EVENT_JOURNAL_FILENAME}:
                 raise ValueError("audit event journal path is invalid")
+
+        journal = self._event_journal_path(audit_id)
+        journal_exists = self._event_journal_exists(journal)
+        if marker is not None and not journal_exists:
+            raise ValueError("audit event journal is missing")
+        if journal_exists:
+            value["event_journal"] = {
+                "schema_version": EVENT_JOURNAL_SCHEMA_VERSION,
+                "path": EVENT_JOURNAL_FILENAME,
+            }
             value["events"] = self._read_event_journal(journal) if include_events else []
         elif not include_events:
             value["events"] = []
@@ -302,7 +325,7 @@ class HarnessStore:
     def _ensure_event_journal(self, record: dict[str, Any]) -> Path:
         audit_id = str(record["audit_id"])
         journal = self._event_journal_path(audit_id)
-        if journal.exists():
+        if self._event_journal_exists(journal):
             return journal
 
         events = record.get("events")
@@ -333,10 +356,21 @@ class HarnessStore:
 
     def _append_journal_event(self, journal: Path, event: dict[str, Any]) -> None:
         rendered = self._event_line(event)
-        with journal.open("a", encoding="utf-8", newline="\n") as handle:
-            handle.write(rendered)
-            handle.flush()
-            os.fsync(handle.fileno())
+        try:
+            fd = os.open(journal, _JOURNAL_APPEND_FLAGS)
+        except OSError as exc:
+            raise ValueError("audit event journal cannot be opened safely") from exc
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError("audit event journal must be a regular file")
+            with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as handle:
+                fd = -1
+                handle.write(rendered)
+                handle.flush()
+                os.fsync(handle.fileno())
+        finally:
+            if fd >= 0:
+                os.close(fd)
 
     @staticmethod
     def _event_line(event: dict[str, Any]) -> str:
@@ -344,23 +378,36 @@ class HarnessStore:
 
     @staticmethod
     def _read_event_journal(path: Path) -> list[dict[str, Any]]:
-        events: list[dict[str, Any]] = []
-        with path.open("r", encoding="utf-8") as handle:
-            for line_number, line in enumerate(handle, start=1):
-                if not line.strip():
-                    raise ValueError(f"audit event journal contains a blank line at {line_number}")
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError as exc:
-                    raise ValueError(
-                        f"audit event journal contains invalid JSON at line {line_number}"
-                    ) from exc
-                if not isinstance(event, dict):
-                    raise TypeError(
-                        f"audit event journal entry at line {line_number} must be an object"
-                    )
-                events.append(event)
-        return events
+        try:
+            fd = os.open(path, _JOURNAL_READ_FLAGS)
+        except OSError as exc:
+            raise ValueError("audit event journal cannot be opened safely") from exc
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError("audit event journal must be a regular file")
+            events: list[dict[str, Any]] = []
+            with os.fdopen(fd, "r", encoding="utf-8") as handle:
+                fd = -1
+                for line_number, line in enumerate(handle, start=1):
+                    if not line.strip():
+                        raise ValueError(
+                            f"audit event journal contains a blank line at {line_number}"
+                        )
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        raise ValueError(
+                            f"audit event journal contains invalid JSON at line {line_number}"
+                        ) from exc
+                    if not isinstance(event, dict):
+                        raise TypeError(
+                            f"audit event journal entry at line {line_number} must be an object"
+                        )
+                    events.append(event)
+            return events
+        finally:
+            if fd >= 0:
+                os.close(fd)
 
     def _write_record(self, record: dict[str, Any]) -> None:
         audit_id = str(record["audit_id"])
@@ -371,7 +418,7 @@ class HarnessStore:
 
         stored = dict(record)
         journal = self._event_journal_path(audit_id)
-        if journal.exists():
+        if self._event_journal_exists(journal):
             stored["events"] = []
             stored["event_journal"] = {
                 "schema_version": EVENT_JOURNAL_SCHEMA_VERSION,
