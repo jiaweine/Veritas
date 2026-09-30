@@ -14,6 +14,7 @@ def test_ui_visual_smoke_workflow_captures_product_surfaces() -> None:
 
     assert '"audit-workspace.png"' in script
     assert '"claim-graph.png"' in script
+    assert '"finding-graph-roundtrip.png"' in script
     assert '"audit-notes.png"' in script
     assert '"replication-workspace.png"' in script
     assert '"runs-workspace.png"' in script
@@ -25,10 +26,17 @@ def test_ui_visual_smoke_workflow_captures_product_surfaces() -> None:
     assert "[data-cg-field='beta']" in script
     assert "[data-cg-detail-panel='true']" in script
     assert "[data-cg-detail-action='source']" in script
+    assert "[data-cg-detail-action='findings']" in script
+    assert "[data-cg-detail-source='true']" in script
+    assert "[data-fn-graph='true']" in script
     assert "[data-ref-field='beta'].is-linked-selection" in script
+    assert "[data-ref-field='p_value'].is-linked-selection" in script
     assert "[data-runs-surface='true']" in script
     assert '/audit row="Minimum wage" table=4 page=1' in script
     assert 'consensus.get("beta") != "-0.021"' in script
+    assert 'p_value="0.010"' in script
+    assert 'result.get("status") != "contradiction"' in script
+    assert 'check.get("check_id") == "p_value"' in script
     assert 'page.goto("about:blank", wait_until="load")' in script
     assert "Legacy nested project rail is still visible" in script
     assert "Evidence Inspector tabs remain visible while Notes is active" in script
@@ -42,9 +50,15 @@ def test_reference_workbench_uses_live_backend_contracts() -> None:
         encoding="utf-8"
     )
     graph = (ROOT / "src/veritas/harness/static/claim-graph.js").read_text(encoding="utf-8")
+    finding_navigation = (ROOT / "src/veritas/harness/static/finding-navigation.js").read_text(
+        encoding="utf-8"
+    )
     styles = (ROOT / "src/veritas/harness/static/reference-workbench.css").read_text(encoding="utf-8")
     surfaces = (ROOT / "src/veritas/harness/static/reference-surfaces.css").read_text(encoding="utf-8")
     graph_styles = (ROOT / "src/veritas/harness/static/claim-graph.css").read_text(encoding="utf-8")
+    finding_styles = (ROOT / "src/veritas/harness/static/finding-navigation.css").read_text(
+        encoding="utf-8"
+    )
     shell = (ROOT / "src/veritas/harness/static/index.html").read_text(encoding="utf-8")
 
     assert 'json("/api/v1/audits")' in script
@@ -65,6 +79,11 @@ def test_reference_workbench_uses_live_backend_contracts() -> None:
     assert "data-reference-claim-graph" in graph
     assert "data-cg-detail-panel" in graph
     assert "data-cg-detail-action" in graph
+    assert "data-cg-finding-id" in graph
+    assert "veritas:finding-select" in graph
+    assert "/api/v1/audits/${encodeURIComponent(auditId)}" in finding_navigation
+    assert "data-fn-finding-id" in finding_navigation
+    assert "veritas:claim-finding" in finding_navigation
     assert ".audit-harness .ah-left" in styles
     assert "display: none !important" in styles
     assert "ref-evidence-preview" in surfaces
@@ -72,12 +91,16 @@ def test_reference_workbench_uses_live_backend_contracts() -> None:
     assert ".claim-graph" in graph_styles
     assert ".cg-detail" in graph_styles
     assert ".is-linked-selection" in graph_styles
+    assert ".fn-finding-row" in finding_styles
+    assert ".is-linked-finding" in finding_styles
     assert "/static/reference-workbench.css" in shell
     assert "/static/reference-workbench.js" in shell
     assert "/static/reference-surfaces.css" in shell
     assert "/static/reference-evidence-preview.js" in shell
     assert "/static/claim-graph.css" in shell
     assert "/static/claim-graph.js" in shell
+    assert "/static/finding-navigation.css" in shell
+    assert "/static/finding-navigation.js" in shell
 
 
 def test_notes_workspace_has_explicit_visual_state_contracts() -> None:
@@ -104,6 +127,7 @@ def test_mobile_workflow_syntax_checks_all_workbench_modules() -> None:
         "reference-workbench.js",
         "reference-evidence-preview.js",
         "claim-graph.js",
+        "finding-navigation.js",
     }
 
     for module in expected_modules:
