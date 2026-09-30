@@ -40,6 +40,11 @@ def main() -> None:
             raise AssertionError("Provider router must remain outside deterministic detector evidence")
         if router.get("replication_bridge_required") is not True:
             raise AssertionError("Provider router lost the ACP bridge boundary")
+        diagnostics = router.get("diagnostics") or {}
+        if diagnostics.get("probe_supported") is not True:
+            raise AssertionError(f"Provider diagnostic capability is missing: {router}")
+        if diagnostics.get("affects_detector_evidence") is not False:
+            raise AssertionError("Provider diagnostics must remain outside detector evidence")
 
     page_errors: list[str] = []
     with sync_playwright() as playwright:
@@ -52,6 +57,31 @@ def main() -> None:
         )
         page = context.new_page()
         page.on("pageerror", lambda error: page_errors.append(str(error)))
+
+        def fulfill_provider_probe(route) -> None:
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "ok": True,
+                        "state": "ready",
+                        "provider": "deepseek",
+                        "model": "deepseek-chat",
+                        "reachable": True,
+                        "authenticated": True,
+                        "status_code": 200,
+                        "latency_ms": 18.4,
+                        "probe_scope": "catalog",
+                        "detail": "Provider link accepted the configured credentials.",
+                        "secrets_exposed": False,
+                        "provider_body_exposed": False,
+                        "affects_detector_evidence": False,
+                    }
+                ),
+            )
+
+        page.route("**/api/v1/model-providers/probe", fulfill_provider_probe)
         page.goto(f"{base_url}/#settings", wait_until="networkidle")
         page.locator("[data-settings-surface='true']").wait_for(state="visible", timeout=20_000)
         matrix = page.locator("[data-model-provider-matrix='true']")
@@ -81,6 +111,25 @@ def main() -> None:
         if matrix.get_attribute("data-model-router-state") != "configured":
             raise AssertionError("Complete provider configuration did not render the configured router state")
 
+        probe = page.locator("[data-router-provider-probe='true']")
+        probe.wait_for(state="visible", timeout=10_000)
+        probe_button = probe.locator(".router-probe-button")
+        if probe_button.is_disabled():
+            raise AssertionError("Configured provider diagnostic button should be enabled")
+        idle_probe_text = probe.inner_text()
+        if "Provider link not tested" not in idle_probe_text or "No network request has been made" not in idle_probe_text:
+            raise AssertionError(f"Provider diagnostic idle state is ambiguous: {idle_probe_text!r}")
+        probe_button.click()
+        probe_status = probe.locator(".router-probe-status[data-probe-state='ready']")
+        probe_status.wait_for(state="visible", timeout=10_000)
+        probe_text = probe.inner_text()
+        for expected in ("Provider link verified", "deepseek", "HTTP 200", "18 ms", "response body discarded"):
+            if expected.lower() not in probe_text.lower():
+                raise AssertionError(f"Provider diagnostic lost {expected!r}: {probe_text!r}")
+        if SMOKE_SECRET in probe_text or SMOKE_SECRET in page.locator("body").inner_text():
+            raise AssertionError("Provider diagnostic leaked the configured API key")
+        page.screenshot(path=output_dir / "settings-model-providers-probe.png", full_page=True)
+
         inspector = page.locator("[data-router-pointer-inspector='true']")
         inspector.wait_for(state="visible", timeout=10_000)
         network = page.locator("[data-router-network-field='true']")
@@ -107,7 +156,6 @@ def main() -> None:
         hover_text = inspector.inner_text()
         if "DeepSeek" not in hover_text or "POINTER LINK" not in hover_text:
             raise AssertionError(f"Pointer inspector did not follow the hovered provider: {hover_text!r}")
-
         page.screenshot(path=output_dir / "settings-model-providers-network.png", full_page=True)
 
         selected.click(position={"x": 110, "y": 70})
@@ -159,6 +207,7 @@ def main() -> None:
     screenshot_names = (
         "settings-model-providers.png",
         "settings-model-providers-interactive.png",
+        "settings-model-providers-probe.png",
         "settings-model-providers-network.png",
     )
     for screenshot_name in screenshot_names:
@@ -173,6 +222,7 @@ def main() -> None:
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "configuration": "ready",
+                "diagnostic": "ready",
                 "screenshots": list(screenshot_names),
                 "output_dir": str(output_dir),
             },
