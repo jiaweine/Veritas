@@ -43,6 +43,20 @@ function sourceSummary(finding = {}) {
   ].filter(Boolean).join(" · ");
 }
 
+function replicationBindingId(index) {
+  if (!findingState.auditId || !Number.isInteger(index) || index < 0) return "";
+  return `${findingState.auditId}:finding:${index}`;
+}
+
+function displayFindingId(findingId) {
+  const value = String(findingId || "");
+  const prefix = `${findingState.auditId}:finding:`;
+  if (!value.startsWith(prefix)) return value;
+  const index = Number(value.slice(prefix.length));
+  if (!Number.isInteger(index) || index < 0) return value;
+  return String(findingState.findings[index]?.finding_id || value);
+}
+
 function persistReplicationContext(finding, findingId) {
   const context = {
     auditId: findingState.auditId,
@@ -86,10 +100,11 @@ function selectFindingCard(findingId = findingState.pendingFindingId) {
   if (!findingId) return false;
   const root = auditRoot();
   if (!root) return false;
+  const displayId = displayFindingId(findingId);
   const rows = [...root.querySelectorAll(".fn-finding-row[data-fn-finding-id]")];
   let selected = null;
   rows.forEach((row) => {
-    const active = row.dataset.fnFindingId === findingId;
+    const active = row.dataset.fnFindingId === displayId;
     row.classList.toggle("is-linked-finding", active);
     const card = row.querySelector(".ah-finding-card[data-fn-finding-id]");
     if (active) {
@@ -114,6 +129,7 @@ function enhanceCards(root) {
     const finding = Number.isInteger(index) ? findingState.findings[index] : null;
     if (!finding) return;
     const findingId = String(finding.finding_id || `${findingState.auditId}:finding:${index}`);
+    const bindingId = replicationBindingId(index);
     card.dataset.fnFindingId = findingId;
     card.setAttribute("aria-label", `${finding.title || "Finding"}. Open linked evidence.`);
 
@@ -140,11 +156,13 @@ function enhanceCards(root) {
       event.stopPropagation();
       card.click();
     });
-    actions.querySelector("[data-fn-reproduce]")?.addEventListener("click", (event) => {
+    const reproduce = actions.querySelector("[data-fn-reproduce]");
+    if (reproduce && bindingId) reproduce.dataset.fnReplicationFindingId = bindingId;
+    reproduce?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       findingState.pendingFindingId = findingId;
-      openReplicationForFinding(finding, findingId);
+      openReplicationForFinding(finding, bindingId || findingId);
     });
     actions.querySelector("[data-fn-graph]")?.addEventListener("click", (event) => {
       event.preventDefault();
