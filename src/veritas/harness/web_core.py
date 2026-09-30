@@ -278,7 +278,12 @@ def create_app(
 
     @app.get("/api/v1/runs/{run_id}")
     def run_detail(run_id: str) -> dict[str, object]:
-        detail = project_run_detail(runtime.list_audits(), run_id)
+        runtime_projector = getattr(runtime, "run_detail", None)
+        detail = (
+            runtime_projector(run_id)
+            if callable(runtime_projector)
+            else project_run_detail(runtime.list_audits(), run_id)
+        )
         if detail is None:
             raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
         return normalize_replication_run(detail)
