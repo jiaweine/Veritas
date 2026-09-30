@@ -215,6 +215,7 @@ function ensureSidebarProjects() {
 }
 
 function openActiveProjectInAudits() {
+  document.body.classList.remove("reference-audit-active");
   const auditsNav = document.querySelector(".sidebar [data-view='audits']");
   if (auditsNav) auditsNav.click();
 }
@@ -299,7 +300,7 @@ function enhanceAuditTableLabels(rows) {
       return;
     }
     if (existing) {
-      existing.textContent = project.name;
+      if (existing.textContent !== project.name) existing.textContent = project.name;
       return;
     }
     const badge = document.createElement("span");
@@ -351,8 +352,9 @@ function enhanceAuditListFilter() {
   if (banner) {
     const strong = banner.querySelector("strong");
     const count = banner.querySelector("[data-pw-filter-count]");
-    if (strong) strong.textContent = label;
-    if (count) count.textContent = `${visible} paper${visible === 1 ? "" : "s"}`;
+    const countText = `${visible} paper${visible === 1 ? "" : "s"}`;
+    if (strong && strong.textContent !== label) strong.textContent = label;
+    if (count && count.textContent !== countText) count.textContent = countText;
   }
 
   const panel = main.querySelector("section.panel");
