@@ -95,15 +95,20 @@ function assignmentControl(auditId) {
   </div>`;
 }
 
+function auditsViewVisible() {
+  return main?.querySelector(".page-title")?.textContent?.trim() === "Audits";
+}
+
 function openProject(projectId) {
   setActiveProject(projectId);
   window.setTimeout(() => {
     const auditsNavigation = document.querySelector(".sidebar [data-view='audits']");
-    if (auditsNavigation) {
-      auditsNavigation.click();
-      return;
-    }
-    window.location.assign("/#audits");
+    auditsNavigation?.click();
+    window.setTimeout(() => {
+      if (auditsViewVisible()) return;
+      history.replaceState(null, "", "#audits");
+      window.location.reload();
+    }, 160);
   }, 0);
 }
 
