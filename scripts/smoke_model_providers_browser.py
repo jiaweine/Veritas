@@ -83,12 +83,24 @@ def main() -> None:
 
         inspector = page.locator("[data-router-pointer-inspector='true']")
         inspector.wait_for(state="visible", timeout=10_000)
+        network = page.locator("[data-router-network-field='true']")
+        network.wait_for(state="visible", timeout=10_000)
+        page.wait_for_function(
+            """() => document.querySelector('[data-router-network-field="true"]')?.dataset.networkReady === 'true'""",
+            timeout=10_000,
+        )
+
         selected.hover(position={"x": 110, "y": 70})
         page.wait_for_function(
             """() => {
                 const card = document.querySelector('[data-model-provider="deepseek"]');
                 const router = document.querySelector('[data-model-provider-matrix="true"]');
-                return card?.dataset.pointerActive === 'true' && router?.dataset.cursorActive === 'true';
+                const network = document.querySelector('[data-router-network-field="true"]');
+                return card?.dataset.pointerActive === 'true'
+                    && router?.dataset.cursorActive === 'true'
+                    && network?.dataset.networkPointer === 'active'
+                    && network?.dataset.networkFocus === 'deepseek'
+                    && Number(network?.dataset.networkLinks || 0) > 0;
             }""",
             timeout=10_000,
         )
@@ -96,26 +108,60 @@ def main() -> None:
         if "DeepSeek" not in hover_text or "POINTER LINK" not in hover_text:
             raise AssertionError(f"Pointer inspector did not follow the hovered provider: {hover_text!r}")
 
+        page.screenshot(path=output_dir / "settings-model-providers-network.png", full_page=True)
+
         selected.click(position={"x": 110, "y": 70})
         page.wait_for_function(
-            """() => document.querySelector('[data-model-provider="deepseek"]')?.dataset.pinned === 'true'""",
+            """() => {
+                const card = document.querySelector('[data-model-provider="deepseek"]');
+                const network = document.querySelector('[data-router-network-field="true"]');
+                return card?.dataset.pinned === 'true'
+                    && network?.dataset.networkFocus === 'deepseek'
+                    && network?.dataset.networkFocusMode === 'pinned';
+            }""",
             timeout=10_000,
         )
         if selected.get_attribute("aria-pressed") != "true":
             raise AssertionError("Provider pin interaction is not exposed through aria-pressed")
+        if selected.get_attribute("aria-controls") != "router-pointer-inspector":
+            raise AssertionError("Provider card is not linked to the interactive inspector")
         pinned_text = inspector.inner_text()
         if "PINNED NODE" not in pinned_text or "READY" not in pinned_text:
             raise AssertionError(f"Pinned provider inspector lost readiness context: {pinned_text!r}")
 
+        page.mouse.move(25, 25)
+        page.wait_for_function(
+            """() => document.querySelector('[data-router-network-field="true"]')?.dataset.networkFocus === 'deepseek'""",
+            timeout=10_000,
+        )
         page.screenshot(path=output_dir / "settings-model-providers.png", full_page=True)
         page.screenshot(path=output_dir / "settings-model-providers-interactive.png", full_page=True)
+
+        selected.focus()
+        selected.press("Escape")
+        page.wait_for_function(
+            """() => {
+                const card = document.querySelector('[data-model-provider="deepseek"]');
+                const network = document.querySelector('[data-router-network-field="true"]');
+                return card?.dataset.pinned === 'false' && (network?.dataset.networkFocus || '') === '';
+            }""",
+            timeout=10_000,
+        )
+        if selected.get_attribute("aria-pressed") != "false":
+            raise AssertionError("Escape did not release the pinned provider")
+
         context.close()
         browser.close()
 
     if page_errors:
         raise AssertionError("Browser page errors: " + " | ".join(page_errors))
 
-    for screenshot_name in ("settings-model-providers.png", "settings-model-providers-interactive.png"):
+    screenshot_names = (
+        "settings-model-providers.png",
+        "settings-model-providers-interactive.png",
+        "settings-model-providers-network.png",
+    )
+    for screenshot_name in screenshot_names:
         screenshot = output_dir / screenshot_name
         if not screenshot.is_file():
             raise AssertionError(f"Model provider control-plane screenshot was not captured: {screenshot_name}")
@@ -127,10 +173,7 @@ def main() -> None:
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "configuration": "ready",
-                "screenshots": [
-                    "settings-model-providers.png",
-                    "settings-model-providers-interactive.png",
-                ],
+                "screenshots": list(screenshot_names),
                 "output_dir": str(output_dir),
             },
             indent=2,
