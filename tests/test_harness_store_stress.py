@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+
 from veritas.harness.models import HarnessEvent
-from veritas.harness.store import HarnessStore
+from veritas.harness.store import EVENT_JOURNAL_FILENAME, HarnessStore
 
 
 def _seed_audit(store: HarnessStore) -> str:
@@ -40,7 +43,127 @@ def test_shared_root_stores_preserve_concurrent_event_appends(tmp_path, monkeypa
     assert len(persisted) == total
     assert {event["event_id"] for event in persisted} == set(event_ids)
     assert {event["payload"]["index"] for event in persisted} == set(range(total))
-    assert list((tmp_path / audit_id).glob(".audit.json.*.tmp")) == []
+    audit_dir = tmp_path / audit_id
+    assert list(audit_dir.glob(".audit.json.*.tmp")) == []
+    assert list(audit_dir.glob(f".{EVENT_JOURNAL_FILENAME}.*.tmp")) == []
+
+
+def test_event_journal_keeps_metadata_compact_for_long_traces(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("veritas.harness.telemetry.export_terminal_run", lambda *_args, **_kwargs: None)
+    store = HarnessStore(tmp_path)
+    audit_id = _seed_audit(store)
+    payload = "x" * 4096
+
+    for index in range(300):
+        store.append_event(
+            HarnessEvent(
+                audit_id=audit_id,
+                kind="replication",
+                title=f"dense-event-{index}",
+                detail=payload,
+                payload={"index": index, "chunk": payload},
+            )
+        )
+
+    audit_dir = tmp_path / audit_id
+    metadata_path = audit_dir / "audit.json"
+    journal_path = audit_dir / EVENT_JOURNAL_FILENAME
+    stored_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    journal_lines = journal_path.read_text(encoding="utf-8").splitlines()
+
+    assert stored_metadata["events"] == []
+    assert stored_metadata["event_journal"] == {
+        "schema_version": "1",
+        "path": EVENT_JOURNAL_FILENAME,
+    }
+    assert metadata_path.stat().st_size < 32 * 1024
+    assert len(journal_lines) == 300
+    assert journal_path.stat().st_size > metadata_path.stat().st_size * 20
+    assert len(store.get_audit(audit_id)["events"]) == 300
+
+
+def test_legacy_inline_events_migrate_once_without_duplication(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("veritas.harness.telemetry.export_terminal_run", lambda *_args, **_kwargs: None)
+    store = HarnessStore(tmp_path)
+    audit_id = _seed_audit(store)
+    audit_path = tmp_path / audit_id / "audit.json"
+    legacy = json.loads(audit_path.read_text(encoding="utf-8"))
+    legacy_event = HarnessEvent(
+        audit_id=audit_id,
+        kind="legacy",
+        title="legacy-inline-event",
+        payload={"generation": 0},
+    ).to_dict()
+    legacy["events"] = [legacy_event]
+    audit_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    fresh = HarnessEvent(
+        audit_id=audit_id,
+        kind="fresh",
+        title="fresh-journal-event",
+        payload={"generation": 1},
+    )
+    store.append_event(fresh)
+
+    record = store.get_audit(audit_id)
+    assert [event["event_id"] for event in record["events"]] == [
+        legacy_event["event_id"],
+        fresh.event_id,
+    ]
+    stored_metadata = json.loads(audit_path.read_text(encoding="utf-8"))
+    assert stored_metadata["events"] == []
+    journal_lines = (tmp_path / audit_id / EVENT_JOURNAL_FILENAME).read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert len(journal_lines) == 2
+
+
+def test_event_journal_corruption_fails_closed(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("veritas.harness.telemetry.export_terminal_run", lambda *_args, **_kwargs: None)
+    store = HarnessStore(tmp_path)
+    audit_id = _seed_audit(store)
+    store.append_event(HarnessEvent(audit_id=audit_id, kind="test", title="valid"))
+    journal = tmp_path / audit_id / EVENT_JOURNAL_FILENAME
+    with journal.open("a", encoding="utf-8") as handle:
+        handle.write("{not-json}\n")
+
+    with pytest.raises(ValueError, match="invalid JSON"):
+        store.get_audit(audit_id)
+
+
+def test_missing_marked_event_journal_fails_closed(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("veritas.harness.telemetry.export_terminal_run", lambda *_args, **_kwargs: None)
+    store = HarnessStore(tmp_path)
+    audit_id = _seed_audit(store)
+    store.append_event(HarnessEvent(audit_id=audit_id, kind="test", title="valid"))
+    journal = tmp_path / audit_id / EVENT_JOURNAL_FILENAME
+    journal.unlink()
+
+    with pytest.raises(ValueError, match="journal is missing"):
+        store.get_audit(audit_id)
+    with pytest.raises(ValueError, match="journal is missing"):
+        store.set_notes(audit_id, "must not silently discard history")
+
+
+def test_event_journal_symlink_replacement_fails_closed(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("veritas.harness.telemetry.export_terminal_run", lambda *_args, **_kwargs: None)
+    store = HarnessStore(tmp_path)
+    audit_id = _seed_audit(store)
+    store.append_event(HarnessEvent(audit_id=audit_id, kind="test", title="valid"))
+    journal = tmp_path / audit_id / EVENT_JOURNAL_FILENAME
+    outside = tmp_path / "outside.ndjson"
+    outside.write_text("sentinel\n", encoding="utf-8")
+    journal.unlink()
+    try:
+        journal.symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"symlinks unavailable on this platform: {exc}")
+
+    with pytest.raises(ValueError, match="regular file"):
+        store.get_audit(audit_id)
+    with pytest.raises(ValueError, match="regular file"):
+        store.append_event(HarnessEvent(audit_id=audit_id, kind="test", title="blocked"))
+    assert outside.read_text(encoding="utf-8") == "sentinel\n"
 
 
 def test_shared_root_stores_preserve_concurrent_attachment_manifest_updates(tmp_path) -> None:

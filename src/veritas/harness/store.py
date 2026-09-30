@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import threading
+from collections import deque
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -11,6 +13,12 @@ from uuid import uuid4
 from .models import HarnessEvent, utc_now_iso
 
 MAX_AUDIT_NOTES_CHARS = 50_000
+EVENT_JOURNAL_FILENAME = "events.ndjson"
+EVENT_JOURNAL_SCHEMA_VERSION = "1"
+_JOURNAL_READ_FLAGS = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+_JOURNAL_APPEND_FLAGS = (
+    os.O_WRONLY | os.O_APPEND | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+)
 
 _ROOT_LOCKS_GUARD = threading.Lock()
 _ROOT_LOCKS: dict[Path, threading.RLock] = {}
@@ -38,9 +46,10 @@ class HarnessStore:
     """Small local-first audit store used by the web harness.
 
     Each audit owns one directory with an immutable uploaded PDF, optional
-    immutable reproduction attachments, and a mutable metadata/event document.
-    Writes use replace-on-success so interrupted metadata writes do not leave
-    partial JSON behind.
+    immutable reproduction attachments, compact mutable metadata, and an
+    append-only event journal. Metadata writes use replace-on-success while
+    events use durable NDJSON appends so a long replication trace does not
+    rewrite the entire history for every streamed update.
     """
 
     def __init__(self, root: str | Path) -> None:
@@ -88,24 +97,48 @@ class HarnessStore:
             self._write_record(record)
         return record
 
-    def list_audits(self) -> list[dict[str, Any]]:
+    def list_audits(
+        self,
+        *,
+        include_events: bool = True,
+        event_limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        self._validate_event_limit(event_limit)
         with self._lock:
             records = []
             for path in self.root.glob("audit_*/audit.json"):
                 try:
-                    records.append(self._read_record(path.parent.name))
+                    records.append(
+                        self._read_record(
+                            path.parent.name,
+                            include_events=include_events,
+                            event_limit=event_limit,
+                        )
+                    )
                 except (OSError, ValueError, TypeError, json.JSONDecodeError):
                     continue
         records.sort(key=lambda item: str(item["updated_at"]), reverse=True)
         return records
 
-    def get_audit(self, audit_id: str) -> dict[str, Any]:
+    def get_audit(
+        self,
+        audit_id: str,
+        *,
+        event_limit: int | None = None,
+    ) -> dict[str, Any]:
+        self._validate_event_limit(event_limit)
         with self._lock:
-            return self._read_record(audit_id)
+            return self._read_record(audit_id, event_limit=event_limit)
+
+    def get_events(self, audit_id: str, *, limit: int | None = None) -> list[dict[str, Any]]:
+        self._validate_event_limit(limit)
+        with self._lock:
+            record = self._read_record(audit_id, event_limit=limit)
+            return list(record["events"])
 
     def get_pdf_path(self, audit_id: str) -> Path:
         with self._lock:
-            record = self._read_record(audit_id)
+            record = self._read_record(audit_id, include_events=False)
             path = self._audit_dir(audit_id) / "paper.pdf"
             if not path.is_file():
                 raise FileNotFoundError(f"audit PDF not found: {audit_id}")
@@ -140,7 +173,7 @@ class HarnessStore:
         }
 
         with self._lock:
-            record = self._read_record(audit_id)
+            record = self._read_record(audit_id, include_events=False)
             attachment_dir = self._audit_dir(audit_id) / "attachments" / attachment_id
             attachment_dir.mkdir(parents=True, exist_ok=False)
             destination = attachment_dir / clean_name
@@ -156,14 +189,14 @@ class HarnessStore:
 
     def list_attachments(self, audit_id: str) -> list[dict[str, Any]]:
         with self._lock:
-            record = self._read_record(audit_id)
+            record = self._read_record(audit_id, include_events=False)
             return [dict(item) for item in record["attachments"]]
 
     def get_attachment_path(self, audit_id: str, attachment_id: str) -> Path:
         if not attachment_id.startswith("att_") or not attachment_id[4:].isalnum():
             raise ValueError("invalid attachment id")
         with self._lock:
-            record = self._read_record(audit_id)
+            record = self._read_record(audit_id, include_events=False)
             metadata = next(
                 (
                     item
@@ -182,39 +215,72 @@ class HarnessStore:
                 raise ValueError(f"attachment hash mismatch: {attachment_id}")
             return path
 
-    def append_event(self, event: HarnessEvent) -> dict[str, Any]:
+    def append_event(
+        self,
+        event: HarnessEvent,
+        *,
+        hydrate_result: bool = False,
+    ) -> dict[str, Any]:
+        """Append one durable event without re-reading the full journal by default.
+
+        Harness service call sites consume the emitted ``HarnessEvent`` directly and
+        do not need the complete historical record after every streamed update. A
+        caller that explicitly needs the legacy hydrated return shape can request
+        it with ``hydrate_result=True``.
+        """
+
         with self._lock:
-            record = self._read_record(event.audit_id)
-            record["events"].append(event.to_dict())
+            audit_id = event.audit_id
+            journal = self._event_journal_path(audit_id)
+            if self._event_journal_exists(journal):
+                record = self._read_record(audit_id, include_events=False)
+            else:
+                # Legacy audit.json files stored the complete event history inline.
+                # The first append migrates that history atomically into NDJSON.
+                record = self._read_record(audit_id)
+                self._ensure_event_journal(record)
+
+            event_dict = event.to_dict()
+            self._append_journal_event(journal, event_dict)
             record["updated_at"] = utc_now_iso()
             self._write_record(record)
+
+            if hydrate_result:
+                result = self._read_record(audit_id)
+            else:
+                result = dict(record)
+                result["events"] = []
+                result["event_journal"] = {
+                    "schema_version": EVENT_JOURNAL_SCHEMA_VERSION,
+                    "path": EVENT_JOURNAL_FILENAME,
+                }
 
         # Observability is best-effort and happens only after the local append is
         # durable. Exporting must never be able to change the audit result.
         try:
             from .telemetry import export_terminal_run
 
-            export_terminal_run(record, event)
+            export_terminal_run(result, event)
         except (ImportError, RuntimeError, TypeError, ValueError):
             pass
-        return record
+        return result
 
     def set_status(self, audit_id: str, status: str) -> dict[str, Any]:
         with self._lock:
-            record = self._read_record(audit_id)
+            record = self._read_record(audit_id, include_events=False)
             record["status"] = status
             record["updated_at"] = utc_now_iso()
             self._write_record(record)
-            return record
+            return self._read_record(audit_id)
 
     def set_latest_result(self, audit_id: str, result: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
-            record = self._read_record(audit_id)
+            record = self._read_record(audit_id, include_events=False)
             record["latest_result"] = result
             record["status"] = "ready"
             record["updated_at"] = utc_now_iso()
             self._write_record(record)
-            return record
+            return self._read_record(audit_id)
 
     def set_notes(self, audit_id: str, notes: str) -> dict[str, Any]:
         if not isinstance(notes, str):
@@ -224,28 +290,83 @@ class HarnessStore:
                 f"audit notes exceed the {MAX_AUDIT_NOTES_CHARS:,} character limit"
             )
         with self._lock:
-            record = self._read_record(audit_id)
+            record = self._read_record(audit_id, include_events=False)
             now = utc_now_iso()
             record["notes"] = notes
             record["notes_updated_at"] = now
             record["updated_at"] = now
             self._write_record(record)
-            return record
+            return self._read_record(audit_id)
 
     def _audit_dir(self, audit_id: str) -> Path:
         if not audit_id.startswith("audit_") or not audit_id[6:].isalnum():
             raise ValueError("invalid audit id")
         return self.root / audit_id
 
-    def _read_record(self, audit_id: str) -> dict[str, Any]:
+    def _event_journal_path(self, audit_id: str) -> Path:
+        return self._audit_dir(audit_id) / EVENT_JOURNAL_FILENAME
+
+    @staticmethod
+    def _event_journal_exists(path: Path) -> bool:
+        try:
+            entry_stat = os.lstat(path)
+        except FileNotFoundError:
+            return False
+        except OSError as exc:
+            raise RuntimeError("unable to inspect audit event journal") from exc
+        if stat.S_ISLNK(entry_stat.st_mode) or not stat.S_ISREG(entry_stat.st_mode):
+            raise ValueError("audit event journal must be a regular file")
+        return True
+
+    def _read_record(
+        self,
+        audit_id: str,
+        *,
+        include_events: bool = True,
+        event_limit: int | None = None,
+    ) -> dict[str, Any]:
+        self._validate_event_limit(event_limit)
         path = self._audit_dir(audit_id) / "audit.json"
         if not path.is_file():
             raise FileNotFoundError(f"audit not found: {audit_id}")
         value = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(value, dict) or value.get("audit_id") != audit_id:
             raise ValueError("audit metadata is invalid")
-        if not isinstance(value.get("events"), list):
+        embedded_events = value.get("events")
+        if not isinstance(embedded_events, list):
             raise TypeError("audit metadata events must be an array")
+        if any(not isinstance(item, dict) for item in embedded_events):
+            raise TypeError("audit metadata event entries must be objects")
+
+        marker = value.get("event_journal")
+        if marker is not None:
+            if not isinstance(marker, dict):
+                raise TypeError("audit metadata event_journal must be an object")
+            if marker.get("schema_version") not in {None, EVENT_JOURNAL_SCHEMA_VERSION}:
+                raise ValueError("unsupported audit event journal schema")
+            if marker.get("path") not in {None, EVENT_JOURNAL_FILENAME}:
+                raise ValueError("audit event journal path is invalid")
+
+        journal = self._event_journal_path(audit_id)
+        journal_exists = self._event_journal_exists(journal)
+        if marker is not None and not journal_exists:
+            raise ValueError("audit event journal is missing")
+        if journal_exists:
+            value["event_journal"] = {
+                "schema_version": EVENT_JOURNAL_SCHEMA_VERSION,
+                "path": EVENT_JOURNAL_FILENAME,
+            }
+            value["events"] = (
+                self._read_event_journal(journal, limit=event_limit) if include_events else []
+            )
+        elif include_events and event_limit is not None:
+            if event_limit == 0:
+                value["events"] = []
+            else:
+                value["events"] = embedded_events[-event_limit:]
+        elif not include_events:
+            value["events"] = []
+
         attachments = value.setdefault("attachments", [])
         if not isinstance(attachments, list):
             raise TypeError("audit metadata attachments must be an array")
@@ -259,13 +380,123 @@ class HarnessStore:
             raise TypeError("audit metadata notes_updated_at must be text or null")
         return value
 
+    def _ensure_event_journal(self, record: dict[str, Any]) -> Path:
+        audit_id = str(record["audit_id"])
+        journal = self._event_journal_path(audit_id)
+        if self._event_journal_exists(journal):
+            return journal
+
+        events = record.get("events")
+        if not isinstance(events, list) or any(not isinstance(item, dict) for item in events):
+            raise TypeError("audit metadata events must be an array of objects")
+
+        audit_dir = self._audit_dir(audit_id)
+        temporary = audit_dir / f".{EVENT_JOURNAL_FILENAME}.{uuid4().hex}.tmp"
+        try:
+            with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+                for item in events:
+                    handle.write(self._event_line(item))
+                handle.flush()
+                os.fsync(handle.fileno())
+            temporary.replace(journal)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
+        record["event_journal"] = {
+            "schema_version": EVENT_JOURNAL_SCHEMA_VERSION,
+            "path": EVENT_JOURNAL_FILENAME,
+        }
+        self._write_record(record)
+        return journal
+
+    def _append_journal_event(self, journal: Path, event: dict[str, Any]) -> None:
+        rendered = self._event_line(event)
+        try:
+            fd = os.open(journal, _JOURNAL_APPEND_FLAGS)
+        except OSError as exc:
+            raise ValueError("audit event journal cannot be opened safely") from exc
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError("audit event journal must be a regular file")
+            with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as handle:
+                fd = -1
+                handle.write(rendered)
+                handle.flush()
+                os.fsync(handle.fileno())
+        finally:
+            if fd >= 0:
+                os.close(fd)
+
+    @staticmethod
+    def _event_line(event: dict[str, Any]) -> str:
+        return json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+
+    @classmethod
+    def _read_event_journal(
+        cls,
+        path: Path,
+        *,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        cls._validate_event_limit(limit)
+        try:
+            fd = os.open(path, _JOURNAL_READ_FLAGS)
+        except OSError as exc:
+            raise ValueError("audit event journal cannot be opened safely") from exc
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError("audit event journal must be a regular file")
+            events: list[dict[str, Any]] | deque[dict[str, Any]]
+            events = [] if limit is None else deque(maxlen=limit)
+            with os.fdopen(fd, "r", encoding="utf-8") as handle:
+                fd = -1
+                for line_number, line in enumerate(handle, start=1):
+                    if not line.strip():
+                        raise ValueError(
+                            f"audit event journal contains a blank line at {line_number}"
+                        )
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        raise ValueError(
+                            f"audit event journal contains invalid JSON at line {line_number}"
+                        ) from exc
+                    if not isinstance(event, dict):
+                        raise TypeError(
+                            f"audit event journal entry at line {line_number} must be an object"
+                        )
+                    events.append(event)
+            return list(events)
+        finally:
+            if fd >= 0:
+                os.close(fd)
+
+    @staticmethod
+    def _validate_event_limit(limit: int | None) -> None:
+        if limit is None:
+            return
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:
+            raise ValueError("event limit must be a non-negative integer")
+
     def _write_record(self, record: dict[str, Any]) -> None:
         audit_id = str(record["audit_id"])
         audit_dir = self._audit_dir(audit_id)
         audit_dir.mkdir(parents=True, exist_ok=True)
         destination = audit_dir / "audit.json"
         temporary = audit_dir / f".audit.json.{uuid4().hex}.tmp"
-        rendered = json.dumps(record, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+
+        stored = dict(record)
+        journal = self._event_journal_path(audit_id)
+        if self._event_journal_exists(journal):
+            stored["events"] = []
+            stored["event_journal"] = {
+                "schema_version": EVENT_JOURNAL_SCHEMA_VERSION,
+                "path": EVENT_JOURNAL_FILENAME,
+            }
+        rendered = json.dumps(stored, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
         try:
             with temporary.open("w", encoding="utf-8") as handle:
                 handle.write(rendered)
