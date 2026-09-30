@@ -9,6 +9,8 @@ from veritas.harness.product_service import ProductAuditHarness
 from veritas.harness.product_store import ProductHarnessStore
 from veritas.harness.web import create_app
 
+_THREAD_TEST_ERRORS = (OSError, ValueError, TypeError, RuntimeError)
+
 
 def _create_audit(runtime: ProductAuditHarness, title: str) -> str:
     record = runtime.store.create_audit(
@@ -183,7 +185,7 @@ def test_streaming_scanner_releases_root_lock_before_visiting_snapshot(tmp_path)
     def scan() -> None:
         try:
             runtime.store.scan_events(audit_id, visitor)
-        except Exception as exc:  # pragma: no cover - surfaced by assertion below
+        except _THREAD_TEST_ERRORS as exc:  # pragma: no cover - surfaced by assertion below
             scan_errors.append(exc)
 
     def append() -> None:
@@ -196,7 +198,7 @@ def test_streaming_scanner_releases_root_lock_before_visiting_snapshot(tmp_path)
                     detail="must not wait for the dashboard visitor",
                 )
             )
-        except Exception as exc:  # pragma: no cover - surfaced by assertion below
+        except _THREAD_TEST_ERRORS as exc:  # pragma: no cover - surfaced by assertion below
             append_errors.append(exc)
         finally:
             append_done.set()
