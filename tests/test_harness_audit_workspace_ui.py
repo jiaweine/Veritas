@@ -22,6 +22,8 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/static/reference-evidence-preview.js' in index.text
     assert '/static/claim-graph.css' in index.text
     assert '/static/claim-graph.js' in index.text
+    assert '/static/finding-navigation.css' in index.text
+    assert '/static/finding-navigation.js' in index.text
     assert '/static/mobile-polish.css' in index.text
 
     script = client.get("/static/audit-harness.js")
@@ -44,8 +46,17 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert 'data-reference-claim-graph' in claim_script.text
     assert 'data-cg-detail-panel' in claim_script.text
     assert 'data-cg-detail-action' in claim_script.text
+    assert 'data-cg-finding-id' in claim_script.text
     assert '/api/v1/audits/${encodeURIComponent(auditId)}' in claim_script.text
     assert 'veritas:evidence-field' in claim_script.text
+    assert 'veritas:finding-select' in claim_script.text
+
+    finding_script = client.get("/static/finding-navigation.js")
+    assert finding_script.status_code == 200
+    assert 'data-fn-finding-id' in finding_script.text
+    assert 'data-fn-graph' in finding_script.text
+    assert 'veritas:claim-finding' in finding_script.text
+    assert 'veritas:finding-select' in finding_script.text
 
     stylesheet = client.get("/static/audit-harness.css")
     assert stylesheet.status_code == 200
@@ -64,6 +75,11 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '.cg-detail' in claim_stylesheet.text
     assert '.is-linked-selection' in claim_stylesheet.text
 
+    finding_stylesheet = client.get("/static/finding-navigation.css")
+    assert finding_stylesheet.status_code == 200
+    assert '.fn-finding-row' in finding_stylesheet.text
+    assert '.is-linked-finding' in finding_stylesheet.text
+
     mobile_stylesheet = client.get("/static/mobile-polish.css")
     assert mobile_stylesheet.status_code == 200
     assert "@media (max-width: 620px)" in mobile_stylesheet.text
@@ -72,7 +88,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'veritas-shell-v20' in service_worker.text
+    assert 'veritas-shell-v21' in service_worker.text
     assert '/static/audit-harness.js' in service_worker.text
     assert '/static/audit-harness.css' in service_worker.text
     assert '/static/audit-harness-product.js' in service_worker.text
@@ -85,4 +101,6 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/static/reference-surfaces.css' in service_worker.text
     assert '/static/claim-graph.js' in service_worker.text
     assert '/static/claim-graph.css' in service_worker.text
+    assert '/static/finding-navigation.js' in service_worker.text
+    assert '/static/finding-navigation.css' in service_worker.text
     assert '/static/mobile-polish.css' in service_worker.text
