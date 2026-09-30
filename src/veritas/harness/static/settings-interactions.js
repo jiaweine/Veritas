@@ -48,7 +48,7 @@ function bindRouter(router) {
 
   const inspector = document.createElement("aside");
   inspector.className = "router-pointer-inspector";
-  inspector.dataset.routerPointerInspector = "true";
+  inspector.setAttribute("data-router-pointer-inspector", "true");
   inspector.setAttribute("aria-live", "polite");
   grid.insertAdjacentElement("afterend", inspector);
   renderInspector(inspector, null);
