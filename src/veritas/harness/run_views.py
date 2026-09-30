@@ -46,6 +46,15 @@ def project_run_detail(
             matched[0],
         )
         start_payload = start.get("payload") or {}
+        origin_finding = next(
+            (
+                payload.get("origin_finding")
+                for event in matched
+                if isinstance((payload := event.get("payload") or {}), dict)
+                and isinstance(payload.get("origin_finding"), dict)
+            ),
+            None,
+        )
 
         return {
             "run_id": run_id,
@@ -65,6 +74,7 @@ def project_run_detail(
             "error_type": terminal_payload.get("error_type"),
             "evidence": bool(source),
             "source": source,
+            "origin_finding": origin_finding,
             "coverage": float(result.get("verification_coverage") or 0.0),
             "counts": result.get("counts") or {},
             "started_at": start.get("created_at"),
