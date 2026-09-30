@@ -33,7 +33,7 @@ def main() -> None:
         if router.get("selected_provider") != "deepseek":
             raise AssertionError(f"Provider smoke expected DeepSeek selection: {router}")
         if router.get("model") != "deepseek-chat" or router.get("active_ready") is not True:
-            raise AssertionError(f"Provider smoke did not reach a ready model link: {router}")
+            raise AssertionError(f"Provider smoke did not reach a complete model configuration: {router}")
         if router.get("secrets_exposed") is not False or SMOKE_SECRET in response.text:
             raise AssertionError("Provider capability leaked the configured API key")
         if router.get("direct_detector_access") is not False:
@@ -52,8 +52,7 @@ def main() -> None:
         )
         page = context.new_page()
         page.on("pageerror", lambda error: page_errors.append(str(error)))
-        page.goto(base_url, wait_until="networkidle")
-        page.locator("[data-view='settings']").first.click()
+        page.goto(f"{base_url}/#settings", wait_until="networkidle")
         page.locator("[data-settings-surface='true']").wait_for(state="visible", timeout=20_000)
         matrix = page.locator("[data-model-provider-matrix='true']")
         matrix.wait_for(state="visible", timeout=10_000)
@@ -69,6 +68,7 @@ def main() -> None:
             "Model Router",
             "DeepSeek",
             "deepseek-chat",
+            "CONFIG READY",
             "ACP AGENT",
             "Evidence firewall active",
             "SERVER-ONLY",
@@ -78,8 +78,8 @@ def main() -> None:
                 raise AssertionError(f"Provider control plane lost {expected!r}: {text!r}")
         if SMOKE_SECRET in page.locator("body").inner_text():
             raise AssertionError("Provider secret leaked into rendered Settings UI")
-        if matrix.get_attribute("data-model-router-state") != "online":
-            raise AssertionError("Ready provider did not render the online router state")
+        if matrix.get_attribute("data-model-router-state") != "configured":
+            raise AssertionError("Complete provider configuration did not render the configured router state")
 
         page.screenshot(path=output_dir / "settings-model-providers.png", full_page=True)
         context.close()
@@ -98,6 +98,7 @@ def main() -> None:
                 "status": "success",
                 "provider": "deepseek",
                 "model": "deepseek-chat",
+                "configuration": "ready",
                 "screenshot": screenshot.name,
                 "output_dir": str(output_dir),
             },
