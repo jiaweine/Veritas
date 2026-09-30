@@ -19,6 +19,10 @@ function auditRoot() {
   return main?.querySelector("[data-audit-harness='true']") || null;
 }
 
+function inspectorFindingsTab(root) {
+  return root?.querySelector(".ah-tabs [data-ah-tab='findings']") || null;
+}
+
 async function requestAudit(auditId) {
   const response = await fetch(`/api/v1/audits/${encodeURIComponent(auditId)}`, {
     headers: { Accept: "application/json" },
@@ -41,16 +45,19 @@ function selectFindingCard(findingId = findingState.pendingFindingId) {
   if (!findingId) return false;
   const root = auditRoot();
   if (!root) return false;
-  const cards = [...root.querySelectorAll("[data-fn-finding-id]")];
+  const rows = [...root.querySelectorAll(".fn-finding-row[data-fn-finding-id]")];
   let selected = null;
-  cards.forEach((card) => {
-    const active = card.dataset.fnFindingId === findingId;
-    card.classList.toggle("is-linked-finding", active);
+  rows.forEach((row) => {
+    const active = row.dataset.fnFindingId === findingId;
+    row.classList.toggle("is-linked-finding", active);
+    const card = row.querySelector(".ah-finding-card[data-fn-finding-id]");
     if (active) {
-      card.setAttribute("aria-current", "true");
-      selected = card;
+      row.setAttribute("aria-current", "true");
+      card?.setAttribute("aria-current", "true");
+      selected = row;
     } else {
-      card.removeAttribute("aria-current");
+      row.removeAttribute("aria-current");
+      card?.removeAttribute("aria-current");
     }
   });
   if (!selected) return false;
@@ -158,7 +165,7 @@ window.addEventListener("veritas:finding-select", (event) => {
   if (!findingId) return;
   findingState.pendingFindingId = findingId;
   const root = auditRoot();
-  root?.querySelector("[data-ah-tab='findings']")?.click();
+  inspectorFindingsTab(root)?.click();
   window.setTimeout(queueEnhance, 0);
   window.setTimeout(() => selectFindingCard(findingId), 140);
 });
