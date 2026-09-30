@@ -34,9 +34,10 @@ function writeActiveProject(projectId) {
 }
 
 async function requestJson(path, options = {}) {
+  const { headers: optionHeaders = {}, ...rest } = options;
   const response = await fetch(path, {
-    headers: { Accept: "application/json", ...(options.headers || {}) },
-    ...options,
+    ...rest,
+    headers: { Accept: "application/json", ...optionHeaders },
   });
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
@@ -69,6 +70,10 @@ function allKnownAuditIds() {
   const ids = new Set(unassignedAuditIds());
   projects().forEach((project) => (project.audit_ids || []).forEach((auditId) => ids.add(auditId)));
   return ids;
+}
+
+function projectSignature() {
+  return projects().map((project) => project.project_id).join(",");
 }
 
 function activeProjectLabel() {
@@ -149,6 +154,7 @@ async function submitProjectDialog(event) {
   const submit = dialog?.querySelector("[data-pw-submit]");
   const errorNode = dialog?.querySelector("[data-pw-error]");
   const name = input?.value.trim() || "";
+  const targetAuditId = projectState.dialogAuditId;
   if (!name || !dialog || !submit || !errorNode) return;
   submit.disabled = true;
   errorNode.hidden = true;
@@ -158,14 +164,14 @@ async function submitProjectDialog(event) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-    if (projectState.dialogAuditId) {
-      await assignAudit(projectState.dialogAuditId, project.project_id, { refresh: false });
+    if (targetAuditId) {
+      await assignAudit(targetAuditId, project.project_id, { refresh: false });
     } else {
       writeActiveProject(project.project_id);
     }
     dialog.close();
     await refreshProjects();
-    if (!projectState.dialogAuditId) openActiveProjectInAudits();
+    if (!targetAuditId) openActiveProjectInAudits();
   } catch (error) {
     errorNode.textContent = error.message;
     errorNode.hidden = false;
@@ -226,7 +232,7 @@ async function assignAudit(auditId, projectId, { refresh = true } = {}) {
 function projectSelectorMarkup(auditId) {
   const assigned = assignments()[auditId] || "";
   const options = projects().map((project) => `<option value="${esc(project.project_id)}" ${assigned === project.project_id ? "selected" : ""}>${esc(project.name)}</option>`).join("");
-  return `<section class="ah-rail-section pw-audit-project" data-pw-audit-project>
+  return `<section class="ah-rail-section pw-audit-project" data-pw-audit-project data-pw-project-signature="${esc(projectSignature())}">
     <div class="ah-section-head"><span>Project</span><button type="button" data-pw-new-for-audit="${esc(auditId)}">＋ New</button></div>
     <select data-pw-assignment="${esc(auditId)}" aria-label="Project for this audit"><option value="">Unassigned</option>${options}</select>
     <small>Organization only · excluded from audit evidence and provenance.</small>
@@ -247,7 +253,11 @@ function enhanceAuditProject() {
   if (!rail) return;
   let section = rail.querySelector("[data-pw-audit-project]");
   const expected = assignments()[auditId] || "";
-  if (!section || section.querySelector("select")?.dataset.value !== expected) {
+  const signature = projectSignature();
+  const needsRefresh = !section
+    || section.querySelector("select")?.dataset.value !== expected
+    || section.dataset.pwProjectSignature !== signature;
+  if (needsRefresh) {
     section?.remove();
     rail.insertAdjacentHTML("afterbegin", projectSelectorMarkup(auditId));
     section = rail.querySelector("[data-pw-audit-project]");
