@@ -7,6 +7,8 @@ on:
       - "src/veritas/harness/**"
       - "scripts/smoke_harness_browser.py"
       - "scripts/smoke_finding_replication_browser.py"
+      - "scripts/smoke_replication_diff_browser.py"
+      - "scripts/browser_replication_diff_agent.py"
       - "pyproject.toml"
       - ".github/workflows/ui-visual-smoke.yml"
   pull_request:
@@ -14,6 +16,8 @@ on:
       - "src/veritas/harness/**"
       - "scripts/smoke_harness_browser.py"
       - "scripts/smoke_finding_replication_browser.py"
+      - "scripts/smoke_replication_diff_browser.py"
+      - "scripts/browser_replication_diff_agent.py"
       - "pyproject.toml"
       - ".github/workflows/ui-visual-smoke.yml"
 
@@ -34,22 +38,37 @@ jobs:
         run: pip install -e '.[dev,pdf,web,replication,browser]'
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
-      - name: Start isolated Veritas harness
+      - name: Start isolated Veritas harnesses
         run: |
-          mkdir -p "$RUNNER_TEMP/veritas-ui-smoke"
+          mkdir -p "$RUNNER_TEMP/veritas-ui-smoke/default"
+          mkdir -p "$RUNNER_TEMP/veritas-ui-smoke/diff"
           nohup veritas-harness \
             --host 127.0.0.1 \
             --port 8765 \
-            --data-dir "$RUNNER_TEMP/veritas-ui-smoke/data" \
-            > "$RUNNER_TEMP/veritas-ui-smoke/harness.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/veritas-ui-smoke/harness.pid"
+            --data-dir "$RUNNER_TEMP/veritas-ui-smoke/default/data" \
+            > "$RUNNER_TEMP/veritas-ui-smoke/default/harness.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/veritas-ui-smoke/default/harness.pid"
+
+          export VERITAS_REPLICATION_AGENT="python $GITHUB_WORKSPACE/scripts/browser_replication_diff_agent.py"
+          export VERITAS_REPLICATION_AGENT_NAME="Browser diff fixture agent"
+          export VERITAS_REPLICATION_PERMISSION_POLICY="deny"
+          nohup veritas-harness \
+            --host 127.0.0.1 \
+            --port 8766 \
+            --data-dir "$RUNNER_TEMP/veritas-ui-smoke/diff/data" \
+            > "$RUNNER_TEMP/veritas-ui-smoke/diff/harness.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/veritas-ui-smoke/diff/harness.pid"
       - name: Run real Chromium smoke and capture UI
         run: |
+          rm -rf artifacts/ui
           python scripts/smoke_harness_browser.py \
             --base-url http://127.0.0.1:8765 \
             --output-dir artifacts/ui
           python scripts/smoke_finding_replication_browser.py \
             --base-url http://127.0.0.1:8765 \
+            --output-dir artifacts/ui
+          python scripts/smoke_replication_diff_browser.py \
+            --base-url http://127.0.0.1:8766 \
             --output-dir artifacts/ui
       - name: Upload real UI screenshots
         if: always()
@@ -59,11 +78,11 @@ jobs:
           path: artifacts/ui/*.png
           if-no-files-found: warn
           retention-days: 14
-      - name: Upload harness log
+      - name: Upload harness logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: veritas-ui-smoke-log
-          path: ${{ runner.temp }}/veritas-ui-smoke/harness.log
+          path: ${{ runner.temp }}/veritas-ui-smoke/*/harness.log
           if-no-files-found: warn
           retention-days: 14
