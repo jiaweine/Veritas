@@ -7,6 +7,7 @@ on:
       - "src/veritas/replication/**"
       - "tests/test_harness_store_stress.py"
       - "tests/test_harness_event_reads.py"
+      - "tests/test_harness_product_view_reads.py"
       - "tests/test_benchmark_result_store_stress.py"
       - "tests/test_harness_workspace_descriptor_safety.py"
       - "tests/test_harness_request_limits.py"
@@ -21,6 +22,7 @@ on:
       - "src/veritas/replication/**"
       - "tests/test_harness_store_stress.py"
       - "tests/test_harness_event_reads.py"
+      - "tests/test_harness_product_view_reads.py"
       - "tests/test_benchmark_result_store_stress.py"
       - "tests/test_harness_workspace_descriptor_safety.py"
       - "tests/test_harness_request_limits.py"
@@ -57,6 +59,12 @@ jobs:
           for attempt in 1 2 3 4 5; do
             echo "bounded event-read stress attempt ${attempt}"
             pytest -q tests/test_harness_event_reads.py
+          done
+      - name: Repeat bounded product-view tests
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "bounded product-view stress attempt ${attempt}"
+            pytest -q tests/test_harness_product_view_reads.py
           done
       - name: Repeat benchmark-store concurrency tests
         run: |
