@@ -97,12 +97,14 @@ function assignmentControl(auditId) {
 
 function openProject(projectId) {
   setActiveProject(projectId);
-  const auditsNavigation = document.querySelector(".sidebar [data-view='audits']");
-  if (auditsNavigation) {
-    auditsNavigation.click();
-    return;
-  }
-  window.location.assign("/#audits");
+  window.setTimeout(() => {
+    const auditsNavigation = document.querySelector(".sidebar [data-view='audits']");
+    if (auditsNavigation) {
+      auditsNavigation.click();
+      return;
+    }
+    window.location.assign("/#audits");
+  }, 0);
 }
 
 async function assignCurrentAudit(select) {
