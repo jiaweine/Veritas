@@ -42,6 +42,8 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert claim_script.status_code == 200
     assert 'data-reference-claim-tab' in claim_script.text
     assert 'data-reference-claim-graph' in claim_script.text
+    assert 'data-cg-detail-panel' in claim_script.text
+    assert 'data-cg-detail-action' in claim_script.text
     assert '/api/v1/audits/${encodeURIComponent(auditId)}' in claim_script.text
     assert 'veritas:evidence-field' in claim_script.text
 
@@ -59,6 +61,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     claim_stylesheet = client.get("/static/claim-graph.css")
     assert claim_stylesheet.status_code == 200
     assert '.claim-graph' in claim_stylesheet.text
+    assert '.cg-detail' in claim_stylesheet.text
     assert '.is-linked-selection' in claim_stylesheet.text
 
     mobile_stylesheet = client.get("/static/mobile-polish.css")
@@ -69,7 +72,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'veritas-shell-v19' in service_worker.text
+    assert 'veritas-shell-v20' in service_worker.text
     assert '/static/audit-harness.js' in service_worker.text
     assert '/static/audit-harness.css' in service_worker.text
     assert '/static/audit-harness-product.js' in service_worker.text

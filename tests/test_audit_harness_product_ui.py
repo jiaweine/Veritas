@@ -51,6 +51,9 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     claim_script = client.get("/static/claim-graph.js")
     assert claim_script.status_code == 200
     assert "data-reference-claim-graph" in claim_script.text
+    assert "data-cg-detail-panel" in claim_script.text
+    assert "data-cg-detail-action" in claim_script.text
+    assert "aria-current" in claim_script.text
     assert "veritas:evidence-field" in claim_script.text
 
     reference_styles = client.get("/static/reference-workbench.css")
@@ -71,7 +74,7 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'const CACHE = "veritas-shell-v19"' in service_worker.text
+    assert 'const CACHE = "veritas-shell-v20"' in service_worker.text
     assert "/static/audit-harness-product.css" in service_worker.text
     assert "/static/audit-harness-product.js" in service_worker.text
     assert "/static/reference-workbench.css" in service_worker.text

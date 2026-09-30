@@ -6,6 +6,7 @@ const graphState = {
   queued: false,
   rendering: false,
   requestToken: 0,
+  selectedNodeId: "claim",
 };
 
 const GRAPH_WIDTH = 640;
@@ -63,9 +64,13 @@ async function requestAudit(auditId) {
   return response.json();
 }
 
-function node({ id, x, y, title, value = "", kind = "neutral", field = "", action = "" }) {
+function node({ id, x, y, title, value = "", kind = "neutral", field = "", action = "", detail = "", meta = "" }) {
   const attrs = [
     `data-cg-node="${esc(id)}"`,
+    `data-cg-title="${esc(title)}"`,
+    `data-cg-value="${esc(value)}"`,
+    `data-cg-detail="${esc(detail)}"`,
+    `data-cg-meta="${esc(meta)}"`,
     field ? `data-cg-field="${esc(field)}"` : "",
     action ? `data-cg-action="${esc(action)}"` : "",
     'tabindex="0"',
@@ -127,6 +132,7 @@ function graphMarkup(audit) {
   ];
   const sourceValue = `${truncate(table || "Paper source", 20)} · p.${page}`;
   const status = String(result.status || "review_required");
+  const coverage = Math.round((Number(result.verification_coverage) || 0) * 100);
   const checkItems = checks.slice(0, 4);
 
   const sourceCenter = sourcePosition.x + NODE_WIDTH / 2;
@@ -157,16 +163,46 @@ function graphMarkup(audit) {
   });
 
   const nodes = [
-    node({ id: "source", ...sourcePosition, title: "Evidence source", value: sourceValue, kind: "source", action: "source" }),
-    node({ id: "claim", ...claimPosition, title: row, value: `${Math.round((Number(result.verification_coverage) || 0) * 100)}% verified`, kind: tone(status), action: "source" }),
-    ...values.map(([field, label, value], index) => node({ id: field, ...metricPositions[index], title: label, value, kind: "metric", field, action: "source" })),
+    node({
+      id: "source",
+      ...sourcePosition,
+      title: "Evidence source",
+      value: sourceValue,
+      kind: "source",
+      action: "source",
+      detail: `Detector-bound source for ${row}. Open the evidence view to inspect the persisted extraction on page ${page}.`,
+      meta: table || `Page ${page}`,
+    }),
+    node({
+      id: "claim",
+      ...claimPosition,
+      title: row,
+      value: `${coverage}% verified`,
+      kind: tone(status),
+      action: "source",
+      detail: `Latest persisted audit result. Status: ${status.replaceAll("_", " ")}. Verification coverage: ${coverage}%.`,
+      meta: `${checks.length} checks · ${findings.length} findings`,
+    }),
+    ...values.map(([field, label, value], index) => node({
+      id: field,
+      ...metricPositions[index],
+      title: label,
+      value,
+      kind: "metric",
+      field,
+      action: "source",
+      detail: `Consensus ${label.toLowerCase()} from the persisted detector result. Open evidence to highlight the exact extracted field.`,
+      meta: `${row} · ${table || `page ${page}`}`,
+    })),
     ...checkItems.map((check, index) => node({
       id: `check-${index}`,
       ...checkPositions[index],
       title: checkTitle(check, index),
       value: String(statusValue(check) || "recorded").replaceAll("_", " "),
       kind: tone(statusValue(check)),
-      action: statusValue(check) === "fail" ? "findings" : "source",
+      action: String(statusValue(check) || "").toLowerCase() === "fail" ? "findings" : "source",
+      detail: checkDetail(check) || "Deterministic verification check recorded by the audit engine.",
+      meta: check.detector_id || check.check_id || `Check ${index + 1}`,
     })),
   ];
 
@@ -180,6 +216,8 @@ function graphMarkup(audit) {
       value: findings.length ? "Open linked findings" : "No persisted checks",
       kind: findings.length ? "bad" : "neutral",
       action: findings.length ? "findings" : "source",
+      detail: findings.length ? "The latest audit contains evidence-linked findings that require inspection." : "The latest result does not contain persisted verification checks.",
+      meta: `${findings.length} findings`,
     }));
   }
 
@@ -192,13 +230,16 @@ function graphMarkup(audit) {
         ${nodes.join("")}
       </svg>
     </div>
-    <div class="cg-foot"><span>${esc(parserFamilies.size)} independent parser families represented · select a value to open evidence</span><span>${esc(checks.length)} checks · ${esc(findings.length)} findings</span></div>
+    <aside class="cg-detail" data-cg-detail-panel="true" aria-live="polite">
+      <div class="cg-detail-empty"><strong>Select a graph node</strong><span>Inspect its persisted value or verification context without leaving the graph.</span></div>
+    </aside>
+    <div class="cg-foot"><span>${esc(parserFamilies.size)} independent parser families represented · double-click a node to follow it directly</span><span>${esc(checks.length)} checks · ${esc(findings.length)} findings</span></div>
   </section>`;
 }
 
 function openSource(root, page, field = "") {
   graphState.active = false;
-  const pageButton = [...root.querySelectorAll("[data-ah-page]")].find((node) => String(node.dataset.ahPage) === String(page));
+  const pageButton = [...root.querySelectorAll("[data-ah-page]")].find((nodeElement) => String(nodeElement.dataset.ahPage) === String(page));
   if (pageButton) pageButton.click();
   else root.querySelector("[data-ah-tab='source']")?.click();
   if (field) {
@@ -208,28 +249,68 @@ function openSource(root, page, field = "") {
   }
 }
 
+function activateNode(root, audit, nodeElement) {
+  const action = nodeElement.dataset.cgAction || "source";
+  if (action === "findings") {
+    graphState.active = false;
+    root.querySelector("[data-ah-tab='findings']")?.click();
+    return;
+  }
+  const page = Number(audit?.latest_result?.source?.page || audit?.latest_result?.locator?.expected_page || 1);
+  openSource(root, page, nodeElement.dataset.cgField || "");
+}
+
+function selectGraphNode(root, audit, nodeElement) {
+  const graph = root.querySelector("[data-reference-claim-graph='true']");
+  const panel = graph?.querySelector("[data-cg-detail-panel='true']");
+  if (!graph || !panel || !nodeElement) return;
+  graph.querySelectorAll("[data-cg-node]").forEach((candidate) => {
+    const selected = candidate === nodeElement;
+    candidate.classList.toggle("is-selected", selected);
+    if (selected) candidate.setAttribute("aria-current", "true");
+    else candidate.removeAttribute("aria-current");
+  });
+  graphState.selectedNodeId = nodeElement.dataset.cgNode || "claim";
+
+  const title = nodeElement.dataset.cgTitle || "Graph node";
+  const value = nodeElement.dataset.cgValue || "";
+  const detail = nodeElement.dataset.cgDetail || "Persisted audit context.";
+  const meta = nodeElement.dataset.cgMeta || "";
+  const action = nodeElement.dataset.cgAction || "source";
+  const actionLabel = action === "findings" ? "Open findings" : nodeElement.dataset.cgField ? "Open highlighted evidence" : "Open evidence";
+
+  panel.innerHTML = `<div class="cg-detail-copy">
+    <span class="cg-detail-kicker">Selected node</span>
+    <div class="cg-detail-head"><strong>${esc(title)}</strong>${value ? `<em>${esc(value)}</em>` : ""}</div>
+    ${meta ? `<small>${esc(meta)}</small>` : ""}
+    <p>${esc(detail)}</p>
+  </div>
+  <div class="cg-detail-actions">
+    <button type="button" class="primary" data-cg-detail-action="${esc(action)}">${esc(actionLabel)} <span>→</span></button>
+    <span>Enter selects · double-click follows</span>
+  </div>`;
+  panel.querySelector("[data-cg-detail-action]")?.addEventListener("click", () => activateNode(root, audit, nodeElement));
+}
+
 function bindGraph(root, audit) {
   const graph = root.querySelector("[data-reference-claim-graph='true']");
   if (!graph) return;
-  const page = Number(audit?.latest_result?.source?.page || audit?.latest_result?.locator?.expected_page || 1);
-  graph.querySelectorAll("[data-cg-node]").forEach((nodeElement) => {
-    const activate = () => {
-      const action = nodeElement.dataset.cgAction || "source";
-      if (action === "findings") {
-        graphState.active = false;
-        root.querySelector("[data-ah-tab='findings']")?.click();
-        return;
-      }
-      openSource(root, page, nodeElement.dataset.cgField || "");
-    };
-    nodeElement.addEventListener("click", activate);
+  const nodes = [...graph.querySelectorAll("[data-cg-node]")];
+  nodes.forEach((nodeElement) => {
+    const select = () => selectGraphNode(root, audit, nodeElement);
+    nodeElement.addEventListener("click", select);
+    nodeElement.addEventListener("dblclick", () => activateNode(root, audit, nodeElement));
     nodeElement.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        activate();
+        select();
       }
     });
   });
+  const preferred = nodes.find((nodeElement) => nodeElement.dataset.cgNode === graphState.selectedNodeId)
+    || nodes.find((nodeElement) => nodeElement.dataset.cgNode === "claim")
+    || nodes[0];
+  if (preferred) selectGraphNode(root, audit, preferred);
 }
 
 async function renderGraph(root) {
@@ -251,7 +332,14 @@ async function renderGraph(root) {
     freshInspector.innerHTML = graphMarkup(audit);
     bindGraph(freshRoot, audit);
   } catch (error) {
-    inspector.innerHTML = `<div class="cg-empty"><span>!</span><strong>Claim graph unavailable</strong><p>${esc(error.message)}</p></div>`;
+    const freshRoot = auditRoot();
+    const freshInspector = freshRoot?.querySelector("#ah-inspector");
+    if (!freshRoot || freshRoot.dataset.auditId !== auditId || !freshInspector) return;
+    freshInspector.innerHTML = `<div class="cg-empty cg-error"><span>!</span><strong>Claim graph unavailable</strong><p>${esc(error.message)}</p><button type="button" data-cg-retry="true">Retry graph</button></div>`;
+    freshInspector.querySelector("[data-cg-retry]")?.addEventListener("click", () => {
+      graphState.active = true;
+      renderGraph(auditRoot() || freshRoot);
+    });
   } finally {
     graphState.rendering = false;
   }
@@ -259,7 +347,10 @@ async function renderGraph(root) {
 
 function ensureTab(root) {
   const auditId = root.dataset.auditId || "";
-  if (graphState.auditId && graphState.auditId !== auditId) graphState.active = false;
+  if (graphState.auditId && graphState.auditId !== auditId) {
+    graphState.active = false;
+    graphState.selectedNodeId = "claim";
+  }
   graphState.auditId = auditId;
 
   const tabs = root.querySelector(".ah-tabs");
@@ -295,6 +386,7 @@ function enhance() {
   if (!root) {
     graphState.active = false;
     graphState.auditId = "";
+    graphState.selectedNodeId = "claim";
     return;
   }
   ensureTab(root);
