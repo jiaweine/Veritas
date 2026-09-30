@@ -121,6 +121,12 @@ def test_cyber_provider_settings_and_browser_acceptance_are_locked() -> None:
     shell_styles = (ROOT / "src/veritas/harness/static/settings-shell.css").read_text(
         encoding="utf-8"
     )
+    interactions = (ROOT / "src/veritas/harness/static/settings-interactions.js").read_text(
+        encoding="utf-8"
+    )
+    interaction_styles = (
+        ROOT / "src/veritas/harness/static/settings-interactions.css"
+    ).read_text(encoding="utf-8")
     shell = (ROOT / "src/veritas/harness/static/index.html").read_text(encoding="utf-8")
     service_worker = (ROOT / "src/veritas/harness/static/sw.js").read_text(encoding="utf-8")
     browser = (ROOT / "scripts/smoke_model_providers_browser.py").read_text(encoding="utf-8")
@@ -137,12 +143,25 @@ def test_cyber_provider_settings_and_browser_acceptance_are_locked() -> None:
     assert "@keyframes packet-flow" in styles
     assert "body:has([data-settings-surface='true']) .topbar" in shell_styles
     assert "body:has([data-settings-surface='true']) .sidebar" in shell_styles
+    assert 'data-router-pointer-inspector' in interactions
+    assert "pointermove" in interactions
+    assert "aria-pressed" in interactions
+    assert "requestAnimationFrame" in interactions
+    assert ".router-pointer-inspector" in interaction_styles
+    assert "--tilt-x" in interaction_styles
+    assert "prefers-reduced-motion" in interaction_styles
     assert '/static/settings-shell.css' in shell
+    assert '/static/settings-interactions.css' in shell
+    assert '/static/settings-interactions.js' in shell
     assert '/static/settings-shell.css' in service_worker
-    assert 'const CACHE = "veritas-shell-v24"' in service_worker
+    assert '/static/settings-interactions.css' in service_worker
+    assert '/static/settings-interactions.js' in service_worker
+    assert 'const CACHE = "veritas-shell-v25"' in service_worker
     assert '"settings-model-providers.png"' in browser
+    assert '"settings-model-providers-interactive.png"' in browser
     assert "SMOKE_SECRET in page.locator" in browser
     assert "replication_bridge_required" in browser
+    assert "aria-pressed" in browser
     assert "python scripts/smoke_model_providers_browser.py" in workflow
     assert 'VERITAS_MODEL_PROVIDER="deepseek"' in workflow
     assert 'DEEPSEEK_API_KEY="veritas-browser-smoke-secret"' in workflow
