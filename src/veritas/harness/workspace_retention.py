@@ -297,7 +297,7 @@ class WorkspaceRetention:
                 audit_id=audit_id,
                 kind="maintenance",
                 title="Replication workspace prune failed",
-                detail=f"{type(exc).__name__}: {exc}",
+                detail="Workspace deletion failed after final validation.",
                 status="danger",
                 payload={**payload, "phase": "error", "error_type": type(exc).__name__},
             )
