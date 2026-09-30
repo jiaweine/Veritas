@@ -96,14 +96,16 @@ function assignmentControl(auditId) {
 }
 
 function openProject(projectId) {
-  setActiveProject(projectId);
   document.body.classList.remove("reference-audit-active");
-  const auditsNavigation = document.querySelector("#sidebar [data-view='audits']");
-  if (auditsNavigation) {
-    auditsNavigation.click();
+  const sharedProjectNavigation = [...document.querySelectorAll("[data-pw-project-group] [data-pw-open]")]
+    .find((node) => node.dataset.pwOpen === projectId);
+  if (sharedProjectNavigation) {
+    sharedProjectNavigation.click();
     return;
   }
-  window.location.assign("/#audits");
+
+  setActiveProject(projectId);
+  setTimeout(() => window.location.assign("/#audits"), 0);
 }
 
 async function assignCurrentAudit(select) {
