@@ -6,6 +6,8 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from veritas.harness import workspace_cli
 from veritas.harness.models import HarnessEvent
 from veritas.harness.store import HarnessStore
@@ -259,6 +261,39 @@ def test_workspace_mountpoint_fails_closed(tmp_path: Path, monkeypatch) -> None:
     item = result["workspaces"][0]
     assert item["integrity"] == "invalid"
     assert item["reason"] == "workspace contains a mount point"
+
+
+def test_failed_prune_provenance_does_not_persist_local_path(tmp_path: Path, monkeypatch) -> None:
+    store = HarnessStore(tmp_path)
+    audit_id = _create_audit(store)
+    run_id = "run_deletefailure"
+    workspace = _create_workspace(store, audit_id, run_id)
+    _append_run_event(
+        store,
+        audit_id,
+        run_id,
+        phase="finish",
+        created_at="2026-09-01T00:00:00Z",
+    )
+
+    def fail_remove(_root: Path) -> None:
+        raise OSError(f"cannot remove {store.root}/private-path")
+
+    monkeypatch.setattr("veritas.harness.workspace_retention._remove_tree", fail_remove)
+
+    with pytest.raises(OSError, match="cannot remove"):
+        WorkspaceRetention(store).prune(
+            older_than_hours=1,
+            apply=True,
+            now=datetime(2026, 9, 17, 12, tzinfo=UTC),
+        )
+
+    assert workspace.is_dir()
+    record = store.get_audit(audit_id)
+    maintenance = [event for event in record["events"] if event["kind"] == "maintenance"]
+    assert [event["payload"]["phase"] for event in maintenance] == ["start", "error"]
+    assert maintenance[-1]["payload"]["error_type"] == "OSError"
+    assert str(store.root) not in json.dumps(maintenance)
 
 
 def test_workspace_cli_is_dry_run_unless_apply_is_explicit(tmp_path: Path) -> None:
