@@ -12,6 +12,8 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert shell.status_code == 200
     assert "/static/audit-harness-product.css" in shell.text
     assert "/static/audit-harness-product.js" in shell.text
+    assert "/static/projects.css" in shell.text
+    assert "/static/projects.js" in shell.text
     assert "/static/reference-workbench.css" in shell.text
     assert "/static/reference-workbench.js" in shell.text
     assert "/static/reference-surfaces.css" in shell.text
@@ -31,11 +33,24 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "/api/v1/runs/" in script.text
     assert "data-ah-context-command" in script.text
 
+    project_script = client.get("/static/projects.js")
+    assert project_script.status_code == 200
+    assert "veritas:projects:active:v1" in project_script.text
+    assert "/api/v1/projects" in project_script.text
+    assert "data-pw-project-group" in project_script.text
+    assert "data-pw-assignment" in project_script.text
+
     styles = client.get("/static/audit-harness-product.css")
     assert styles.status_code == 200
     assert "--ah-left-width" in styles.text
     assert ".ah-splitter" in styles.text
     assert ".ah-run-inspector" in styles.text
+
+    project_styles = client.get("/static/projects.css")
+    assert project_styles.status_code == 200
+    assert ".pw-project-nav" in project_styles.text
+    assert ".pw-audit-project" in project_styles.text
+    assert ".pw-filter-banner" in project_styles.text
 
     reference_script = client.get("/static/reference-workbench.js")
     assert reference_script.status_code == 200
@@ -91,9 +106,11 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'const CACHE = "veritas-shell-v21"' in service_worker.text
+    assert 'const CACHE = "veritas-shell-v22"' in service_worker.text
     assert "/static/audit-harness-product.css" in service_worker.text
     assert "/static/audit-harness-product.js" in service_worker.text
+    assert "/static/projects.css" in service_worker.text
+    assert "/static/projects.js" in service_worker.text
     assert "/static/reference-workbench.css" in service_worker.text
     assert "/static/reference-workbench.js" in service_worker.text
     assert "/static/reference-surfaces.css" in service_worker.text
