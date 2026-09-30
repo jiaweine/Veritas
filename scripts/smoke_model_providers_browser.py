@@ -81,16 +81,44 @@ def main() -> None:
         if matrix.get_attribute("data-model-router-state") != "configured":
             raise AssertionError("Complete provider configuration did not render the configured router state")
 
+        inspector = page.locator("[data-router-pointer-inspector='true']")
+        inspector.wait_for(state="visible", timeout=10_000)
+        selected.hover(position={"x": 110, "y": 70})
+        page.wait_for_function(
+            """() => {
+                const card = document.querySelector('[data-model-provider="deepseek"]');
+                const router = document.querySelector('[data-model-provider-matrix="true"]');
+                return card?.dataset.pointerActive === 'true' && router?.dataset.cursorActive === 'true';
+            }""",
+            timeout=10_000,
+        )
+        hover_text = inspector.inner_text()
+        if "DeepSeek" not in hover_text or "POINTER LINK" not in hover_text:
+            raise AssertionError(f"Pointer inspector did not follow the hovered provider: {hover_text!r}")
+
+        selected.click(position={"x": 110, "y": 70})
+        page.wait_for_function(
+            """() => document.querySelector('[data-model-provider="deepseek"]')?.dataset.pinned === 'true'""",
+            timeout=10_000,
+        )
+        if selected.get_attribute("aria-pressed") != "true":
+            raise AssertionError("Provider pin interaction is not exposed through aria-pressed")
+        pinned_text = inspector.inner_text()
+        if "PINNED NODE" not in pinned_text or "READY" not in pinned_text:
+            raise AssertionError(f"Pinned provider inspector lost readiness context: {pinned_text!r}")
+
         page.screenshot(path=output_dir / "settings-model-providers.png", full_page=True)
+        page.screenshot(path=output_dir / "settings-model-providers-interactive.png", full_page=True)
         context.close()
         browser.close()
 
     if page_errors:
         raise AssertionError("Browser page errors: " + " | ".join(page_errors))
 
-    screenshot = output_dir / "settings-model-providers.png"
-    if not screenshot.is_file():
-        raise AssertionError("Model provider control-plane screenshot was not captured")
+    for screenshot_name in ("settings-model-providers.png", "settings-model-providers-interactive.png"):
+        screenshot = output_dir / screenshot_name
+        if not screenshot.is_file():
+            raise AssertionError(f"Model provider control-plane screenshot was not captured: {screenshot_name}")
 
     print(
         json.dumps(
@@ -99,7 +127,10 @@ def main() -> None:
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "configuration": "ready",
-                "screenshot": screenshot.name,
+                "screenshots": [
+                    "settings-model-providers.png",
+                    "settings-model-providers-interactive.png",
+                ],
                 "output_dir": str(output_dir),
             },
             indent=2,
