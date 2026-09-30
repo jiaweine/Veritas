@@ -9,6 +9,7 @@ on:
       - "scripts/smoke_finding_replication_browser.py"
       - "scripts/smoke_replication_diff_browser.py"
       - "scripts/smoke_replication_review_browser.py"
+      - "scripts/smoke_model_providers_browser.py"
       - "scripts/browser_replication_diff_agent.py"
       - "pyproject.toml"
       - ".github/workflows/ui-visual-smoke.yml"
@@ -19,6 +20,7 @@ on:
       - "scripts/smoke_finding_replication_browser.py"
       - "scripts/smoke_replication_diff_browser.py"
       - "scripts/smoke_replication_review_browser.py"
+      - "scripts/smoke_model_providers_browser.py"
       - "scripts/browser_replication_diff_agent.py"
       - "pyproject.toml"
       - ".github/workflows/ui-visual-smoke.yml"
@@ -44,6 +46,9 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/veritas-ui-smoke/default"
           mkdir -p "$RUNNER_TEMP/veritas-ui-smoke/diff"
+          export VERITAS_MODEL_PROVIDER="deepseek"
+          export VERITAS_MODEL_NAME="deepseek-chat"
+          export DEEPSEEK_API_KEY="veritas-browser-smoke-secret"
           nohup veritas-harness \
             --host 127.0.0.1 \
             --port 8765 \
@@ -64,6 +69,9 @@ jobs:
         run: |
           rm -rf artifacts/ui
           python scripts/smoke_harness_browser.py \
+            --base-url http://127.0.0.1:8765 \
+            --output-dir artifacts/ui
+          python scripts/smoke_model_providers_browser.py \
             --base-url http://127.0.0.1:8765 \
             --output-dir artifacts/ui
           python scripts/smoke_finding_replication_browser.py \
