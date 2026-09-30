@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from . import web_core as _core
+from .model_providers import register_model_provider_routes
 from .product_service import ProductAuditHarness
 from .replication_review import register_replication_review_routes
 from .request_limits import RequestBodyLimitMiddleware
@@ -43,6 +44,7 @@ def create_app(
     ).expanduser()
     runtime = harness or ProductAuditHarness(resolved_data_dir)
     app = _core.create_app(resolved_data_dir, harness=runtime)
+    register_model_provider_routes(app)
     register_replication_review_routes(app, app.state.harness)
     app.add_middleware(_CompatRequestBodyLimitMiddleware)
     return app

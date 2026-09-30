@@ -24,6 +24,10 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/static/claim-graph.js' in index.text
     assert '/static/finding-navigation.css' in index.text
     assert '/static/finding-navigation.js' in index.text
+    assert '/static/settings.css' in index.text
+    assert '/static/settings.js' in index.text
+    assert '/static/settings-interactions.css' in index.text
+    assert '/static/settings-interactions.js' in index.text
     assert '/static/mobile-polish.css' in index.text
 
     script = client.get("/static/audit-harness.js")
@@ -61,6 +65,30 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert 'veritas:claim-finding' in finding_script.text
     assert 'veritas:finding-select' in finding_script.text
 
+    settings_script = client.get("/static/settings.js")
+    assert settings_script.status_code == 200
+    assert '/api/v1/model-providers' in settings_script.text
+    assert 'data-model-provider-matrix' in settings_script.text
+    assert 'SERVER-ONLY' in settings_script.text
+
+    settings_interactions = client.get("/static/settings-interactions.js")
+    assert settings_interactions.status_code == 200
+    assert 'pointermove' in settings_interactions.text
+    assert 'data-router-pointer-inspector' in settings_interactions.text
+    assert 'aria-pressed' in settings_interactions.text
+
+    settings_stylesheet = client.get("/static/settings.css")
+    assert settings_stylesheet.status_code == 200
+    assert '.model-router' in settings_stylesheet.text
+    assert '.provider-grid' in settings_stylesheet.text
+    assert '@keyframes router-scan' in settings_stylesheet.text
+
+    settings_interaction_stylesheet = client.get("/static/settings-interactions.css")
+    assert settings_interaction_stylesheet.status_code == 200
+    assert '.router-pointer-inspector' in settings_interaction_stylesheet.text
+    assert '--tilt-x' in settings_interaction_stylesheet.text
+    assert 'prefers-reduced-motion' in settings_interaction_stylesheet.text
+
     stylesheet = client.get("/static/audit-harness.css")
     assert stylesheet.status_code == 200
     assert '.audit-harness-active' in stylesheet.text
@@ -91,7 +119,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'veritas-shell-v23' in service_worker.text
+    assert 'veritas-shell-v25' in service_worker.text
     assert '/static/audit-harness.js' in service_worker.text
     assert '/static/audit-harness.css' in service_worker.text
     assert '/static/audit-harness-product.js' in service_worker.text
@@ -106,4 +134,8 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/static/claim-graph.css' in service_worker.text
     assert '/static/finding-navigation.js' in service_worker.text
     assert '/static/finding-navigation.css' in service_worker.text
+    assert '/static/settings.js' in service_worker.text
+    assert '/static/settings.css' in service_worker.text
+    assert '/static/settings-interactions.js' in service_worker.text
+    assert '/static/settings-interactions.css' in service_worker.text
     assert '/static/mobile-polish.css' in service_worker.text

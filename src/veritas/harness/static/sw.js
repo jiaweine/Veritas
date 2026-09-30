@@ -1,4 +1,4 @@
-const CACHE = "veritas-shell-v23";
+const CACHE = "veritas-shell-v25";
 const SHELL = [
   "/",
   "/static/styles.css",
@@ -7,8 +7,13 @@ const SHELL = [
   "/static/audit-notes.css",
   "/static/projects.css",
   "/static/reproduction.css",
+  "/static/reproduction-diff-state.css",
+  "/static/reproduction-review.css",
+  "/static/finding-replication-review.css",
   "/static/runs.css",
   "/static/settings.css",
+  "/static/settings-shell.css",
+  "/static/settings-interactions.css",
   "/static/benchmarks.css",
   "/static/reference-workbench.css",
   "/static/reference-surfaces.css",
@@ -22,8 +27,12 @@ const SHELL = [
   "/static/projects.js",
   "/static/projects-reference.js",
   "/static/reproduction.js",
+  "/static/reproduction-diff-state.js",
+  "/static/reproduction-review.js",
+  "/static/finding-replication-review.js",
   "/static/runs.js",
   "/static/settings.js",
+  "/static/settings-interactions.js",
   "/static/benchmarks.js",
   "/static/reference-workbench.js",
   "/static/reference-evidence-preview.js",
