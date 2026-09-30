@@ -1,0 +1,119 @@
+.fn-replication-review {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid #243b43;
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: #091419;
+}
+
+.fn-finding-row:has(.fn-replication-review) .fn-finding-actions {
+  border-radius: 0;
+}
+
+.fn-review-mark {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #12262d;
+  color: #8fa2a7;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.fn-replication-review.supports .fn-review-mark {
+  background: rgba(62, 165, 111, .14);
+  color: #6dd39b;
+}
+
+.fn-replication-review.contradicts .fn-review-mark {
+  background: rgba(210, 83, 95, .14);
+  color: #ef8a94;
+}
+
+.fn-replication-review.inconclusive .fn-review-mark {
+  background: rgba(231, 180, 75, .12);
+  color: #e7b44b;
+}
+
+.fn-review-copy {
+  min-width: 0;
+}
+
+.fn-review-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fn-review-title strong {
+  color: #d6e2e5;
+  font-size: 7px;
+}
+
+.fn-review-title span {
+  padding: 2px 5px;
+  border: 1px solid #2a4148;
+  border-radius: 999px;
+  color: #90a4aa;
+  font-size: 5.8px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.fn-review-copy p {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: #8fa2a7;
+  font-size: 6.6px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fn-review-copy small {
+  display: block;
+  margin-top: 3px;
+  color: #567078;
+  font-size: 5.8px;
+  line-height: 1.4;
+}
+
+.fn-replication-review > button {
+  min-height: 25px;
+  padding: 0 7px;
+  border: 1px solid #31525a;
+  border-radius: 6px;
+  background: #0e2026;
+  color: #9bc5c7;
+  font: inherit;
+  font-size: 6.4px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.fn-replication-review > button:hover {
+  border-color: #4b777a;
+  color: #d7efef;
+}
+
+@media (max-width: 620px) {
+  .fn-replication-review {
+    grid-template-columns: 25px minmax(0, 1fr);
+  }
+
+  .fn-review-copy p {
+    white-space: normal;
+  }
+
+  .fn-replication-review > button {
+    grid-column: 2;
+    width: 100%;
+    min-height: 30px;
+  }
+}
