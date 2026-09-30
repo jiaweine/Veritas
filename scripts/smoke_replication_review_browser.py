@@ -111,6 +111,7 @@ def _assert_finding_review_roundtrip(
     run_id: str,
     output_dir: Path,
 ) -> None:
+    page.goto("about:blank", wait_until="load")
     page.goto(
         f"{base_url}/#audit={quote(audit_id, safe='')}",
         wait_until="networkidle",
