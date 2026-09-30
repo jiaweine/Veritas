@@ -48,6 +48,32 @@
 .pw-filter-empty p { margin: 0; max-width: 360px; font-size: 10px; line-height: 1.5; }
 .pw-row-project { display: inline-flex; align-items: center; max-width: 170px; margin-top: 5px; padding: 2px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-size: 8px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* The reference audit layout intentionally replaces the generic navigation and
+   hides the legacy .ah-left rail. Surface project grouping in that same chrome
+   rather than reviving duplicate navigation. */
+.pw-ref-projects { margin-top: -4px; padding-top: 4px; border-top: 1px solid #17272e; }
+.pw-ref-project-list { display: grid; gap: 1px; max-height: 134px; overflow: auto; scrollbar-width: thin; }
+.pw-ref-project-link.active { background: rgba(82,213,203,.08); color: #e5f4f3; box-shadow: inset 2px 0 0 #52d5cb; }
+.pw-ref-project-link.active > span { color: #73e2d9; }
+.pw-ref-current { display: grid; gap: 7px; margin: 9px 5px 0; padding: 9px; border: 1px solid #203139; border-radius: 7px; background: #0b171c; }
+.pw-ref-current > div { display: grid; gap: 2px; }
+.pw-ref-current > div > span { color: #d8e4e6; font-size: 9px; font-weight: 700; }
+.pw-ref-current > div > small { color: #667b82; font-size: 7px; line-height: 1.35; }
+.pw-ref-current select { width: 100%; height: 29px; border: 1px solid #2a3c44; border-radius: 6px; padding: 0 7px; background: #101d22; color: #dce7e9; font-size: 8px; outline: none; }
+.pw-ref-current select:focus { border-color: #3b7877; box-shadow: 0 0 0 2px rgba(82,213,203,.08); }
+.pw-ref-current select:disabled { opacity: .58; }
+.pw-ref-status { min-height: 9px; color: #71858c; font-size: 7px; }
+
+body.reference-audit-active .pw-dialog { border-color: #284048; background: #0c171c; color: #edf4f5; box-shadow: 0 24px 80px rgba(0,0,0,.45); }
+body.reference-audit-active .pw-dialog-head span,
+body.reference-audit-active .pw-dialog p,
+body.reference-audit-active .pw-dialog label span { color: #758b91; }
+body.reference-audit-active .pw-dialog-head button,
+body.reference-audit-active .pw-dialog-actions button { border-color: #283c44; background: #101e24; color: #aebfc3; }
+body.reference-audit-active .pw-dialog input { border-color: #2a4048; background: #101d23; color: #edf4f5; }
+body.reference-audit-active .pw-dialog-actions button.primary { border-color: #397d79; background: #276864; color: #efffff; }
+body.reference-audit-active .pw-dialog-error { border-color: rgba(255,112,112,.25); background: rgba(255,112,112,.08); color: #ff9696; }
+
 @media (max-width: 920px) {
   .pw-project-group { display: none; }
   .pw-filter-banner { align-items: flex-start; }
