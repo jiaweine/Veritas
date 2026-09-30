@@ -33,6 +33,8 @@ jobs:
           node --check ../src/veritas/harness/static/audit-harness.js
           node --check ../src/veritas/harness/static/audit-harness-product.js
           node --check ../src/veritas/harness/static/audit-notes.js
+          node --check ../src/veritas/harness/static/projects.js
+          node --check ../src/veritas/harness/static/projects-reference.js
           node --check ../src/veritas/harness/static/reproduction.js
           node --check ../src/veritas/harness/static/runs.js
           node --check ../src/veritas/harness/static/settings.js
