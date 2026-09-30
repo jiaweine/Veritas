@@ -26,6 +26,10 @@ function auditRoot() {
   return main?.querySelector("[data-audit-harness='true']") || null;
 }
 
+function inspectorTab(root, name) {
+  return root?.querySelector(`.ah-tabs [data-ah-tab="${CSS.escape(name)}"]`) || null;
+}
+
 function tone(status = "") {
   const value = String(status).toLowerCase();
   if (["verified", "success", "pass", "ready"].some((item) => value.includes(item))) return "good";
@@ -275,7 +279,7 @@ function openSource(root, audit, field = "") {
   const page = Number(audit?.latest_result?.source?.page || audit?.latest_result?.locator?.expected_page || 1);
   const pageButton = [...root.querySelectorAll("[data-ah-page]")].find((nodeElement) => String(nodeElement.dataset.ahPage) === String(page));
   if (pageButton) pageButton.click();
-  else root.querySelector("[data-ah-tab='source']")?.click();
+  else inspectorTab(root, "source")?.click();
   if (field) {
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent("veritas:evidence-field", { detail: { field } }));
@@ -286,7 +290,7 @@ function openSource(root, audit, field = "") {
 function openFinding(root, nodeElement) {
   const findingId = String(nodeElement.dataset.cgFindingId || "");
   graphState.active = false;
-  root.querySelector("[data-ah-tab='findings']")?.click();
+  inspectorTab(root, "findings")?.click();
   if (findingId) {
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent("veritas:finding-select", { detail: { findingId } }));
