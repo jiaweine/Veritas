@@ -14,6 +14,7 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "/static/audit-harness-product.js" in shell.text
     assert "/static/projects.css" in shell.text
     assert "/static/projects.js" in shell.text
+    assert "/static/projects-reference.js" in shell.text
     assert "/static/reference-workbench.css" in shell.text
     assert "/static/reference-workbench.js" in shell.text
     assert "/static/reference-surfaces.css" in shell.text
@@ -40,6 +41,13 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "data-pw-project-group" in project_script.text
     assert "data-pw-assignment" in project_script.text
 
+    reference_project_script = client.get("/static/projects-reference.js")
+    assert reference_project_script.status_code == 200
+    assert "data-pw-reference-projects" in reference_project_script.text
+    assert "data-pw-ref-open" in reference_project_script.text
+    assert "data-pw-ref-assignment" in reference_project_script.text
+    assert "outside evidence provenance" in reference_project_script.text
+
     styles = client.get("/static/audit-harness-product.css")
     assert styles.status_code == 200
     assert "--ah-left-width" in styles.text
@@ -51,6 +59,8 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert ".pw-project-nav" in project_styles.text
     assert ".pw-audit-project" in project_styles.text
     assert ".pw-filter-banner" in project_styles.text
+    assert ".pw-ref-project-link.active" in project_styles.text
+    assert ".pw-ref-current" in project_styles.text
 
     reference_script = client.get("/static/reference-workbench.js")
     assert reference_script.status_code == 200
@@ -106,11 +116,12 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'const CACHE = "veritas-shell-v22"' in service_worker.text
+    assert 'const CACHE = "veritas-shell-v23"' in service_worker.text
     assert "/static/audit-harness-product.css" in service_worker.text
     assert "/static/audit-harness-product.js" in service_worker.text
     assert "/static/projects.css" in service_worker.text
     assert "/static/projects.js" in service_worker.text
+    assert "/static/projects-reference.js" in service_worker.text
     assert "/static/reference-workbench.css" in service_worker.text
     assert "/static/reference-workbench.js" in service_worker.text
     assert "/static/reference-surfaces.css" in service_worker.text
