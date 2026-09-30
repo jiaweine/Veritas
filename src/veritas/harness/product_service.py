@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+from collections import deque
+from functools import partial
+from pathlib import Path
 from typing import Any
 
+from .product_store import ProductHarnessStore
+from .run_views import project_run_detail
 from .service import AuditHarness
+from .tools import PaperToolbox
 
 _INTEGRITY_ERRORS = (OSError, ValueError, TypeError, json.JSONDecodeError)
 
@@ -12,10 +18,19 @@ class ProductAuditHarness(AuditHarness):
     """Web/mobile Harness with bounded-memory derived product views.
 
     The compatibility methods inherited from :class:`AuditHarness` still return
-    fully hydrated audit records. Product dashboards do not need every event from
-    every audit at once, so these projections keep audit metadata separate from
-    event-history reads and validate journals one audit at a time.
+    fully hydrated audit records. Product dashboards instead stream persisted
+    events through ``ProductHarnessStore.scan_events`` and retain only the small
+    projection each view actually needs.
     """
+
+    def __init__(
+        self,
+        data_dir: str | Path,
+        *,
+        toolbox: PaperToolbox | None = None,
+    ) -> None:
+        super().__init__(data_dir, toolbox=toolbox)
+        self.store = ProductHarnessStore(self.store.root)
 
     def _metadata_audits(self) -> list[dict[str, Any]]:
         return self.store.list_audits(include_events=False)
@@ -34,15 +49,12 @@ class ProductAuditHarness(AuditHarness):
 
         for audit in audits:
             audit_id = str(audit.get("audit_id") or "")
+            retain = 4 if len(recent_activity) < 8 else 0
+            tail: deque[dict[str, Any]] = deque(maxlen=retain)
             try:
-                # Preserve the historical integrity behavior of list_audits():
-                # malformed journals are omitted from derived views. Retain at
-                # most four events only while the activity feed still needs them;
-                # otherwise validate the complete journal without retaining it.
-                tail = self.store.get_events(
-                    audit_id,
-                    limit=4 if len(recent_activity) < 8 else 0,
-                )
+                # Scan the complete journal so malformed history still excludes
+                # an audit, while retaining at most the tiny activity tail.
+                self.store.scan_events(audit_id, tail.append)
             except _INTEGRITY_ERRORS:
                 continue
 
@@ -111,7 +123,7 @@ class ProductAuditHarness(AuditHarness):
         items: list[dict[str, Any]] = []
         for audit in self._metadata_audits():
             try:
-                self.store.get_events(str(audit["audit_id"]), limit=0)
+                self.store.scan_events(str(audit["audit_id"]), lambda _event: None)
             except _INTEGRITY_ERRORS:
                 continue
             result = audit.get("latest_result") or {}
@@ -132,46 +144,108 @@ class ProductAuditHarness(AuditHarness):
         items.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
         return items
 
+    @staticmethod
+    def _collect_run_event(
+        runs: list[dict[str, Any]],
+        audit: dict[str, Any],
+        event: dict[str, Any],
+    ) -> None:
+        if event.get("kind") != "tool":
+            return
+        payload = event.get("payload") or {}
+        result = payload.get("result") or {}
+        phase = payload.get("phase")
+        if not result and phase not in {"finish", "error"}:
+            return
+        runs.append(
+            {
+                "run_id": payload.get("run_id") or event.get("event_id"),
+                "audit_id": audit.get("audit_id"),
+                "audit_title": audit.get("title"),
+                "tool": payload.get("tool") or "audit.tool",
+                "run_kind": payload.get("run_kind") or "audit",
+                "task": event.get("title"),
+                "phase": phase or "finish",
+                "status": event.get("status"),
+                "evidence": bool(result.get("source")),
+                "coverage": float(result.get("verification_coverage") or 0.0),
+                "counts": result.get("counts") or {},
+                "duration_ms": payload.get("duration_ms"),
+                "artifact_id": payload.get("artifact_id"),
+                "parsers": payload.get("parsers") or [],
+                "error_type": payload.get("error_type"),
+                "created_at": event.get("created_at"),
+            }
+        )
+
     def runs(self) -> list[dict[str, Any]]:
         runs: list[dict[str, Any]] = []
         for audit in self._metadata_audits():
             try:
-                events = self.store.get_events(str(audit["audit_id"]))
-            except _INTEGRITY_ERRORS:
-                continue
-            for event in events:
-                if event.get("kind") != "tool":
-                    continue
-                payload = event.get("payload") or {}
-                result = payload.get("result") or {}
-                phase = payload.get("phase")
-                if not result and phase not in {"finish", "error"}:
-                    continue
-                runs.append(
-                    {
-                        "run_id": payload.get("run_id") or event.get("event_id"),
-                        "audit_id": audit.get("audit_id"),
-                        "audit_title": audit.get("title"),
-                        "tool": payload.get("tool") or "audit.tool",
-                        "run_kind": payload.get("run_kind") or "audit",
-                        "task": event.get("title"),
-                        "phase": phase or "finish",
-                        "status": event.get("status"),
-                        "evidence": bool(result.get("source")),
-                        "coverage": float(result.get("verification_coverage") or 0.0),
-                        "counts": result.get("counts") or {},
-                        "duration_ms": payload.get("duration_ms"),
-                        "artifact_id": payload.get("artifact_id"),
-                        "parsers": payload.get("parsers") or [],
-                        "error_type": payload.get("error_type"),
-                        "created_at": event.get("created_at"),
-                    }
+                self.store.scan_events(
+                    str(audit["audit_id"]),
+                    partial(self._collect_run_event, runs, audit),
                 )
-            # Drop the per-audit history before opening the next journal. This is
-            # deliberate even though CPython would release it on reassignment.
-            del events
+            except _INTEGRITY_ERRORS:
+                # Match list_audits()' historical behavior: a corrupt audit is
+                # absent from the derived view rather than partially projected.
+                runs[:] = [item for item in runs if item.get("audit_id") != audit.get("audit_id")]
+                continue
         runs.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
         return runs
+
+    @staticmethod
+    def _collect_run_match(
+        matched: list[dict[str, Any]],
+        run_id: str,
+        event: dict[str, Any],
+    ) -> None:
+        payload = event.get("payload") or {}
+        event_run_id = payload.get("run_id") if isinstance(payload, dict) else None
+        if event_run_id == run_id or (not event_run_id and event.get("event_id") == run_id):
+            matched.append(event)
+
+    def run_detail(self, run_id: str) -> dict[str, Any] | None:
+        """Project one correlated run without hydrating unrelated histories."""
+
+        for audit in self._metadata_audits():
+            matched: list[dict[str, Any]] = []
+            try:
+                self.store.scan_events(
+                    str(audit["audit_id"]),
+                    partial(self._collect_run_match, matched, run_id),
+                )
+            except _INTEGRITY_ERRORS:
+                continue
+            if not matched:
+                continue
+            projected_audit = dict(audit)
+            projected_audit["events"] = matched
+            return project_run_detail([projected_audit], run_id)
+        return None
+
+    @staticmethod
+    def _collect_search_match(
+        pending: list[dict[str, Any]],
+        needle: str,
+        remaining: int,
+        audit_id: object,
+        event: dict[str, Any],
+    ) -> None:
+        if len(pending) >= remaining:
+            return
+        haystack = f'{event.get("title", "")} {event.get("detail", "")}'.casefold()
+        if needle in haystack:
+            pending.append(
+                {
+                    "kind": "event",
+                    "id": event.get("event_id"),
+                    "audit_id": audit_id,
+                    "title": event.get("title"),
+                    "detail": event.get("detail"),
+                    "status": event.get("status"),
+                }
+            )
 
     def search(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
         needle = query.strip().casefold()
@@ -179,18 +253,16 @@ class ProductAuditHarness(AuditHarness):
             return []
         results: list[dict[str, Any]] = []
         for audit in self._metadata_audits():
-            audit_id = str(audit.get("audit_id") or "")
-            try:
-                events = self.store.get_events(audit_id)
-            except _INTEGRITY_ERRORS:
-                continue
-
+            remaining = limit - len(results)
+            if remaining <= 0:
+                return results[:limit]
             audit_text = " ".join(
                 str(value or "")
                 for value in (audit.get("title"), audit.get("filename"), audit.get("audit_id"))
             ).casefold()
+            pending: list[dict[str, Any]] = []
             if needle in audit_text:
-                results.append(
+                pending.append(
                     {
                         "kind": "audit",
                         "id": audit.get("audit_id"),
@@ -201,20 +273,23 @@ class ProductAuditHarness(AuditHarness):
                     }
                 )
 
-            for event in events:
-                haystack = f'{event.get("title", "")} {event.get("detail", "")}'.casefold()
-                if needle in haystack:
-                    results.append(
-                        {
-                            "kind": "event",
-                            "id": event.get("event_id"),
-                            "audit_id": audit.get("audit_id"),
-                            "title": event.get("title"),
-                            "detail": event.get("detail"),
-                            "status": event.get("status"),
-                        }
-                    )
-                if len(results) >= limit:
-                    return results[:limit]
-            del events
+            try:
+                # Continue scanning after the result cap is reached so corruption
+                # later in the visited journal cannot be hidden by an early hit.
+                self.store.scan_events(
+                    str(audit["audit_id"]),
+                    partial(
+                        self._collect_search_match,
+                        pending,
+                        needle,
+                        remaining,
+                        audit.get("audit_id"),
+                    ),
+                )
+            except _INTEGRITY_ERRORS:
+                continue
+
+            results.extend(pending[:remaining])
+            if len(results) >= limit:
+                return results[:limit]
         return results[:limit]

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from veritas.harness.models import HarnessEvent
 from veritas.harness.product_service import ProductAuditHarness
+from veritas.harness.product_store import ProductHarnessStore
 from veritas.harness.web import create_app
 
 
@@ -69,12 +70,13 @@ def _bulk_journal(runtime: ProductAuditHarness, audit_id: str, *, count: int) ->
     return journal
 
 
-def test_default_web_runtime_uses_bounded_product_harness(tmp_path) -> None:
+def test_default_web_runtime_uses_streaming_product_store(tmp_path) -> None:
     app = create_app(tmp_path)
     assert isinstance(app.state.harness, ProductAuditHarness)
+    assert isinstance(app.state.harness.store, ProductHarnessStore)
 
 
-def test_product_views_do_not_full_hydrate_all_audits(tmp_path, monkeypatch) -> None:
+def test_product_views_never_materialize_complete_event_lists(tmp_path, monkeypatch) -> None:
     runtime = ProductAuditHarness(tmp_path)
     first = _create_audit(runtime, "First")
     second = _create_audit(runtime, "Second")
@@ -103,12 +105,17 @@ def test_product_views_do_not_full_hydrate_all_audits(tmp_path, monkeypatch) -> 
         include_events_values.append(include_events)
         return original(include_events=include_events, event_limit=event_limit)
 
+    def forbidden_get_events(*_args, **_kwargs):
+        raise AssertionError("derived product views must use streaming scans")
+
     monkeypatch.setattr(runtime.store, "list_audits", tracked_list_audits)
+    monkeypatch.setattr(runtime.store, "get_events", forbidden_get_events)
 
     overview = runtime.overview()
     findings = runtime.findings()
     runs = runtime.runs()
     search = runtime.search("needle", limit=2)
+    detail = runtime.run_detail(f"run_{first}_249")
 
     assert overview["audits_total"] == 2
     assert len(overview["recent_activity"]) == 8
@@ -116,31 +123,59 @@ def test_product_views_do_not_full_hydrate_all_audits(tmp_path, monkeypatch) -> 
     assert len(runs) == 8
     assert len(search) == 2
     assert all(item["kind"] == "event" for item in search)
-    assert include_events_values == [False, False, False, False]
+    assert detail is not None
+    assert detail["audit_id"] == first
+    assert len(detail["events"]) == 1
+    assert include_events_values == [False, False, False, False, False]
 
 
-def test_overview_retains_only_four_events_per_audit_for_activity(tmp_path, monkeypatch) -> None:
+def test_streaming_scanner_visits_large_journal_in_order(tmp_path) -> None:
+    runtime = ProductAuditHarness(tmp_path)
+    audit_id = _create_audit(runtime, "Large")
+    _bulk_journal(runtime, audit_id, count=5000)
+
+    seen = 0
+    first_event_id: str | None = None
+    last_event_id: str | None = None
+
+    def visitor(event: dict[str, object]) -> None:
+        nonlocal seen, first_event_id, last_event_id
+        event_id = str(event.get("event_id") or "")
+        if first_event_id is None:
+            first_event_id = event_id
+        last_event_id = event_id
+        seen += 1
+
+    count = runtime.store.scan_events(audit_id, visitor)
+
+    assert count == 5001
+    assert seen == 5001
+    assert first_event_id is not None and first_event_id.startswith("evt_")
+    assert last_event_id == f"evt_{audit_id}_4999"
+
+
+def test_overview_scans_all_events_but_retains_only_activity_tail(tmp_path, monkeypatch) -> None:
     runtime = ProductAuditHarness(tmp_path)
     audit_ids = [_create_audit(runtime, f"Audit {index}") for index in range(4)]
     for audit_id in audit_ids:
         _bulk_journal(runtime, audit_id, count=20)
 
-    original = runtime.store.get_events
-    limits: list[int | None] = []
+    original = runtime.store.scan_events
+    scanned_counts: list[int] = []
 
-    def tracked_get_events(audit_id: str, *, limit: int | None = None):
-        limits.append(limit)
-        return original(audit_id, limit=limit)
+    def tracked_scan(audit_id: str, visitor):
+        count = original(audit_id, visitor)
+        scanned_counts.append(count)
+        return count
 
-    monkeypatch.setattr(runtime.store, "get_events", tracked_get_events)
+    monkeypatch.setattr(runtime.store, "scan_events", tracked_scan)
     result = runtime.overview()
 
     assert len(result["recent_activity"]) == 8
-    assert limits[:2] == [4, 4]
-    assert limits[2:] == [0, 0]
+    assert scanned_counts == [21, 21, 21, 21]
 
 
-def test_corrupt_journal_is_omitted_from_product_views(tmp_path) -> None:
+def test_corrupt_journal_never_leaks_partial_derived_results(tmp_path) -> None:
     runtime = ProductAuditHarness(tmp_path)
     good = _create_audit(runtime, "Good")
     bad = _create_audit(runtime, "Bad")
@@ -150,6 +185,8 @@ def test_corrupt_journal_is_omitted_from_product_views(tmp_path) -> None:
         handle.write("{not-json}\n")
 
     overview = runtime.overview()
+    # "event" matches before the corrupt final line. No partial result from the
+    # bad audit may escape merely because search found an early hit.
     search = runtime.search("event", limit=20)
     runs = runtime.runs()
 
