@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from veritas.harness.model_providers import model_provider_capability
 from veritas.harness.web import create_app
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_model_provider_registry_is_explicit_and_secret_free() -> None:
@@ -109,3 +113,26 @@ def test_model_provider_api_returns_only_redacted_control_plane_state(tmp_path, 
     assert payload["active_ready"] is True
     assert payload["secrets_exposed"] is False
     assert "must-not-leak" not in response.text
+
+
+def test_cyber_provider_settings_and_browser_acceptance_are_locked() -> None:
+    script = (ROOT / "src/veritas/harness/static/settings.js").read_text(encoding="utf-8")
+    styles = (ROOT / "src/veritas/harness/static/settings.css").read_text(encoding="utf-8")
+    browser = (ROOT / "scripts/smoke_model_providers_browser.py").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github/workflows/ui-visual-smoke.yml").read_text(encoding="utf-8")
+
+    assert 'getJson("/api/v1/model-providers")' in script
+    assert 'data-model-provider-matrix="true"' in script
+    assert "Evidence firewall active" in script
+    assert "ACP BRIDGE REQUIRED" in script
+    assert "SERVER-ONLY" in script
+    assert ".model-router" in styles
+    assert ".provider-node.selected" in styles
+    assert "@keyframes router-scan" in styles
+    assert "@keyframes packet-flow" in styles
+    assert '"settings-model-providers.png"' in browser
+    assert "SMOKE_SECRET in page.locator" in browser
+    assert "replication_bridge_required" in browser
+    assert "python scripts/smoke_model_providers_browser.py" in workflow
+    assert 'VERITAS_MODEL_PROVIDER="deepseek"' in workflow
+    assert 'DEEPSEEK_API_KEY="veritas-browser-smoke-secret"' in workflow
