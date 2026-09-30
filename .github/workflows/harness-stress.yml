@@ -64,9 +64,15 @@ jobs:
             echo "ACP echo transport attempt ${attempt}"
             pytest -q tests/test_replication_acp.py::test_acp_turn_streams_real_agent_process
           done
-      - name: Repeat ACP queue-backpressure flood
+      - name: Repeat ACP in-budget burst transport
         run: |
           for attempt in 1 2 3 4 5; do
-            echo "ACP flood transport attempt ${attempt}"
-            pytest -q tests/test_replication_acp.py::test_acp_event_queue_applies_backpressure_without_losing_updates
+            echo "ACP in-budget burst attempt ${attempt}"
+            pytest -q tests/test_replication_acp.py::test_acp_event_budget_preserves_burst_without_losing_updates
+          done
+      - name: Repeat ACP excessive-flood fail-closed limit
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "ACP overflow limit attempt ${attempt}"
+            pytest -q tests/test_replication_acp.py::test_acp_event_budget_fails_closed_on_excessive_agent_flood
           done
