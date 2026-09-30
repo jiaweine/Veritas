@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 import httpx
 import pymupdf
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 
 def _paper_pdf(title: str) -> bytes:
@@ -78,6 +78,7 @@ def _exercise_projects(
     project_id: str,
     project_name: str,
     output_dir: Path,
+    page_errors: list[str],
 ) -> None:
     page.goto(
         f"{base_url}/#audit={quote(assigned_audit_id, safe='')}",
@@ -134,10 +135,32 @@ def _exercise_projects(
     )
 
     page.locator(f"[data-pw-ref-open='{project_id}']").click()
-    page.wait_for_url(f"{base_url}/#audits", timeout=10_000, wait_until="domcontentloaded")
-    page.locator(".page-title").filter(has_text="Audits").wait_for(
-        state="visible", timeout=10_000
-    )
+    page.wait_for_url(f"{base_url}/#audits", timeout=10_000)
+    try:
+        page.locator(".page-title").filter(has_text="Audits").wait_for(
+            state="visible", timeout=10_000
+        )
+    except PlaywrightTimeoutError:
+        diagnostic = page.evaluate(
+            """() => ({
+                url: location.href,
+                hash: location.hash,
+                readyState: document.readyState,
+                bodyClass: document.body.className,
+                pageTitles: [...document.querySelectorAll('.page-title')].map((node) => ({
+                    text: node.textContent,
+                    display: getComputedStyle(node).display,
+                    visibility: getComputedStyle(node).visibility,
+                    opacity: getComputedStyle(node).opacity,
+                })),
+                mainText: document.querySelector('#main-content')?.innerText?.slice(0, 3000) || '',
+                mainHtml: document.querySelector('#main-content')?.innerHTML?.slice(0, 4000) || '',
+            })"""
+        )
+        diagnostic["page_errors"] = list(page_errors)
+        page.screenshot(path=output_dir / "project-navigation-failure.png", full_page=True)
+        print("PROJECT_NAVIGATION_DIAGNOSTIC=" + json.dumps(diagnostic, ensure_ascii=False))
+        raise
 
     banner = page.locator("[data-pw-filter-banner]")
     banner.wait_for(state="visible", timeout=10_000)
@@ -199,6 +222,7 @@ def main() -> None:
                 project_id,
                 project_name,
                 output_dir,
+                page_errors,
             )
             context.close()
             browser.close()
