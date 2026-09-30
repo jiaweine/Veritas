@@ -118,6 +118,11 @@ def test_model_provider_api_returns_only_redacted_control_plane_state(tmp_path, 
 def test_cyber_provider_settings_and_browser_acceptance_are_locked() -> None:
     script = (ROOT / "src/veritas/harness/static/settings.js").read_text(encoding="utf-8")
     styles = (ROOT / "src/veritas/harness/static/settings.css").read_text(encoding="utf-8")
+    shell_styles = (ROOT / "src/veritas/harness/static/settings-shell.css").read_text(
+        encoding="utf-8"
+    )
+    shell = (ROOT / "src/veritas/harness/static/index.html").read_text(encoding="utf-8")
+    service_worker = (ROOT / "src/veritas/harness/static/sw.js").read_text(encoding="utf-8")
     browser = (ROOT / "scripts/smoke_model_providers_browser.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/ui-visual-smoke.yml").read_text(encoding="utf-8")
 
@@ -130,6 +135,11 @@ def test_cyber_provider_settings_and_browser_acceptance_are_locked() -> None:
     assert ".provider-node.selected" in styles
     assert "@keyframes router-scan" in styles
     assert "@keyframes packet-flow" in styles
+    assert "body:has([data-settings-surface='true']) .topbar" in shell_styles
+    assert "body:has([data-settings-surface='true']) .sidebar" in shell_styles
+    assert '/static/settings-shell.css' in shell
+    assert '/static/settings-shell.css' in service_worker
+    assert 'const CACHE = "veritas-shell-v24"' in service_worker
     assert '"settings-model-providers.png"' in browser
     assert "SMOKE_SECRET in page.locator" in browser
     assert "replication_bridge_required" in browser
