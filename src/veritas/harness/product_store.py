@@ -6,7 +6,7 @@ import stat
 from collections.abc import Callable
 from typing import Any
 
-from .store import HarnessStore, _JOURNAL_READ_FLAGS
+from .store import _JOURNAL_READ_FLAGS, HarnessStore
 
 EventVisitor = Callable[[dict[str, Any]], None]
 
