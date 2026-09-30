@@ -4,6 +4,7 @@ import json
 import os
 import stat
 import threading
+from collections import deque
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -96,20 +97,44 @@ class HarnessStore:
             self._write_record(record)
         return record
 
-    def list_audits(self) -> list[dict[str, Any]]:
+    def list_audits(
+        self,
+        *,
+        include_events: bool = True,
+        event_limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        self._validate_event_limit(event_limit)
         with self._lock:
             records = []
             for path in self.root.glob("audit_*/audit.json"):
                 try:
-                    records.append(self._read_record(path.parent.name))
+                    records.append(
+                        self._read_record(
+                            path.parent.name,
+                            include_events=include_events,
+                            event_limit=event_limit,
+                        )
+                    )
                 except (OSError, ValueError, TypeError, json.JSONDecodeError):
                     continue
         records.sort(key=lambda item: str(item["updated_at"]), reverse=True)
         return records
 
-    def get_audit(self, audit_id: str) -> dict[str, Any]:
+    def get_audit(
+        self,
+        audit_id: str,
+        *,
+        event_limit: int | None = None,
+    ) -> dict[str, Any]:
+        self._validate_event_limit(event_limit)
         with self._lock:
-            return self._read_record(audit_id)
+            return self._read_record(audit_id, event_limit=event_limit)
+
+    def get_events(self, audit_id: str, *, limit: int | None = None) -> list[dict[str, Any]]:
+        self._validate_event_limit(limit)
+        with self._lock:
+            record = self._read_record(audit_id, event_limit=limit)
+            return list(record["events"])
 
     def get_pdf_path(self, audit_id: str) -> Path:
         with self._lock:
@@ -190,7 +215,20 @@ class HarnessStore:
                 raise ValueError(f"attachment hash mismatch: {attachment_id}")
             return path
 
-    def append_event(self, event: HarnessEvent) -> dict[str, Any]:
+    def append_event(
+        self,
+        event: HarnessEvent,
+        *,
+        hydrate_result: bool = False,
+    ) -> dict[str, Any]:
+        """Append one durable event without re-reading the full journal by default.
+
+        Harness service call sites consume the emitted ``HarnessEvent`` directly and
+        do not need the complete historical record after every streamed update. A
+        caller that explicitly needs the legacy hydrated return shape can request
+        it with ``hydrate_result=True``.
+        """
+
         with self._lock:
             audit_id = event.audit_id
             journal = self._event_journal_path(audit_id)
@@ -207,9 +245,15 @@ class HarnessStore:
             record["updated_at"] = utc_now_iso()
             self._write_record(record)
 
-            # Preserve the historical append_event return contract without making
-            # the durable metadata document grow with the event history.
-            result = self._read_record(audit_id)
+            if hydrate_result:
+                result = self._read_record(audit_id)
+            else:
+                result = dict(record)
+                result["events"] = []
+                result["event_journal"] = {
+                    "schema_version": EVENT_JOURNAL_SCHEMA_VERSION,
+                    "path": EVENT_JOURNAL_FILENAME,
+                }
 
         # Observability is best-effort and happens only after the local append is
         # durable. Exporting must never be able to change the audit result.
@@ -274,7 +318,14 @@ class HarnessStore:
             raise ValueError("audit event journal must be a regular file")
         return True
 
-    def _read_record(self, audit_id: str, *, include_events: bool = True) -> dict[str, Any]:
+    def _read_record(
+        self,
+        audit_id: str,
+        *,
+        include_events: bool = True,
+        event_limit: int | None = None,
+    ) -> dict[str, Any]:
+        self._validate_event_limit(event_limit)
         path = self._audit_dir(audit_id) / "audit.json"
         if not path.is_file():
             raise FileNotFoundError(f"audit not found: {audit_id}")
@@ -305,7 +356,14 @@ class HarnessStore:
                 "schema_version": EVENT_JOURNAL_SCHEMA_VERSION,
                 "path": EVENT_JOURNAL_FILENAME,
             }
-            value["events"] = self._read_event_journal(journal) if include_events else []
+            value["events"] = (
+                self._read_event_journal(journal, limit=event_limit) if include_events else []
+            )
+        elif include_events and event_limit is not None:
+            if event_limit == 0:
+                value["events"] = []
+            else:
+                value["events"] = embedded_events[-event_limit:]
         elif not include_events:
             value["events"] = []
 
@@ -376,8 +434,14 @@ class HarnessStore:
     def _event_line(event: dict[str, Any]) -> str:
         return json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
 
-    @staticmethod
-    def _read_event_journal(path: Path) -> list[dict[str, Any]]:
+    @classmethod
+    def _read_event_journal(
+        cls,
+        path: Path,
+        *,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        cls._validate_event_limit(limit)
         try:
             fd = os.open(path, _JOURNAL_READ_FLAGS)
         except OSError as exc:
@@ -385,7 +449,8 @@ class HarnessStore:
         try:
             if not stat.S_ISREG(os.fstat(fd).st_mode):
                 raise ValueError("audit event journal must be a regular file")
-            events: list[dict[str, Any]] = []
+            events: list[dict[str, Any]] | deque[dict[str, Any]]
+            events = [] if limit is None else deque(maxlen=limit)
             with os.fdopen(fd, "r", encoding="utf-8") as handle:
                 fd = -1
                 for line_number, line in enumerate(handle, start=1):
@@ -404,10 +469,17 @@ class HarnessStore:
                             f"audit event journal entry at line {line_number} must be an object"
                         )
                     events.append(event)
-            return events
+            return list(events)
         finally:
             if fd >= 0:
                 os.close(fd)
+
+    @staticmethod
+    def _validate_event_limit(limit: int | None) -> None:
+        if limit is None:
+            return
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:
+            raise ValueError("event limit must be a non-negative integer")
 
     def _write_record(self, record: dict[str, Any]) -> None:
         audit_id = str(record["audit_id"])
