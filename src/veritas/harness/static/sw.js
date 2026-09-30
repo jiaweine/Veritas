@@ -12,6 +12,7 @@ const SHELL = [
   "/static/finding-replication-review.css",
   "/static/runs.css",
   "/static/settings.css",
+  "/static/settings-shell.css",
   "/static/benchmarks.css",
   "/static/reference-workbench.css",
   "/static/reference-surfaces.css",
