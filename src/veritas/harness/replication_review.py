@@ -59,7 +59,78 @@ def _latest_review(detail: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _audit_review_summaries(runtime: Any, audit_id: str) -> list[dict[str, Any]]:
+    """Project latest operator reviews without changing detector finding state.
+
+    The projection is reconstructed only from server-persisted replication context
+    and review events. It intentionally does not merge the operator disposition
+    into ``latest_result`` or treat generated workspace output as paper evidence.
+    """
+
+    try:
+        audit = runtime.get_audit(audit_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    origins: dict[str, dict[str, Any]] = {}
+    latest: dict[str, dict[str, Any]] = {}
+    review_counts: dict[str, int] = {}
+    for event in audit.get("events") or []:
+        if not isinstance(event, dict):
+            continue
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        run_id = str(payload.get("run_id") or "")
+        if not run_id:
+            continue
+        if event.get("kind") == "replication_context":
+            origin = payload.get("origin_finding")
+            if isinstance(origin, dict) and origin.get("finding_id"):
+                origins[run_id] = origin
+            continue
+        review = _review_payload(event)
+        if review is not None:
+            latest[run_id] = review
+            review_counts[run_id] = review_counts.get(run_id, 0) + 1
+
+    items: list[dict[str, Any]] = []
+    for run_id, review in latest.items():
+        origin = origins.get(run_id)
+        if origin is None:
+            # A review route cannot create an unlinked review, but fail closed if
+            # persisted history is malformed instead of inventing a finding link.
+            continue
+        items.append(
+            {
+                "run_id": run_id,
+                "audit_id": audit_id,
+                "origin_finding": origin,
+                "review": review,
+                "review_count": review_counts.get(run_id, 1),
+                "review_only": True,
+                "does_not_resolve_finding": True,
+                "does_not_promote_evidence": True,
+            }
+        )
+    items.sort(
+        key=lambda item: str((item.get("review") or {}).get("created_at") or ""),
+        reverse=True,
+    )
+    return items
+
+
 def register_replication_review_routes(app: FastAPI, runtime: Any) -> None:
+    @app.get("/api/v1/audits/{audit_id}/replication-reviews")
+    def list_audit_replication_reviews(audit_id: str) -> dict[str, Any]:
+        return {
+            "audit_id": audit_id,
+            "items": _audit_review_summaries(runtime, audit_id),
+            "review_only": True,
+            "does_not_resolve_finding": True,
+            "does_not_promote_evidence": True,
+        }
+
     @app.get("/api/v1/runs/{run_id}/review")
     def get_replication_review(run_id: str) -> dict[str, Any]:
         detail = _run_detail(runtime, run_id)

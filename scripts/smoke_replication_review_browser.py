@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from playwright.sync_api import Page, sync_playwright
@@ -102,10 +103,66 @@ def _open_review(page: Page, base_url: str, audit_id: str, run_id: str) -> None:
     )
 
 
+def _assert_finding_review_roundtrip(
+    page: Page,
+    base_url: str,
+    audit_id: str,
+    detector_finding_id: str,
+    run_id: str,
+    output_dir: Path,
+) -> None:
+    page.goto("about:blank", wait_until="load")
+    page.goto(
+        f"{base_url}/#audit={quote(audit_id, safe='')}",
+        wait_until="networkidle",
+    )
+    page.locator("[data-audit-harness='true']").wait_for(state="visible", timeout=20_000)
+    page.locator(".ah-tabs [data-ah-tab='findings']").click()
+    finding = page.locator(
+        f".fn-finding-row[data-fn-finding-id='{detector_finding_id}']"
+    )
+    finding.wait_for(state="visible", timeout=10_000)
+    annotation = finding.locator(
+        f"[data-finding-replication-review='true'][data-review-run-id='{run_id}']"
+    )
+    annotation.wait_for(state="visible", timeout=10_000)
+    text = annotation.inner_text()
+    for expected in (
+        "Replication review",
+        "supports",
+        REVIEW_NOTE,
+        "finding unchanged",
+        "generated outputs untrusted",
+    ):
+        if expected.lower() not in text.lower():
+            raise AssertionError(
+                f"Finding review annotation lost {expected!r}: {text!r}"
+            )
+    page.screenshot(path=output_dir / "finding-replication-review.png", full_page=True)
+
+    annotation.locator("[data-open-reviewed-run='true']").click()
+    surface = page.locator("[data-reproduction-surface='true']")
+    surface.wait_for(state="visible", timeout=20_000)
+    selected = page.locator(f".rep-run-row.selected[data-run-id='{run_id}']")
+    selected.wait_for(state="visible", timeout=20_000)
+    run_tab = page.locator("[data-rep-tab='run'].active")
+    run_tab.wait_for(state="visible", timeout=10_000)
+    review_card = page.locator(
+        f"[data-rep-review-card='true'][data-rep-review-run-id='{run_id}']"
+    )
+    review_card.wait_for(state="visible", timeout=10_000)
+    if review_card.locator("[data-rep-review-disposition='supports']").get_attribute(
+        "aria-checked"
+    ) != "true":
+        raise AssertionError("Finding → reviewed run roundtrip lost the saved disposition")
+    page.screenshot(path=output_dir / "finding-review-run-roundtrip.png", full_page=True)
+
+
 def _record_review(
     page: Page,
     base_url: str,
     audit_id: str,
+    detector_finding_id: str,
     run_id: str,
     output_dir: Path,
 ) -> None:
@@ -127,6 +184,15 @@ def _record_review(
     if "Saved" not in saved.locator("[data-rep-review-status]").inner_text():
         raise AssertionError("Saved operator review did not expose a persisted timestamp/state")
     page.screenshot(path=output_dir / "replication-review.png", full_page=True)
+
+    _assert_finding_review_roundtrip(
+        page,
+        base_url,
+        audit_id,
+        detector_finding_id,
+        run_id,
+        output_dir,
+    )
 
     page.goto("about:blank")
     _open_review(page, base_url, audit_id, run_id)
@@ -171,7 +237,14 @@ def main() -> None:
             )
             page = context.new_page()
             page.on("pageerror", lambda error: page_errors.append(str(error)))
-            _record_review(page, base_url, audit_id, run_id, output_dir)
+            _record_review(
+                page,
+                base_url,
+                audit_id,
+                detector_finding_id,
+                run_id,
+                output_dir,
+            )
             context.close()
             browser.close()
 
@@ -185,6 +258,17 @@ def main() -> None:
         for boundary in ("review_only", "does_not_resolve_finding", "does_not_promote_evidence"):
             if review.get(boundary) is not True:
                 raise AssertionError(f"Saved review lost boundary {boundary!r}: {review}")
+
+        projected = client.get(f"/api/v1/audits/{audit_id}/replication-reviews")
+        projected.raise_for_status()
+        projection_items = projected.json().get("items") or []
+        matching = [item for item in projection_items if item.get("run_id") == run_id]
+        if len(matching) != 1:
+            raise AssertionError(f"Finding review projection lost the reviewed run: {projection_items}")
+        if matching[0].get("origin_finding", {}).get("finding_id") != binding_finding_id:
+            raise AssertionError("Finding review projection lost the canonical server binding")
+        if matching[0].get("does_not_resolve_finding") is not True:
+            raise AssertionError("Finding review projection lost the non-resolution boundary")
 
         run_after = client.get(f"/api/v1/runs/{run_id}")
         run_after.raise_for_status()
@@ -216,7 +300,12 @@ def main() -> None:
     if page_errors:
         raise AssertionError("Browser page errors: " + " | ".join(page_errors))
 
-    expected = {"replication-review.png", "replication-review-persisted.png"}
+    expected = {
+        "replication-review.png",
+        "finding-replication-review.png",
+        "finding-review-run-roundtrip.png",
+        "replication-review-persisted.png",
+    }
     missing = sorted(name for name in expected if not (output_dir / name).is_file())
     if missing:
         raise AssertionError(f"Replication review screenshots were not captured: {missing}")
