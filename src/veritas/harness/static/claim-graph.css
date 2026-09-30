@@ -121,6 +121,7 @@
   justify-items: end;
   gap: 6px;
 }
+.cg-detail-actions > div { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 5px; }
 .cg-detail-actions button,
 .cg-error button {
   min-height: 30px;
@@ -188,7 +189,8 @@
   .cg-canvas svg { min-width: 640px; min-height: 390px; }
   .cg-detail { grid-template-columns: minmax(0,1fr); align-items: start; }
   .cg-detail-actions { min-width: 0; justify-items: stretch; }
-  .cg-detail-actions button { width: 100%; }
+  .cg-detail-actions > div { width: 100%; justify-content: stretch; }
+  .cg-detail-actions button { flex: 1; width: auto; }
   .cg-detail-actions > span { text-align: left; }
   .cg-foot { align-items: flex-start; flex-direction: column; justify-content: center; padding-top: 7px; padding-bottom: 7px; }
 }

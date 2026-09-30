@@ -7,6 +7,7 @@ const graphState = {
   rendering: false,
   requestToken: 0,
   selectedNodeId: "claim",
+  selectedFindingId: "",
 };
 
 const GRAPH_WIDTH = 640;
@@ -23,6 +24,10 @@ const esc = (value = "") => String(value)
 
 function auditRoot() {
   return main?.querySelector("[data-audit-harness='true']") || null;
+}
+
+function inspectorTab(root, name) {
+  return root?.querySelector(`.ah-tabs [data-ah-tab="${CSS.escape(name)}"]`) || null;
 }
 
 function tone(status = "") {
@@ -56,6 +61,14 @@ function checkTitle(check = {}, index = 0) {
     || `Verification check ${index + 1}`;
 }
 
+function checkField(check = {}) {
+  const id = String(check.check_id || check.check || "").toLowerCase();
+  if (id === "p_value" || id.includes("p_value")) return "p_value";
+  if (id === "se_positive" || id.includes("standard_error")) return "se";
+  if (id === "beta_se_t" || id.includes("t_stat")) return "t_stat";
+  return "";
+}
+
 async function requestAudit(auditId) {
   const response = await fetch(`/api/v1/audits/${encodeURIComponent(auditId)}`, {
     headers: { Accept: "application/json" },
@@ -64,7 +77,19 @@ async function requestAudit(auditId) {
   return response.json();
 }
 
-function node({ id, x, y, title, value = "", kind = "neutral", field = "", action = "", detail = "", meta = "" }) {
+function node({
+  id,
+  x,
+  y,
+  title,
+  value = "",
+  kind = "neutral",
+  field = "",
+  action = "",
+  detail = "",
+  meta = "",
+  findingId = "",
+}) {
   const attrs = [
     `data-cg-node="${esc(id)}"`,
     `data-cg-title="${esc(title)}"`,
@@ -73,6 +98,7 @@ function node({ id, x, y, title, value = "", kind = "neutral", field = "", actio
     `data-cg-meta="${esc(meta)}"`,
     field ? `data-cg-field="${esc(field)}"` : "",
     action ? `data-cg-action="${esc(action)}"` : "",
+    findingId ? `data-cg-finding-id="${esc(findingId)}"` : "",
     'tabindex="0"',
     'role="button"',
     `aria-label="${esc(`${title}${value ? `: ${value}` : ""}`)}"`,
@@ -101,7 +127,10 @@ function graphMarkup(audit) {
   const findings = Array.isArray(result.findings) ? result.findings : [];
   const page = Number(source.page || result.locator?.expected_page || 1);
   const row = result.row_label || source.row || "Reported result";
-  const table = String(source.table || result.locator?.table_label || "Located table").replace(/\s*\[native-table:[^\]]+\]\s*/gi, " ").replace(/\s+/g, " ").trim();
+  const table = String(source.table || result.locator?.table_label || "Located table")
+    .replace(/\s*\[native-table:[^\]]+\]\s*/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   const parserFamilies = new Set(
     Object.values(result.fields || {})
       .flatMap((candidates) => Array.isArray(candidates) ? candidates : [])
@@ -194,20 +223,27 @@ function graphMarkup(audit) {
       detail: `Consensus ${label.toLowerCase()} from the persisted detector result. Open evidence to highlight the exact extracted field.`,
       meta: `${row} · ${table || `page ${page}`}`,
     })),
-    ...checkItems.map((check, index) => node({
-      id: `check-${index}`,
-      ...checkPositions[index],
-      title: checkTitle(check, index),
-      value: String(statusValue(check) || "recorded").replaceAll("_", " "),
-      kind: tone(statusValue(check)),
-      action: String(statusValue(check) || "").toLowerCase() === "fail" ? "findings" : "source",
-      detail: checkDetail(check) || "Deterministic verification check recorded by the audit engine.",
-      meta: check.detector_id || check.check_id || `Check ${index + 1}`,
-    })),
+    ...checkItems.map((check, index) => {
+      const failed = String(statusValue(check) || "").toLowerCase() === "fail";
+      const findingId = String(check.finding?.finding_id || "");
+      return node({
+        id: `check-${index}`,
+        ...checkPositions[index],
+        title: checkTitle(check, index),
+        value: String(statusValue(check) || "recorded").replaceAll("_", " "),
+        kind: tone(statusValue(check)),
+        action: failed ? "findings" : "source",
+        field: failed ? checkField(check) : "",
+        findingId,
+        detail: check.finding?.explanation || checkDetail(check) || "Deterministic verification check recorded by the audit engine.",
+        meta: check.finding?.title || check.detector_id || check.check_id || `Check ${index + 1}`,
+      });
+    }),
   ];
 
   if (!checkItems.length) {
     const fallback = { x: 225, y: 500 };
+    const firstFinding = findings[0] || {};
     edges.push(edge(claimCenter, claimPosition.y + NODE_HEIGHT, fallback.x + NODE_WIDTH / 2, fallback.y, "reviewed by"));
     nodes.push(node({
       id: "checks",
@@ -216,8 +252,9 @@ function graphMarkup(audit) {
       value: findings.length ? "Open linked findings" : "No persisted checks",
       kind: findings.length ? "bad" : "neutral",
       action: findings.length ? "findings" : "source",
-      detail: findings.length ? "The latest audit contains evidence-linked findings that require inspection." : "The latest result does not contain persisted verification checks.",
-      meta: `${findings.length} findings`,
+      findingId: String(firstFinding.finding_id || ""),
+      detail: firstFinding.explanation || (findings.length ? "The latest audit contains evidence-linked findings that require inspection." : "The latest result does not contain persisted verification checks."),
+      meta: firstFinding.title || `${findings.length} findings`,
     }));
   }
 
@@ -237,11 +274,12 @@ function graphMarkup(audit) {
   </section>`;
 }
 
-function openSource(root, page, field = "") {
+function openSource(root, audit, field = "") {
   graphState.active = false;
+  const page = Number(audit?.latest_result?.source?.page || audit?.latest_result?.locator?.expected_page || 1);
   const pageButton = [...root.querySelectorAll("[data-ah-page]")].find((nodeElement) => String(nodeElement.dataset.ahPage) === String(page));
   if (pageButton) pageButton.click();
-  else root.querySelector("[data-ah-tab='source']")?.click();
+  else inspectorTab(root, "source")?.click();
   if (field) {
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent("veritas:evidence-field", { detail: { field } }));
@@ -249,15 +287,24 @@ function openSource(root, page, field = "") {
   }
 }
 
+function openFinding(root, nodeElement) {
+  const findingId = String(nodeElement.dataset.cgFindingId || "");
+  graphState.active = false;
+  inspectorTab(root, "findings")?.click();
+  if (findingId) {
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("veritas:finding-select", { detail: { findingId } }));
+    }, 80);
+  }
+}
+
 function activateNode(root, audit, nodeElement) {
   const action = nodeElement.dataset.cgAction || "source";
   if (action === "findings") {
-    graphState.active = false;
-    root.querySelector("[data-ah-tab='findings']")?.click();
+    openFinding(root, nodeElement);
     return;
   }
-  const page = Number(audit?.latest_result?.source?.page || audit?.latest_result?.locator?.expected_page || 1);
-  openSource(root, page, nodeElement.dataset.cgField || "");
+  openSource(root, audit, nodeElement.dataset.cgField || "");
 }
 
 function selectGraphNode(root, audit, nodeElement) {
@@ -271,13 +318,18 @@ function selectGraphNode(root, audit, nodeElement) {
     else candidate.removeAttribute("aria-current");
   });
   graphState.selectedNodeId = nodeElement.dataset.cgNode || "claim";
+  graphState.selectedFindingId = nodeElement.dataset.cgFindingId || "";
 
   const title = nodeElement.dataset.cgTitle || "Graph node";
   const value = nodeElement.dataset.cgValue || "";
   const detail = nodeElement.dataset.cgDetail || "Persisted audit context.";
   const meta = nodeElement.dataset.cgMeta || "";
   const action = nodeElement.dataset.cgAction || "source";
-  const actionLabel = action === "findings" ? "Open findings" : nodeElement.dataset.cgField ? "Open highlighted evidence" : "Open evidence";
+  const field = nodeElement.dataset.cgField || "";
+  const actionLabel = action === "findings" ? "Open linked finding" : field ? "Open highlighted evidence" : "Open evidence";
+  const secondary = action === "findings" && field
+    ? `<button type="button" data-cg-detail-source="true">Open evidence <span>→</span></button>`
+    : "";
 
   panel.innerHTML = `<div class="cg-detail-copy">
     <span class="cg-detail-kicker">Selected node</span>
@@ -286,10 +338,11 @@ function selectGraphNode(root, audit, nodeElement) {
     <p>${esc(detail)}</p>
   </div>
   <div class="cg-detail-actions">
-    <button type="button" class="primary" data-cg-detail-action="${esc(action)}">${esc(actionLabel)} <span>→</span></button>
+    <div>${secondary}<button type="button" class="primary" data-cg-detail-action="${esc(action)}">${esc(actionLabel)} <span>→</span></button></div>
     <span>Enter selects · double-click follows</span>
   </div>`;
   panel.querySelector("[data-cg-detail-action]")?.addEventListener("click", () => activateNode(root, audit, nodeElement));
+  panel.querySelector("[data-cg-detail-source]")?.addEventListener("click", () => openSource(root, audit, field));
 }
 
 function bindGraph(root, audit) {
@@ -307,7 +360,10 @@ function bindGraph(root, audit) {
       }
     });
   });
-  const preferred = nodes.find((nodeElement) => nodeElement.dataset.cgNode === graphState.selectedNodeId)
+  const preferred = (graphState.selectedFindingId
+    ? nodes.find((nodeElement) => nodeElement.dataset.cgFindingId === graphState.selectedFindingId)
+    : null)
+    || nodes.find((nodeElement) => nodeElement.dataset.cgNode === graphState.selectedNodeId)
     || nodes.find((nodeElement) => nodeElement.dataset.cgNode === "claim")
     || nodes[0];
   if (preferred) selectGraphNode(root, audit, preferred);
@@ -350,6 +406,7 @@ function ensureTab(root) {
   if (graphState.auditId && graphState.auditId !== auditId) {
     graphState.active = false;
     graphState.selectedNodeId = "claim";
+    graphState.selectedFindingId = "";
   }
   graphState.auditId = auditId;
 
@@ -387,6 +444,7 @@ function enhance() {
     graphState.active = false;
     graphState.auditId = "";
     graphState.selectedNodeId = "claim";
+    graphState.selectedFindingId = "";
     return;
   }
   ensureTab(root);
@@ -397,6 +455,19 @@ function queueEnhance() {
   graphState.queued = true;
   queueMicrotask(enhance);
 }
+
+window.addEventListener("veritas:claim-finding", (event) => {
+  const root = auditRoot();
+  const findingId = String(event.detail?.findingId || "");
+  const auditId = String(event.detail?.auditId || root?.dataset.auditId || "");
+  if (!root || !findingId || (auditId && auditId !== root.dataset.auditId)) return;
+  graphState.selectedFindingId = findingId;
+  graphState.selectedNodeId = "";
+  graphState.active = true;
+  const tab = root.querySelector("[data-reference-claim-tab]");
+  if (tab) tab.click();
+  else renderGraph(root);
+});
 
 const observer = new MutationObserver(queueEnhance);
 if (main) observer.observe(main, { childList: true, subtree: true });

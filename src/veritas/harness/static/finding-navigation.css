@@ -1,0 +1,97 @@
+.fn-finding-row {
+  display: grid;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.fn-finding-row .ah-finding-card {
+  border-radius: 8px 8px 0 0;
+  margin: 0;
+}
+
+.fn-finding-row.is-linked-finding {
+  border-color: rgba(79, 209, 197, .55);
+  background: rgba(79, 209, 197, .045);
+  box-shadow: 0 0 0 3px rgba(79, 209, 197, .07);
+}
+
+.fn-finding-row.is-linked-finding .ah-finding-card {
+  border-color: rgba(79, 209, 197, .32);
+}
+
+.fn-finding-actions {
+  min-height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 7px 6px 9px;
+  border: 1px solid rgba(231, 180, 75, .2);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: #0a151a;
+}
+
+.fn-finding-actions > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #667d84;
+  font-size: 6.6px;
+}
+
+.fn-finding-actions > div {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 5px;
+}
+
+.fn-finding-actions button {
+  min-height: 24px;
+  border: 1px solid #243b43;
+  border-radius: 6px;
+  background: #0d1b21;
+  color: #8fa2a7;
+  padding: 0 7px;
+  font-size: 6.8px;
+  cursor: pointer;
+}
+
+.fn-finding-actions button:hover {
+  border-color: #3d6669;
+  color: #d8e7e8;
+}
+
+.fn-finding-actions button.primary {
+  border-color: #326d69;
+  background: #123035;
+  color: #80d9d1;
+}
+
+.fn-finding-actions button b {
+  margin-left: 3px;
+  font-weight: 700;
+}
+
+@media (max-width: 620px) {
+  .fn-finding-actions {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .fn-finding-actions > span {
+    white-space: normal;
+  }
+
+  .fn-finding-actions > div {
+    width: 100%;
+  }
+
+  .fn-finding-actions button {
+    flex: 1;
+    min-height: 30px;
+  }
+}
