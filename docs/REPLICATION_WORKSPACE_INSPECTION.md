@@ -93,6 +93,23 @@ The file-preview endpoint also fails closed on path ambiguity:
 
 These checks prevent the workspace browser from becoming a generic host-file reader. They do not turn the local workspace itself into an operating-system sandbox; the selected ACP runtime remains responsible for execution isolation.
 
+## Bounded text diffs
+
+The run-centric product file endpoint can project a unified text diff for review without granting a generic filesystem diff capability.
+
+Diff baselines are deliberately narrow:
+
+- an agent-created UTF-8 file is compared with an empty baseline;
+- a modified or deleted staged attachment is compared with the verified immutable attachment in the audit store;
+- a modified or deleted `artifacts.json` is compared with the deterministic manifest reconstructed from trusted audit metadata;
+- `paper.pdf` is treated as binary and is never represented as a text diff.
+
+A deleted staged text file can therefore still show a deletion diff even though there is no current workspace file to preview. The lower-level audit-scoped preview endpoint continues to return a missing-file response for that path; only the product projection may use the immutable baseline to render the deletion.
+
+Diff generation fails closed rather than presenting a partial comparison as complete. Binary/non-UTF-8 inputs, truncated current previews, oversized immutable baselines, and rendered diffs above the output bound return an explicit `diff_reason` with `diff_available=false`.
+
+A displayed diff is an inspection convenience. It is **not** evidence that generated code is correct, not proof that a reproduction succeeded, and not a provenance or custody upgrade.
+
 ## Resource bounds
 
 Inspection is intentionally bounded even when an agent produces hostile or accidental output volume.
@@ -106,12 +123,14 @@ Current limits are:
 | Agent-created regular file hashed | 8 MiB per file |
 | Total agent-created bytes hashed per snapshot | 64 MiB |
 | UTF-8 file preview | first 256 KiB |
+| Text diff input | 256 KiB per side |
+| Rendered unified diff | 512 KiB |
 
 A workspace exceeding the entry limit fails the snapshot request rather than recursively walking an unbounded tree.
 
 Generated files larger than the created-file hashing bounds may still be listed, but their `hash_computed` field is false. Veritas does not pretend that a hash was computed when it was intentionally omitted.
 
-Binary or non-UTF-8 files are listed but are not returned as text previews. A preview response states that the file is not previewable instead of decoding arbitrary bytes into the UI.
+Binary or non-UTF-8 files are listed but are not returned as text previews. A preview response states that the file is not previewable instead of decoding arbitrary bytes into the UI. Likewise, an input that cannot be completely compared inside the diff bounds does not receive a partial diff labeled as complete.
 
 ## API
 
@@ -139,6 +158,14 @@ GET /api/v1/audits/{audit_id}/replication-runs/{run_id}/workspace/file?path=outp
 
 The response is metadata plus either a bounded UTF-8 `content` value or a non-previewable reason such as `binary_content` or `non_utf8_content`.
 
+The run-centric product projection is:
+
+```text
+GET /api/v1/runs/{run_id}/workspace/file?path=outputs/result.txt
+```
+
+In addition to the bounded preview fields, it returns `change`, `immutable_input`, `diff`, `diff_available`, `diff_reason`, `diff_baseline`, and the input/output byte limits used by the text-diff projection.
+
 All `/api/` responses use `Cache-Control: no-store` through the Harness middleware.
 
 ## UI behavior
@@ -147,11 +174,11 @@ The Reproduction surface keeps three concepts visually separate:
 
 1. **Live replication trace** — ACP/session/tool/permission activity persisted to the audit run history;
 2. **Run workspace** — post-run file inventory and staged-input integrity state;
-3. **Read-only preview** — bounded text viewing for one regular file.
+3. **Read-only preview/diff** — bounded text viewing or a bounded unified diff for one selected file.
 
 After a streamed run finishes or fails and a run id has been persisted, the web client loads the exact run-scoped workspace snapshot. It does not ask the browser for a local path and it does not expose a download-anything endpoint.
 
-The UI highlights staged modification/deletion as review-required state. Generated files are shown as created outputs rather than as evidence-backed findings.
+The UI highlights staged modification/deletion as review-required state. Generated files are shown as created outputs rather than as evidence-backed findings. When the file response contains a bounded diff, the existing inspector renders Diff mode; otherwise it remains in Preview mode and can explain why a complete text diff is unavailable.
 
 ## Relationship to the ACP backend
 
@@ -168,7 +195,7 @@ execute agent         ->    persist correlated run events
 sandbox/permissions   ->    keep browser command-free
 write run outputs     ->    inspect exact run workspace
                          ->  verify staged-copy integrity
-                         ->  expose bounded read-only previews
+                         ->  expose bounded read-only previews/diffs
 ```
 
 This separation lets Veritas reuse strong coding-agent runtimes without making the research-audit agent itself a general shell-capable agent.

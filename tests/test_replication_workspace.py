@@ -159,7 +159,7 @@ def test_workspace_product_api_reuses_bounded_inspector_and_rejects_escape(tmp_p
     assert caps["interactive_approval_supported"] is True
     assert caps["interactive_approval_enabled"] is True
     assert caps["workspace_inspector"] is True
-    assert caps["workspace_diff"] is False
+    assert caps["workspace_diff"] is True
     assert caps["bounded_workspace_preview"] is True
     assert caps["cancellation_supported"] is True
 
@@ -215,6 +215,8 @@ def test_workspace_product_api_reuses_bounded_inspector_and_rejects_escape(tmp_p
     assert generated.json()["content"] == "result=42\n"
     assert generated.json()["change"] == "created"
     assert generated.json()["previewable"] is True
+    assert generated.json()["diff_available"] is True
+    assert "+result=42" in generated.json()["diff"]
 
     modified = client.get(
         f"/api/v1/runs/{run_id}/workspace/file",
@@ -224,6 +226,9 @@ def test_workspace_product_api_reuses_bounded_inspector_and_rejects_escape(tmp_p
     assert modified.json()["content"] == 'print("changed")\n'
     assert modified.json()["change"] == "modified"
     assert modified.json()["immutable_input"] is True
+    assert modified.json()["diff_available"] is True
+    assert '-print("original")' in modified.json()["diff"]
+    assert '+print("changed")' in modified.json()["diff"]
 
     assert client.get(
         f"/api/v1/runs/{run_id}/workspace/file",

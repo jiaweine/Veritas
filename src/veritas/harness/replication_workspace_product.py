@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+from difflib import unified_diff
+from hashlib import sha256
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .replication_workspace import (
@@ -18,6 +22,8 @@ _CHANGE_BY_STATUS = {
     "created_symlink": "unsafe_link",
     "created_other": "unsafe_other",
 }
+_MAX_DIFF_INPUT_BYTES = 256 * 1024
+_MAX_DIFF_OUTPUT_BYTES = 512 * 1024
 
 
 def find_replication_audit(runtime: AuditHarness, run_id: str) -> dict[str, Any]:
@@ -87,44 +93,88 @@ def replication_workspace_product_file(
     run_id: str,
     relative_path: str,
 ) -> dict[str, Any]:
-    """Return one bounded file preview plus the inspector's integrity status.
+    """Return one bounded file preview plus a bounded text diff when possible.
 
-    Validate the requested path through the authoritative bounded inspector
-    before looking up product metadata. This preserves traversal and symlink
-    rejection semantics instead of converting invalid paths into a 404.
+    Existing workspace files are still validated by the authoritative preview
+    inspector, preserving traversal and symlink rejection semantics. A deleted
+    immutable staged file is the one exception: after the preview reports it
+    missing, the trusted snapshot may authorize a baseline-only deletion diff.
     """
 
     audit = find_replication_audit(runtime, run_id)
     audit_id = str(audit["audit_id"])
-    preview = preview_replication_workspace_file(runtime.store, audit_id, run_id, relative_path)
-    normalized_path = str(preview.get("path") or relative_path)
     raw_snapshot = replication_workspace_snapshot(runtime.store, audit_id, run_id)
     metadata = next(
         (
             item
             for item in raw_snapshot.get("files") or []
-            if isinstance(item, dict) and item.get("path") == normalized_path
+            if isinstance(item, dict) and item.get("path") == relative_path
         ),
         None,
     )
+
+    try:
+        preview = preview_replication_workspace_file(
+            runtime.store,
+            audit_id,
+            run_id,
+            relative_path,
+        )
+    except FileNotFoundError:
+        if not isinstance(metadata, dict) or metadata.get("status") != "staged_deleted":
+            raise
+        preview = {
+            "path": relative_path,
+            "size_bytes": 0,
+            "previewable": False,
+            "truncated": False,
+            "encoding": None,
+            "content": None,
+            "reason": "workspace_file_deleted",
+        }
+
+    normalized_path = str(preview.get("path") or relative_path)
+    if metadata is None or metadata.get("path") != normalized_path:
+        metadata = next(
+            (
+                item
+                for item in raw_snapshot.get("files") or []
+                if isinstance(item, dict) and item.get("path") == normalized_path
+            ),
+            None,
+        )
     if metadata is None:
         raise FileNotFoundError(f"workspace file not found: {normalized_path}")
+
     projected = _project_file(metadata)
+    diff, diff_available, diff_reason, diff_baseline = _workspace_text_diff(
+        runtime,
+        audit,
+        run_id,
+        normalized_path,
+        projected,
+        preview,
+    )
     return {
         "run_id": run_id,
         "audit_id": audit_id,
-        "path": preview.get("path"),
+        "path": normalized_path,
         "change": projected.get("change"),
         "size_bytes": preview.get("size_bytes"),
         "sha256": metadata.get("sha256"),
         "immutable_input": projected.get("immutable_input", False),
-        "binary": not bool(preview.get("previewable")),
+        "binary": _preview_is_binary(preview),
         "previewable": bool(preview.get("previewable")),
         "truncated": bool(preview.get("truncated")),
         "encoding": preview.get("encoding"),
         "content": preview.get("content"),
         "reason": preview.get("reason"),
-        "diff": "",
+        "diff": diff,
+        "diff_available": diff_available,
+        "diff_reason": diff_reason,
+        "diff_baseline": diff_baseline,
+        "diff_input_limit_bytes": _MAX_DIFF_INPUT_BYTES,
+        "diff_output_limit_bytes": _MAX_DIFF_OUTPUT_BYTES,
     }
 
 
@@ -221,3 +271,157 @@ def _project_file(item: dict[str, Any]) -> dict[str, Any]:
         "staged_role": staged_role,
         "exists": bool(item.get("exists")),
     }
+
+
+def _workspace_text_diff(
+    runtime: AuditHarness,
+    audit: dict[str, Any],
+    run_id: str,
+    relative_path: str,
+    projected: dict[str, Any],
+    preview: dict[str, Any],
+) -> tuple[str, bool, str | None, str | None]:
+    change = str(projected.get("change") or "")
+    if change == "original":
+        return "", False, "unchanged", None
+    if change not in {"created", "modified", "deleted"}:
+        return "", False, "unsupported_change_type", None
+
+    if change == "created":
+        baseline_text = ""
+        baseline_label = "empty"
+    else:
+        baseline_bytes, baseline_reason = _immutable_baseline_bytes(
+            runtime,
+            audit,
+            run_id,
+            relative_path,
+        )
+        baseline_label = "immutable_source"
+        if baseline_bytes is None:
+            return "", False, baseline_reason or "baseline_unavailable", baseline_label
+        baseline_text, baseline_reason = _decode_diff_text(baseline_bytes, side="baseline")
+        if baseline_text is None:
+            return "", False, baseline_reason, baseline_label
+
+    if change == "deleted":
+        current_text = ""
+    else:
+        if bool(preview.get("truncated")):
+            return "", False, "current_too_large", baseline_label
+        if not bool(preview.get("previewable")):
+            reason = str(preview.get("reason") or "current_not_text")
+            if reason == "binary_content":
+                reason = "current_binary"
+            elif reason == "non_utf8_content":
+                reason = "current_non_utf8"
+            return "", False, reason, baseline_label
+        current_text = str(preview.get("content") or "")
+
+    fromfile = "/dev/null" if change == "created" else f"a/{relative_path}"
+    tofile = "/dev/null" if change == "deleted" else f"b/{relative_path}"
+    rendered = "".join(
+        unified_diff(
+            baseline_text.splitlines(keepends=True),
+            current_text.splitlines(keepends=True),
+            fromfile=fromfile,
+            tofile=tofile,
+            lineterm="\n",
+        )
+    )
+    if not rendered and change in {"created", "deleted"}:
+        rendered = f"--- {fromfile}\n+++ {tofile}\n"
+    if len(rendered.encode("utf-8")) > _MAX_DIFF_OUTPUT_BYTES:
+        return "", False, "diff_too_large", baseline_label
+    return rendered, True, None, baseline_label
+
+
+def _immutable_baseline_bytes(
+    runtime: AuditHarness,
+    audit: dict[str, Any],
+    run_id: str,
+    relative_path: str,
+) -> tuple[bytes | None, str | None]:
+    audit_id = str(audit["audit_id"])
+    if relative_path == "paper.pdf":
+        return None, "baseline_binary"
+    if relative_path == "artifacts.json":
+        payload = _expected_manifest_bytes(audit, run_id)
+        if len(payload) > _MAX_DIFF_INPUT_BYTES:
+            return None, "baseline_too_large"
+        return payload, None
+
+    for metadata in audit.get("attachments") or []:
+        if not isinstance(metadata, dict):
+            continue
+        attachment_id = str(metadata.get("attachment_id") or "")
+        filename = str(metadata.get("filename") or "")
+        if not attachment_id or not filename:
+            continue
+        expected_path = f"attachments/{attachment_id}/{filename}"
+        if expected_path != relative_path:
+            continue
+        source = runtime.store.get_attachment_path(audit_id, attachment_id)
+        payload, too_large = _read_bounded(source)
+        if too_large:
+            return None, "baseline_too_large"
+        expected_hash = str(metadata.get("sha256") or "")
+        if expected_hash and sha256(payload).hexdigest() != expected_hash:
+            raise ValueError(f"immutable attachment changed while preparing diff: {attachment_id}")
+        return payload, None
+    return None, "baseline_unavailable"
+
+
+def _read_bounded(path: Path) -> tuple[bytes, bool]:
+    with path.open("rb") as handle:
+        payload = handle.read(_MAX_DIFF_INPUT_BYTES + 1)
+    if len(payload) > _MAX_DIFF_INPUT_BYTES:
+        return payload[:_MAX_DIFF_INPUT_BYTES], True
+    return payload, False
+
+
+def _decode_diff_text(payload: bytes, *, side: str) -> tuple[str | None, str | None]:
+    if b"\x00" in payload:
+        return None, f"{side}_binary"
+    try:
+        return payload.decode("utf-8"), None
+    except UnicodeDecodeError:
+        return None, f"{side}_non_utf8"
+
+
+def _expected_manifest_bytes(audit: dict[str, Any], run_id: str) -> bytes:
+    attachments = []
+    for metadata in audit.get("attachments") or []:
+        if not isinstance(metadata, dict):
+            continue
+        attachment_id = str(metadata.get("attachment_id") or "")
+        filename = str(metadata.get("filename") or "")
+        if not attachment_id or not filename:
+            continue
+        attachments.append(
+            {
+                "attachment_id": attachment_id,
+                "filename": filename,
+                "sha256": metadata.get("sha256"),
+                "size_bytes": metadata.get("size_bytes"),
+                "media_type": metadata.get("media_type"),
+                "path": f"attachments/{attachment_id}/{filename}",
+            }
+        )
+    manifest = {
+        "schema_version": "1",
+        "run_id": run_id,
+        "paper": {
+            "filename": "paper.pdf",
+            "sha256": audit.get("artifact_sha256"),
+            "artifact_id": (audit.get("paper_summary") or {}).get("artifact_id"),
+        },
+        "attachments": attachments,
+    }
+    return (json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode(
+        "utf-8"
+    )
+
+
+def _preview_is_binary(preview: dict[str, Any]) -> bool:
+    return preview.get("reason") in {"binary_content", "non_utf8_content"}

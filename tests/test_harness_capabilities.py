@@ -29,6 +29,10 @@ def test_capabilities_disclose_safe_defaults(tmp_path, monkeypatch) -> None:
     assert payload["observability"]["audit_titles_exported"] is False
     assert payload["observability"]["evidence_text_exported"] is False
 
+    assert payload["replication"]["workspace_inspector"] is True
+    assert payload["replication"]["workspace_diff"] is True
+    assert payload["replication"]["bounded_workspace_preview"] is True
+
 
 def test_capabilities_report_explicit_optional_configuration(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("VERITAS_PDF_THIRD_PARSER", "docling")

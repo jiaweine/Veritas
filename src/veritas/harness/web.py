@@ -212,7 +212,7 @@ def create_app(
                 "interactive_approval_enabled": replication.get("permission_policy") == "interactive",
                 "cancellation_supported": True,
                 "workspace_inspector": True,
-                "workspace_diff": False,
+                "workspace_diff": True,
                 "bounded_workspace_preview": True,
             }
         )
