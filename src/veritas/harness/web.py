@@ -21,6 +21,7 @@ from veritas.replication import (
 from ..version import package_version
 from .benchmark_catalog import benchmark_catalog, benchmark_definition
 from .benchmark_results import BenchmarkResultStore
+from .models import HarnessEvent
 from .parser_stack import parser_stack_capability
 from .replication_guard import stream_replication_guarded
 from .replication_workspace import (
@@ -54,6 +55,7 @@ class NotesRequest(BaseModel):
 
 class ReplicationRequest(BaseModel):
     prompt: str
+    finding_id: str | None = None
 
 
 class PermissionDecisionRequest(BaseModel):
@@ -66,6 +68,59 @@ def _cors_origins() -> list[str]:
     if not configured:
         return []
     return [value.strip() for value in configured.split(",") if value.strip()]
+
+
+def _replication_finding_context(
+    runtime: AuditHarness,
+    audit_id: str,
+    finding_id: str | None,
+) -> dict[str, object] | None:
+    """Resolve a client finding id to server-owned scientific context.
+
+    The client may name a finding, but it cannot supply the title/source snapshot
+    persisted into a replication run. This prevents cross-audit or fabricated
+    finding bindings while keeping the coding-agent outcome distinct from
+    detector evidence.
+    """
+
+    clean_id = str(finding_id or "").strip()
+    if not clean_id:
+        return None
+    match = next(
+        (
+            finding
+            for finding in runtime.findings()
+            if str(finding.get("finding_id") or "") == clean_id
+            and str(finding.get("audit_id") or "") == audit_id
+        ),
+        None,
+    )
+    if match is None:
+        raise ValueError("finding does not belong to this audit")
+    source = match.get("source") if isinstance(match.get("source"), dict) else {}
+    clean_source: dict[str, object] = {}
+    for key in ("page", "table", "row", "column", "field"):
+        value = source.get(key)
+        if isinstance(value, (str, int, float, bool)) and value != "":
+            clean_source[key] = value
+    return {
+        "finding_id": clean_id,
+        "title": str(match.get("title") or "Finding")[:500],
+        "severity": str(match.get("severity") or "review")[:80],
+        "source": clean_source,
+        "binding_only": True,
+    }
+
+
+def _finding_source_label(context: dict[str, object]) -> str:
+    source = context.get("source") if isinstance(context.get("source"), dict) else {}
+    parts = [
+        source.get("table"),
+        source.get("row"),
+        source.get("column"),
+        f'p.{source.get("page")}' if source.get("page") else None,
+    ]
+    return " · ".join(str(value) for value in parts if value not in {None, ""})
 
 
 async def _read_upload_limited(
@@ -363,6 +418,10 @@ def create_app(
             runtime.get_audit(audit_id)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        try:
+            origin_finding = _replication_finding_context(runtime, audit_id, request.finding_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         if not runtime.replication_capability()["configured"]:
             raise HTTPException(
                 status_code=503,
@@ -370,8 +429,39 @@ def create_app(
             )
 
         async def stream() -> AsyncIterator[bytes]:
+            context_persisted = False
             async for event in stream_replication_guarded(runtime, audit_id, request.prompt):
                 yield (json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+                if origin_finding is None or context_persisted:
+                    continue
+                event_payload = event.get("payload") or {}
+                run_id = str(event_payload.get("run_id") or "")
+                if not run_id:
+                    continue
+                source_label = _finding_source_label(origin_finding)
+                context_event = HarnessEvent(
+                    audit_id=audit_id,
+                    kind="replication_context",
+                    title="Scientific finding linked to replication",
+                    detail=(
+                        f'{origin_finding["title"]}'
+                        + (f" · {source_label}" if source_label else "")
+                        + ". Context binding only; agent completion does not resolve the finding."
+                    ),
+                    status="info",
+                    payload={
+                        "tool": "replication.acp",
+                        "run_kind": "replication",
+                        "run_id": run_id,
+                        "phase": "context",
+                        "origin_finding": origin_finding,
+                    },
+                )
+                runtime.store.append_event(context_event)
+                yield (
+                    json.dumps(context_event.to_dict(), ensure_ascii=False, sort_keys=True) + "\n"
+                ).encode("utf-8")
+                context_persisted = True
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
 

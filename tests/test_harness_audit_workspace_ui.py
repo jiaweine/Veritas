@@ -55,6 +55,9 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert finding_script.status_code == 200
     assert 'data-fn-finding-id' in finding_script.text
     assert 'data-fn-graph' in finding_script.text
+    assert 'data-fn-reproduce' in finding_script.text
+    assert 'veritas.replication.context.v1' in finding_script.text
+    assert 'veritas.finding.focus.v1' in finding_script.text
     assert 'veritas:claim-finding' in finding_script.text
     assert 'veritas:finding-select' in finding_script.text
 
@@ -88,7 +91,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'veritas-shell-v21' in service_worker.text
+    assert 'veritas-shell-v22' in service_worker.text
     assert '/static/audit-harness.js' in service_worker.text
     assert '/static/audit-harness.css' in service_worker.text
     assert '/static/audit-harness-product.js' in service_worker.text

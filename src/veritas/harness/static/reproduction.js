@@ -1,4 +1,6 @@
 const main = document.querySelector("#main-content");
+const REPLICATION_CONTEXT_KEY = "veritas.replication.context.v1";
+const FINDING_FOCUS_KEY = "veritas.finding.focus.v1";
 
 const repState = {
   capabilities: null,
@@ -13,6 +15,8 @@ const repState = {
   inspectorTab: "changes",
   streaming: false,
   maxAttachmentBytes: 80 * 1024 * 1024,
+  findingContext: null,
+  draftPrompt: "",
 };
 
 const escapeHtml = (value = "") => String(value)
@@ -63,6 +67,72 @@ function badge(status, label = status) {
 
 function selectedAudit() {
   return repState.audits.find((audit) => audit.audit_id === repState.selectedAuditId) || null;
+}
+
+function normalizeFindingContext(value, auditId = "") {
+  if (!value || typeof value !== "object") return null;
+  const findingId = String(value.findingId || value.finding_id || "").trim();
+  const resolvedAuditId = String(value.auditId || value.audit_id || auditId || "").trim();
+  if (!findingId || !resolvedAuditId) return null;
+  return {
+    auditId: resolvedAuditId,
+    findingId,
+    title: String(value.title || "Finding"),
+    explanation: String(value.explanation || ""),
+    severity: String(value.severity || "review"),
+    source: value.source && typeof value.source === "object" ? value.source : {},
+    bindingOnly: value.binding_only !== false,
+  };
+}
+
+function takePendingFindingContext() {
+  let value = null;
+  try {
+    const raw = sessionStorage.getItem(REPLICATION_CONTEXT_KEY);
+    if (raw) value = JSON.parse(raw);
+    sessionStorage.removeItem(REPLICATION_CONTEXT_KEY);
+  } catch {}
+  return normalizeFindingContext(value);
+}
+
+function findingSourceSummary(context = repState.findingContext) {
+  const source = context?.source || {};
+  return [
+    source.table,
+    source.row,
+    source.column,
+    source.page ? `p.${source.page}` : "",
+  ].filter(Boolean).join(" · ");
+}
+
+function findingPrompt(context) {
+  const source = findingSourceSummary(context);
+  const location = source ? ` at ${source}` : "";
+  return `Reproduce the result linked to finding “${context.title}”${location}. Inspect the attached code/data, identify the command and output that correspond to this paper result, compare the reproduced value with the paper evidence, and report any discrepancy. Do not treat a successful code run as resolving the finding; preserve the evidence trail and request approval before sensitive actions.`;
+}
+
+function renderFindingContext(context = repState.findingContext) {
+  if (!context) return "";
+  const source = findingSourceSummary(context);
+  return `<div class="rep-plan-card" data-rep-finding-context="true">
+    <div class="rep-card-kicker">SCIENTIFIC CONTEXT · ${escapeHtml(context.severity || "review")}</div>
+    <strong>${escapeHtml(context.title || "Finding")}</strong>
+    ${source ? `<p>${escapeHtml(source)}</p>` : ""}
+    <p>Context binding only. A completed coding-agent run records execution provenance; it does not by itself verify or resolve this finding.</p>
+    <div class="rep-permission-actions"><button type="button" class="rep-reject" data-rep-return-finding="true">← Back to finding</button></div>
+  </div>`;
+}
+
+function returnToFinding(context = repState.findingContext) {
+  if (!context?.auditId || !context?.findingId) return;
+  try {
+    sessionStorage.setItem(FINDING_FOCUS_KEY, JSON.stringify({
+      auditId: context.auditId,
+      findingId: context.findingId,
+    }));
+  } catch {}
+  location.hash = `audit=${encodeURIComponent(context.auditId)}`;
+  location.reload();
 }
 
 function replicationRuns() {
@@ -122,11 +192,12 @@ function renderShell() {
           <div><strong>${escapeHtml(capability.agent || "Replication agent")}</strong><small>${configured ? "ACP session · structured events" : "Configure VERITAS_REPLICATION_AGENT"}</small></div>
           <div class="rep-run-actions"><span id="rep-live-state" class="rep-live-state ${repState.streaming ? "running" : ""}"><i></i>${repState.streaming ? "running" : "ready"}</span><button id="rep-cancel" class="rep-cancel" ${repState.streaming && repState.selectedRunId ? "" : "disabled"}>Stop</button></div>
         </div>
+        ${renderFindingContext()}
         <div id="rep-thread" class="rep-thread">${renderPersistedThread(repState.selectedRun)}</div>
         <div class="rep-composer-wrap">
           ${interactive ? `<div class="rep-approval-note">Tool permissions pause here until you choose <b>Allow once</b> or <b>Reject</b>. Permanent approval is never offered by Veritas.</div>` : ""}
           <div class="rep-composer">
-            <textarea id="rep-prompt" rows="3" ${configured && !repState.streaming ? "" : "disabled"} placeholder="Ask the replication agent to inspect code, run the project, reproduce a table or figure, compare outputs, or explain a discrepancy…"></textarea>
+            <textarea id="rep-prompt" rows="3" ${configured && !repState.streaming ? "" : "disabled"} placeholder="Ask the replication agent to inspect code, run the project, reproduce a table or figure, compare outputs, or explain a discrepancy…">${escapeHtml(repState.draftPrompt)}</textarea>
             <div class="rep-composer-foot"><span>⌘/Ctrl + Enter to run · natural-language goal only</span><button id="rep-run" class="primary-button" ${configured && !repState.streaming ? "" : "disabled"}>Run agent ↑</button></div>
           </div>
         </div>
@@ -171,6 +242,11 @@ function renderPersistedThread(detail) {
 }
 
 function eventCard(event, runId) {
+  if (event.kind === "replication_context") {
+    const context = normalizeFindingContext(event.payload?.origin_finding, event.audit_id || repState.selectedAuditId);
+    const source = findingSourceSummary(context);
+    return `<div class="rep-system-event"><span class="rep-system-icon review">◇</span><div><strong>${escapeHtml(event.title || "Scientific finding linked")}</strong><small>${escapeHtml(context?.title || event.detail || "Finding context")}${source ? ` · ${escapeHtml(source)}` : ""}</small></div>${badge("review", "context")}</div>`;
+  }
   if (event.kind === "tool") {
     const payload = event.payload || {};
     const phase = payload.phase || "update";
@@ -258,6 +334,8 @@ function renderRunInspector() {
   const run = repState.selectedRun;
   if (!run) return `<div class="rep-inspector-empty"><span>⌁</span><strong>No run selected</strong><p>Select a run from the left rail.</p></div>`;
   const workspace = repState.workspace;
+  const origin = normalizeFindingContext(run.origin_finding, run.audit_id || repState.selectedAuditId);
+  const originSource = findingSourceSummary(origin);
   return `<div class="rep-run-inspector">
     <div class="rep-inspector-metric"><span>Status</span><strong>${escapeHtml(run.phase || run.status || "—")}</strong></div>
     <div class="rep-inspector-metric"><span>Duration</span><strong>${formatDuration(run.duration_ms)}</strong></div>
@@ -265,6 +343,7 @@ function renderRunInspector() {
     <div class="rep-inspector-metric"><span>Changed files</span><strong>${workspace?.changed_files?.length || 0}</strong></div>
     <div class="rep-inspector-block"><span>Run ID</span><code>${escapeHtml(run.run_id)}</code></div>
     <div class="rep-inspector-block"><span>Artifact</span><code>${escapeHtml(run.artifact_id || "—")}</code></div>
+    ${origin ? `<div class="rep-inspector-block" data-rep-run-origin="true"><span>Scientific context</span><p><b>${escapeHtml(origin.title)}</b>${originSource ? `<br>${escapeHtml(originSource)}` : ""}<br>Binding only — this run does not automatically resolve the detector finding.</p><button type="button" class="rep-reject" data-rep-return-finding="true">Open finding</button></div>` : ""}
     <div class="rep-inspector-block"><span>Workspace trust</span><p>Veritas inspects this directory, but the directory itself is not a sandbox. Process, filesystem, and network isolation belong to the configured agent runtime.</p></div>
   </div>`;
 }
@@ -284,6 +363,9 @@ function bindSurface() {
     repState.selectedRun = null;
     repState.workspace = null;
     repState.selectedFile = null;
+    repState.findingContext = null;
+    repState.draftPrompt = "";
+    try { sessionStorage.removeItem(REPLICATION_CONTEXT_KEY); } catch {}
     await Promise.all([loadAttachments(), loadRuns()]);
     const first = replicationRuns()[0];
     if (first) await selectRun(first.run_id, false);
@@ -296,7 +378,9 @@ function bindSurface() {
   document.querySelector("#rep-run")?.addEventListener("click", runAgent);
   document.querySelector("#rep-cancel")?.addEventListener("click", cancelRun);
   document.querySelector("#rep-refresh-workspace")?.addEventListener("click", async () => { await loadWorkspace(repState.selectedRunId); renderShell(); });
+  document.querySelectorAll("[data-rep-return-finding]").forEach((button) => button.addEventListener("click", () => returnToFinding()));
 
+  document.querySelector("#rep-prompt")?.addEventListener("input", (event) => { repState.draftPrompt = event.target.value; });
   document.querySelector("#rep-prompt")?.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
@@ -305,7 +389,7 @@ function bindSurface() {
   });
   document.querySelectorAll("[data-suggest]").forEach((button) => button.addEventListener("click", () => {
     const input = document.querySelector("#rep-prompt");
-    if (input) { input.value = button.dataset.suggest || ""; input.focus(); }
+    if (input) { input.value = button.dataset.suggest || ""; repState.draftPrompt = input.value; input.focus(); }
   }));
   document.querySelectorAll("[data-run-id]").forEach((button) => {
     if (button.dataset.permissionDecision) return;
@@ -365,6 +449,8 @@ async function selectRun(runId, refresh = true) {
       loadWorkspace(runId),
     ]);
     repState.selectedRun = detail;
+    repState.findingContext = normalizeFindingContext(detail.origin_finding, detail.audit_id || repState.selectedAuditId);
+    repState.draftPrompt = "";
   } catch (error) {
     if (refresh) showInlineError(error.message);
   }
@@ -407,6 +493,7 @@ async function runAgent() {
   const promptNode = document.querySelector("#rep-prompt");
   const prompt = promptNode?.value.trim();
   if (!prompt) { showInlineError("Describe a reproduction goal first."); return; }
+  repState.draftPrompt = prompt;
 
   repState.streaming = true;
   repState.selectedRunId = "";
@@ -421,7 +508,7 @@ async function runAgent() {
     const response = await request(`/api/v1/audits/${encodeURIComponent(repState.selectedAuditId)}/replication`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, finding_id: repState.findingContext?.findingId || null }),
     });
     if (!response.body) throw new Error("Streaming response body is unavailable.");
     const reader = response.body.getReader();
@@ -464,6 +551,10 @@ function consumeLiveEvent(event, thread) {
     repState.selectedRunId = runId;
     const cancel = document.querySelector("#rep-cancel");
     if (cancel) cancel.disabled = false;
+  }
+  if (event.kind === "replication_context") {
+    const context = normalizeFindingContext(event.payload?.origin_finding, repState.selectedAuditId);
+    if (context) repState.findingContext = context;
   }
   if (!thread) return;
   const html = eventCard(event, repState.selectedRunId);
@@ -520,10 +611,26 @@ async function enhanceReproduction() {
     repState.audits = audits;
     repState.runs = runs;
     repState.maxAttachmentBytes = Number(capabilities.max_attachment_bytes || 80 * 1024 * 1024);
-    repState.selectedAuditId = repState.selectedAuditId && audits.some((audit) => audit.audit_id === repState.selectedAuditId) ? repState.selectedAuditId : audits[0]?.audit_id || "";
+    const pendingContext = takePendingFindingContext();
+    const pendingIsValid = pendingContext && audits.some((audit) => audit.audit_id === pendingContext.auditId);
+    if (pendingIsValid) {
+      repState.findingContext = pendingContext;
+      repState.selectedAuditId = pendingContext.auditId;
+      repState.selectedRunId = "";
+      repState.selectedRun = null;
+      repState.workspace = null;
+      repState.selectedFile = null;
+      repState.draftPrompt = findingPrompt(pendingContext);
+    } else {
+      repState.findingContext = null;
+      repState.draftPrompt = "";
+      repState.selectedAuditId = repState.selectedAuditId && audits.some((audit) => audit.audit_id === repState.selectedAuditId) ? repState.selectedAuditId : audits[0]?.audit_id || "";
+    }
     if (repState.selectedAuditId) await loadAttachments();
-    const first = replicationRuns()[0];
-    if (first) await selectRun(first.run_id, false);
+    if (!pendingIsValid) {
+      const first = replicationRuns()[0];
+      if (first) await selectRun(first.run_id, false);
+    }
     renderShell();
   } catch (error) {
     main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Replication workspace unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
@@ -533,7 +640,11 @@ async function enhanceReproduction() {
 const observer = new MutationObserver(() => {
   if (!main) return;
   if (!main.textContent.includes("Reproduction workflow")) {
-    if (!main.querySelector("[data-reproduction-surface]")) delete main.dataset.reproductionEnhanced;
+    if (!main.querySelector("[data-reproduction-surface]")) {
+      delete main.dataset.reproductionEnhanced;
+      repState.findingContext = null;
+      repState.draftPrompt = "";
+    }
     return;
   }
   queueMicrotask(enhanceReproduction);

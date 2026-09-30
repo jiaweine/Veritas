@@ -65,8 +65,19 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert finding_script.status_code == 200
     assert "data-fn-finding-id" in finding_script.text
     assert "data-fn-graph" in finding_script.text
+    assert "data-fn-reproduce" in finding_script.text
+    assert "veritas.replication.context.v1" in finding_script.text
+    assert "veritas.finding.focus.v1" in finding_script.text
     assert "veritas:claim-finding" in finding_script.text
     assert "veritas:finding-select" in finding_script.text
+
+    reproduction_script = client.get("/static/reproduction.js")
+    assert reproduction_script.status_code == 200
+    assert "data-rep-finding-context" in reproduction_script.text
+    assert "finding_id" in reproduction_script.text
+    assert "origin_finding" in reproduction_script.text
+    assert "Context binding only" in reproduction_script.text
+    assert "data-rep-return-finding" in reproduction_script.text
 
     finding_styles = client.get("/static/finding-navigation.css")
     assert finding_styles.status_code == 200
@@ -91,7 +102,7 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'const CACHE = "veritas-shell-v21"' in service_worker.text
+    assert 'const CACHE = "veritas-shell-v22"' in service_worker.text
     assert "/static/audit-harness-product.css" in service_worker.text
     assert "/static/audit-harness-product.js" in service_worker.text
     assert "/static/reference-workbench.css" in service_worker.text

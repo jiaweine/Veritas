@@ -6,12 +6,14 @@ on:
     paths:
       - "src/veritas/harness/**"
       - "scripts/smoke_harness_browser.py"
+      - "scripts/smoke_finding_replication_browser.py"
       - "pyproject.toml"
       - ".github/workflows/ui-visual-smoke.yml"
   pull_request:
     paths:
       - "src/veritas/harness/**"
       - "scripts/smoke_harness_browser.py"
+      - "scripts/smoke_finding_replication_browser.py"
       - "pyproject.toml"
       - ".github/workflows/ui-visual-smoke.yml"
 
@@ -44,6 +46,9 @@ jobs:
       - name: Run real Chromium smoke and capture UI
         run: |
           python scripts/smoke_harness_browser.py \
+            --base-url http://127.0.0.1:8765 \
+            --output-dir artifacts/ui
+          python scripts/smoke_finding_replication_browser.py \
             --base-url http://127.0.0.1:8765 \
             --output-dir artifacts/ui
       - name: Upload real UI screenshots
