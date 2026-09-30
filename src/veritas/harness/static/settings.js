@@ -128,13 +128,18 @@ function providerMark(provider = {}) {
 
 function providerStateLabel(provider = {}) {
   const labels = {
-    ready: "LINK READY",
+    ready: "CONFIG READY",
     missing_model: "MODEL REQUIRED",
     missing_key: "KEY REQUIRED",
     missing_endpoint: "ENDPOINT REQUIRED",
     available: "STANDBY",
   };
   return labels[provider.state] || String(provider.state || "STANDBY").toUpperCase();
+}
+
+function providerEndpointLabel(provider = {}) {
+  if (!provider.endpoint_configured) return "required";
+  return provider.endpoint_mode === "provider_default" ? "provider default" : "configured";
 }
 
 function providerCard(provider = {}) {
@@ -150,7 +155,7 @@ function providerCard(provider = {}) {
     <div class="provider-node-meta">
       <span><b>PROTOCOL</b>${escapeHtml(provider.api_style || "adapter")}</span>
       <span><b>AUTH</b>${provider.key_configured ? "configured" : escapeHtml(provider.api_key_env || "server env")}</span>
-      <span><b>ENDPOINT</b>${provider.endpoint_configured ? "linked" : "required"}</span>
+      <span><b>ENDPOINT</b>${escapeHtml(providerEndpointLabel(provider))}</span>
     </div>
   </article>`;
 }
@@ -160,7 +165,7 @@ function modelProviderPanel(router = {}) {
   const active = providers.find((provider) => provider.selected) || null;
   const ready = Boolean(router.active_ready);
   const valid = router.selection_valid !== false;
-  const state = ready ? "ONLINE" : active ? "DEGRADED" : valid ? "UNBOUND" : "INVALID";
+  const state = ready ? "CONFIGURED" : active ? "INCOMPLETE" : valid ? "UNBOUND" : "INVALID";
   const stateClass = ready ? "online" : active ? "degraded" : "offline";
   const configuration = router.configuration || {};
   const selectedLabel = active?.label || (router.requested_provider ? `Unsupported: ${router.requested_provider}` : "No provider selected");
@@ -172,9 +177,9 @@ function modelProviderPanel(router = {}) {
       <div>
         <span class="cyber-kicker">AI CONTROL PLANE // PROVIDER MATRIX</span>
         <h2>Model Router</h2>
-        <p>Route replication intelligence across providers without allowing model output to become detector evidence.</p>
+        <p>Inspect provider configuration for replication intelligence without treating configuration readiness as network health or allowing model output to become detector evidence.</p>
       </div>
-      <div class="router-state ${stateClass}"><span class="router-state-dot"></span><div><small>ROUTER STATE</small><strong>${escapeHtml(state)}</strong></div></div>
+      <div class="router-state ${stateClass}"><span class="router-state-dot"></span><div><small>CONFIG STATE</small><strong>${escapeHtml(state)}</strong></div></div>
     </header>
 
     <div class="router-telemetry">
@@ -213,7 +218,7 @@ function modelProviderPanel(router = {}) {
 
 function renderSettings(caps, modelProviders) {
   return `<div class="page settings-cyber-page" data-settings-surface="true">
-    <div class="page-head settings-cyber-head"><div class="page-head-copy"><span class="eyebrow">System // secure control plane</span><h1 class="page-title">Settings</h1><p class="page-subtitle">Inspect live provider routing, parser, reproduction, API, and telemetry boundaries without exposing credentials or turning model output into research evidence.</p></div><div class="page-actions"><span class="cyber-live"><i></i>LOCAL CONTROL</span></div></div>
+    <div class="page-head settings-cyber-head"><div class="page-head-copy"><span class="eyebrow">System // secure control plane</span><h1 class="page-title">Settings</h1><p class="page-subtitle">Inspect live configuration for provider routing, parser, reproduction, API, and telemetry boundaries without exposing credentials or turning model output into research evidence.</p></div><div class="page-actions"><span class="cyber-live"><i></i>LOCAL CONTROL</span></div></div>
     ${modelProviderPanel(modelProviders)}
     <section class="settings-grid">
       ${apiPanel(caps)}
@@ -230,23 +235,30 @@ async function enhanceSettings() {
   const title = main.querySelector(".page-title")?.textContent?.trim();
   if (title !== "Settings") return;
   main.dataset.settingsEnhanced = "true";
-  main.innerHTML = `<div class="page"><div class="settings-loading"><span class="status-icon running">⌁</span><strong>Synchronizing control plane…</strong></div></div>`;
+  main.innerHTML = `<div class="page" data-settings-loading="true"><div class="settings-loading"><span class="status-icon running">⌁</span><strong>Synchronizing control plane…</strong></div></div>`;
   try {
     const [caps, modelProviders] = await Promise.all([fetchCapabilities(), fetchModelProviders()]);
     main.innerHTML = renderSettings(caps, modelProviders);
   } catch (error) {
-    main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Settings unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
+    main.innerHTML = `<div class="page" data-settings-error="true"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Settings unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
   }
 }
 
 const observer = new MutationObserver(() => {
   if (!main) return;
   const title = main.querySelector(".page-title")?.textContent?.trim();
-  if (title !== "Settings" && !main.querySelector("[data-settings-surface]")) {
+  const settingsDom = Boolean(
+    main.querySelector("[data-settings-surface]")
+    || main.querySelector("[data-settings-loading]")
+    || main.querySelector("[data-settings-error]")
+  );
+  if (title !== "Settings" && !settingsDom) {
     delete main.dataset.settingsEnhanced;
     return;
   }
-  queueMicrotask(enhanceSettings);
+  if (title === "Settings" && main.dataset.settingsEnhanced !== "true") {
+    queueMicrotask(enhanceSettings);
+  }
 });
 
 if (main) {
