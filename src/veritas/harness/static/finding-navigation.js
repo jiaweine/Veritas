@@ -1,4 +1,6 @@
 const main = document.querySelector("#main-content");
+const REPLICATION_CONTEXT_KEY = "veritas.replication.context.v1";
+const FINDING_FOCUS_KEY = "veritas.finding.focus.v1";
 
 const findingState = {
   auditId: "",
@@ -39,6 +41,45 @@ function sourceSummary(finding = {}) {
     source.column,
     source.page ? `p.${source.page}` : "",
   ].filter(Boolean).join(" · ");
+}
+
+function persistReplicationContext(finding, findingId) {
+  const context = {
+    auditId: findingState.auditId,
+    findingId,
+    title: String(finding.title || "Finding"),
+    explanation: String(finding.explanation || ""),
+    severity: String(finding.severity || "review"),
+    source: finding.source && typeof finding.source === "object" ? finding.source : {},
+  };
+  try {
+    sessionStorage.setItem(REPLICATION_CONTEXT_KEY, JSON.stringify(context));
+  } catch {}
+  return context;
+}
+
+function consumeReturnFocus(root) {
+  let focus = null;
+  try {
+    const raw = sessionStorage.getItem(FINDING_FOCUS_KEY);
+    if (raw) focus = JSON.parse(raw);
+  } catch {}
+  if (!focus || String(focus.auditId || "") !== String(root?.dataset.auditId || "")) return;
+  const findingId = String(focus.findingId || "");
+  if (!findingId) return;
+  findingState.pendingFindingId = findingId;
+  try { sessionStorage.removeItem(FINDING_FOCUS_KEY); } catch {}
+}
+
+function openReplicationForFinding(finding, findingId) {
+  persistReplicationContext(finding, findingId);
+  const reproductionNav = document.querySelector('[data-view="reproduction"]');
+  if (reproductionNav instanceof HTMLElement) {
+    reproductionNav.click();
+    return;
+  }
+  location.hash = "#reproduction";
+  location.reload();
 }
 
 function selectFindingCard(findingId = findingState.pendingFindingId) {
@@ -89,6 +130,7 @@ function enhanceCards(root) {
     actions.innerHTML = `${source ? `<span>${esc(source)}</span>` : `<span>Evidence-linked detector finding</span>`}
       <div>
         <button type="button" data-fn-evidence="true">Evidence</button>
+        <button type="button" data-fn-reproduce="true">Reproduce</button>
         <button type="button" class="primary" data-fn-graph="true">Claim Graph <b>→</b></button>
       </div>`;
     wrapper.append(actions);
@@ -97,6 +139,12 @@ function enhanceCards(root) {
       event.preventDefault();
       event.stopPropagation();
       card.click();
+    });
+    actions.querySelector("[data-fn-reproduce]")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      findingState.pendingFindingId = findingId;
+      openReplicationForFinding(finding, findingId);
     });
     actions.querySelector("[data-fn-graph]")?.addEventListener("click", (event) => {
       event.preventDefault();
@@ -131,6 +179,7 @@ async function hydrateFindings(root) {
     findingState.findings = Array.isArray(audit?.latest_result?.findings)
       ? audit.latest_result.findings
       : [];
+    consumeReturnFocus(freshRoot);
     enhanceCards(freshRoot);
   } catch (error) {
     console.error("Unable to hydrate finding navigation", error);
@@ -151,6 +200,7 @@ function enhance() {
     findingState.findings = [];
     findingState.pendingFindingId = "";
   }
+  consumeReturnFocus(root);
   hydrateFindings(root);
 }
 
