@@ -1,0 +1,80 @@
+body:has([data-settings-surface='true']) .app-shell,
+body:has([data-settings-surface='true']) .app-main,
+body:has([data-settings-surface='true']) .main-content {
+  background: #050d11;
+}
+
+body:has([data-settings-surface='true']) .main-content {
+  scrollbar-color: #244047 #071217;
+}
+
+body:has([data-settings-surface='true']) .topbar {
+  background: rgba(6, 16, 20, .96);
+  border-bottom-color: #173039;
+  box-shadow: 0 1px 0 rgba(102, 224, 214, .04), 0 8px 28px rgba(0, 0, 0, .16);
+}
+
+body:has([data-settings-surface='true']) .command-trigger,
+body:has([data-settings-surface='true']) .ghost-button {
+  border-color: #20383f;
+  background: #09171c;
+  color: #7f989e;
+}
+
+body:has([data-settings-surface='true']) .command-trigger:hover,
+body:has([data-settings-surface='true']) .ghost-button:hover {
+  border-color: #31565b;
+  background: #0c1c21;
+  color: #b8d2d4;
+}
+
+body:has([data-settings-surface='true']) .command-trigger .search-icon,
+body:has([data-settings-surface='true']) .sync-status {
+  color: #607b81;
+}
+
+body:has([data-settings-surface='true']) kbd {
+  border-color: #20383f;
+  background: #071217;
+  color: #688187;
+  box-shadow: none;
+}
+
+body:has([data-settings-surface='true']) .sidebar {
+  border-right-color: #1a343b;
+  background:
+    radial-gradient(circle at 20% 8%, rgba(62, 194, 187, .07), transparent 24%),
+    linear-gradient(180deg, #09161c 0%, #071217 100%);
+}
+
+body:has([data-settings-surface='true']) .nav-item.active {
+  background: rgba(57, 139, 139, .15);
+  color: #e0f5f4;
+  box-shadow: inset 2px 0 0 #69ddd5;
+}
+
+body:has([data-settings-surface='true']) .nav-item.active .nav-icon {
+  color: #79ddd6;
+}
+
+body:has([data-settings-surface='true']) .brand-mark {
+  border: 1px solid rgba(105, 221, 213, .4);
+  background: #0a2226;
+  color: #83e6df;
+  box-shadow: 0 0 18px rgba(89, 219, 210, .09);
+}
+
+body:has([data-settings-surface='true']) .local-card {
+  border-color: rgba(104, 218, 210, .12);
+  background: rgba(35, 100, 102, .05);
+}
+
+body:has([data-settings-surface='true']) .settings-link.active {
+  border-top-color: rgba(103, 220, 212, .18);
+}
+
+@media (max-width: 720px) {
+  body:has([data-settings-surface='true']) .main-content {
+    background: #050d11;
+  }
+}
