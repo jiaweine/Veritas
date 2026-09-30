@@ -33,15 +33,22 @@ def test_benchmark_catalog_matches_repository_release_gate_shape() -> None:
     assert by_id["real-pdf-promotion"]["gating"] is False
 
 
-def test_benchmark_catalog_commands_are_present_in_ci_workflow() -> None:
+def test_benchmark_catalog_suites_are_enveloped_in_ci_without_changing_gate_semantics() -> None:
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     suites = benchmark_catalog()["suites"]
 
     for suite in suites:
-        assert suite["command"] in workflow
+        wrapper = f"python scripts/run_benchmark_enveloped.py {suite['benchmark_id']}"
+        assert wrapper in workflow
+        non_gating_block = "continue-on-error: true\n        run: " + wrapper
         if suite["gating"]:
-            assert "continue-on-error: true\n        run: " + str(suite["command"]) not in workflow
+            assert non_gating_block not in workflow
+        else:
+            assert non_gating_block in workflow
+
+    assert "if: always()\n        uses: actions/upload-artifact@v7" in workflow
+    assert "path: benchmark-result-envelopes/*.json" in workflow
 
 
 def test_benchmark_catalog_is_exposed_without_synthetic_scores(tmp_path) -> None:
