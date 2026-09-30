@@ -140,27 +140,14 @@ def _exercise_projects(
         page.locator(".page-title").filter(has_text="Audits").wait_for(
             state="visible", timeout=10_000
         )
-    except PlaywrightTimeoutError:
-        diagnostic = page.evaluate(
-            """() => ({
-                url: location.href,
-                hash: location.hash,
-                readyState: document.readyState,
-                bodyClass: document.body.className,
-                pageTitles: [...document.querySelectorAll('.page-title')].map((node) => ({
-                    text: node.textContent,
-                    display: getComputedStyle(node).display,
-                    visibility: getComputedStyle(node).visibility,
-                    opacity: getComputedStyle(node).opacity,
-                })),
-                mainText: document.querySelector('#main-content')?.innerText?.slice(0, 3000) || '',
-                mainHtml: document.querySelector('#main-content')?.innerHTML?.slice(0, 4000) || '',
-            })"""
-        )
-        diagnostic["page_errors"] = list(page_errors)
-        page.screenshot(path=output_dir / "project-navigation-failure.png", full_page=True)
-        print("PROJECT_NAVIGATION_DIAGNOSTIC=" + json.dumps(diagnostic, ensure_ascii=False))
-        raise
+    except PlaywrightTimeoutError as exc:
+        titles = page.locator(".page-title").all_text_contents()
+        main_text = page.locator("#main-content").inner_text(timeout=2_000)[:1200]
+        raise AssertionError(
+            "Project navigation reached #audits without a visible Audits surface; "
+            f"url={page.url!r}; titles={titles!r}; page_errors={page_errors!r}; "
+            f"main_text={main_text!r}"
+        ) from exc
 
     banner = page.locator("[data-pw-filter-banner]")
     banner.wait_for(state="visible", timeout=10_000)
