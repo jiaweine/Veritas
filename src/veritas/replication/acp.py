@@ -14,6 +14,7 @@ from typing import Any
 from uuid import uuid4
 
 _EVENT_QUEUE_MAXSIZE = 256
+_EVENT_DRAIN_QUIET_SECONDS = 0.25
 _JSON_MAX_DEPTH = 8
 _JSON_MAX_STRING_CHARS = 32_768
 _JSON_MAX_COLLECTION_ITEMS = 256
@@ -401,6 +402,7 @@ class AcpTurnRunner:
 
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=_EVENT_QUEUE_MAXSIZE)
         policy = self.permission_policy
+        inflight_updates = 0
 
         class StreamingClient(Client):
             async def session_update(
@@ -409,26 +411,31 @@ class AcpTurnRunner:
                 update: object,
                 **_: Any,
             ) -> None:
-                payload = _jsonable(update)
-                update_kind = str(
-                    payload.get("sessionUpdate")
-                    or payload.get("session_update")
-                    or type(update).__name__
-                )
-                detail = _update_detail(payload)
-                await queue.put(
-                    ReplicationEvent(
-                        kind="agent_update",
-                        title=update_kind,
-                        detail=detail,
-                        status=_status_for_update(update_kind, payload),
-                        payload={
-                            "session_id": session_id,
-                            "update_kind": update_kind,
-                            "update": payload,
-                        },
-                    ).to_dict()
-                )
+                nonlocal inflight_updates
+                inflight_updates += 1
+                try:
+                    payload = _jsonable(update)
+                    update_kind = str(
+                        payload.get("sessionUpdate")
+                        or payload.get("session_update")
+                        or type(update).__name__
+                    )
+                    detail = _update_detail(payload)
+                    await queue.put(
+                        ReplicationEvent(
+                            kind="agent_update",
+                            title=update_kind,
+                            detail=detail,
+                            status=_status_for_update(update_kind, payload),
+                            payload={
+                                "session_id": session_id,
+                                "update_kind": update_kind,
+                                "update": payload,
+                            },
+                        ).to_dict()
+                    )
+                finally:
+                    inflight_updates -= 1
 
             async def request_permission(
                 self,
@@ -532,8 +539,10 @@ class AcpTurnRunner:
                     prompt=[TextContentBlock(type="text", text=prompt.strip())],
                 )
             )
+            loop = asyncio.get_running_loop()
+            quiet_deadline: float | None = None
 
-            while not prompt_task.done() or not queue.empty():
+            while True:
                 if run_id and _CONTROL_PLANE.cancelled(run_id):
                     prompt_task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
@@ -548,6 +557,26 @@ class AcpTurnRunner:
                         payload={"session_id": session.session_id},
                     ).to_dict()
                     raise ReplicationCancelledError("replication run cancelled by user")
+
+                prompt_done = prompt_task.done()
+                if prompt_done and queue.empty() and inflight_updates == 0:
+                    if quiet_deadline is None:
+                        quiet_deadline = loop.time() + _EVENT_DRAIN_QUIET_SECONDS
+                    remaining = quiet_deadline - loop.time()
+                    if remaining <= 0:
+                        break
+                    try:
+                        event = await asyncio.wait_for(queue.get(), timeout=remaining)
+                    except TimeoutError:
+                        if queue.empty() and inflight_updates == 0:
+                            break
+                        quiet_deadline = None
+                        continue
+                    quiet_deadline = None
+                    yield event
+                    continue
+
+                quiet_deadline = None
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=0.1)
                 except TimeoutError:
