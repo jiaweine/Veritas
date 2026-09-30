@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import deque
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -143,40 +144,48 @@ class ProductAuditHarness(AuditHarness):
         items.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
         return items
 
+    @staticmethod
+    def _collect_run_event(
+        runs: list[dict[str, Any]],
+        audit: dict[str, Any],
+        event: dict[str, Any],
+    ) -> None:
+        if event.get("kind") != "tool":
+            return
+        payload = event.get("payload") or {}
+        result = payload.get("result") or {}
+        phase = payload.get("phase")
+        if not result and phase not in {"finish", "error"}:
+            return
+        runs.append(
+            {
+                "run_id": payload.get("run_id") or event.get("event_id"),
+                "audit_id": audit.get("audit_id"),
+                "audit_title": audit.get("title"),
+                "tool": payload.get("tool") or "audit.tool",
+                "run_kind": payload.get("run_kind") or "audit",
+                "task": event.get("title"),
+                "phase": phase or "finish",
+                "status": event.get("status"),
+                "evidence": bool(result.get("source")),
+                "coverage": float(result.get("verification_coverage") or 0.0),
+                "counts": result.get("counts") or {},
+                "duration_ms": payload.get("duration_ms"),
+                "artifact_id": payload.get("artifact_id"),
+                "parsers": payload.get("parsers") or [],
+                "error_type": payload.get("error_type"),
+                "created_at": event.get("created_at"),
+            }
+        )
+
     def runs(self) -> list[dict[str, Any]]:
         runs: list[dict[str, Any]] = []
         for audit in self._metadata_audits():
-            def collect_run(event: dict[str, Any]) -> None:
-                if event.get("kind") != "tool":
-                    return
-                payload = event.get("payload") or {}
-                result = payload.get("result") or {}
-                phase = payload.get("phase")
-                if not result and phase not in {"finish", "error"}:
-                    return
-                runs.append(
-                    {
-                        "run_id": payload.get("run_id") or event.get("event_id"),
-                        "audit_id": audit.get("audit_id"),
-                        "audit_title": audit.get("title"),
-                        "tool": payload.get("tool") or "audit.tool",
-                        "run_kind": payload.get("run_kind") or "audit",
-                        "task": event.get("title"),
-                        "phase": phase or "finish",
-                        "status": event.get("status"),
-                        "evidence": bool(result.get("source")),
-                        "coverage": float(result.get("verification_coverage") or 0.0),
-                        "counts": result.get("counts") or {},
-                        "duration_ms": payload.get("duration_ms"),
-                        "artifact_id": payload.get("artifact_id"),
-                        "parsers": payload.get("parsers") or [],
-                        "error_type": payload.get("error_type"),
-                        "created_at": event.get("created_at"),
-                    }
-                )
-
             try:
-                self.store.scan_events(str(audit["audit_id"]), collect_run)
+                self.store.scan_events(
+                    str(audit["audit_id"]),
+                    partial(self._collect_run_event, runs, audit),
+                )
             except _INTEGRITY_ERRORS:
                 # Match list_audits()' historical behavior: a corrupt audit is
                 # absent from the derived view rather than partially projected.
@@ -185,22 +194,27 @@ class ProductAuditHarness(AuditHarness):
         runs.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
         return runs
 
+    @staticmethod
+    def _collect_run_match(
+        matched: list[dict[str, Any]],
+        run_id: str,
+        event: dict[str, Any],
+    ) -> None:
+        payload = event.get("payload") or {}
+        event_run_id = payload.get("run_id") if isinstance(payload, dict) else None
+        if event_run_id == run_id or (not event_run_id and event.get("event_id") == run_id):
+            matched.append(event)
+
     def run_detail(self, run_id: str) -> dict[str, Any] | None:
         """Project one correlated run without hydrating unrelated histories."""
 
         for audit in self._metadata_audits():
             matched: list[dict[str, Any]] = []
-
-            def collect_match(event: dict[str, Any]) -> None:
-                payload = event.get("payload") or {}
-                event_run_id = payload.get("run_id") if isinstance(payload, dict) else None
-                if event_run_id == run_id or (
-                    not event_run_id and event.get("event_id") == run_id
-                ):
-                    matched.append(event)
-
             try:
-                self.store.scan_events(str(audit["audit_id"]), collect_match)
+                self.store.scan_events(
+                    str(audit["audit_id"]),
+                    partial(self._collect_run_match, matched, run_id),
+                )
             except _INTEGRITY_ERRORS:
                 continue
             if not matched:
@@ -210,19 +224,44 @@ class ProductAuditHarness(AuditHarness):
             return project_run_detail([projected_audit], run_id)
         return None
 
+    @staticmethod
+    def _collect_search_match(
+        pending: list[dict[str, Any]],
+        needle: str,
+        remaining: int,
+        audit_id: object,
+        event: dict[str, Any],
+    ) -> None:
+        if len(pending) >= remaining:
+            return
+        haystack = f'{event.get("title", "")} {event.get("detail", "")}'.casefold()
+        if needle in haystack:
+            pending.append(
+                {
+                    "kind": "event",
+                    "id": event.get("event_id"),
+                    "audit_id": audit_id,
+                    "title": event.get("title"),
+                    "detail": event.get("detail"),
+                    "status": event.get("status"),
+                }
+            )
+
     def search(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
         needle = query.strip().casefold()
         if not needle:
             return []
         results: list[dict[str, Any]] = []
         for audit in self._metadata_audits():
+            remaining = limit - len(results)
+            if remaining <= 0:
+                return results[:limit]
             audit_text = " ".join(
                 str(value or "")
                 for value in (audit.get("title"), audit.get("filename"), audit.get("audit_id"))
             ).casefold()
-            audit_match = needle in audit_text
             pending: list[dict[str, Any]] = []
-            if audit_match and len(results) < limit:
+            if needle in audit_text:
                 pending.append(
                     {
                         "kind": "audit",
@@ -234,30 +273,23 @@ class ProductAuditHarness(AuditHarness):
                     }
                 )
 
-            def collect_match(event: dict[str, Any]) -> None:
-                if len(results) + len(pending) >= limit:
-                    return
-                haystack = f'{event.get("title", "")} {event.get("detail", "")}'.casefold()
-                if needle in haystack:
-                    pending.append(
-                        {
-                            "kind": "event",
-                            "id": event.get("event_id"),
-                            "audit_id": audit.get("audit_id"),
-                            "title": event.get("title"),
-                            "detail": event.get("detail"),
-                            "status": event.get("status"),
-                        }
-                    )
-
             try:
                 # Continue scanning after the result cap is reached so corruption
                 # later in the visited journal cannot be hidden by an early hit.
-                self.store.scan_events(str(audit["audit_id"]), collect_match)
+                self.store.scan_events(
+                    str(audit["audit_id"]),
+                    partial(
+                        self._collect_search_match,
+                        pending,
+                        needle,
+                        remaining,
+                        audit.get("audit_id"),
+                    ),
+                )
             except _INTEGRITY_ERRORS:
                 continue
 
-            results.extend(pending)
+            results.extend(pending[:remaining])
             if len(results) >= limit:
                 return results[:limit]
         return results[:limit]
