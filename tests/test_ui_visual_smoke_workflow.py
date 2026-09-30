@@ -9,10 +9,16 @@ def test_ui_visual_smoke_workflow_captures_product_surfaces() -> None:
     finding_replication = (ROOT / "scripts/smoke_finding_replication_browser.py").read_text(
         encoding="utf-8"
     )
+    diff_smoke = (ROOT / "scripts/smoke_replication_diff_browser.py").read_text(encoding="utf-8")
+    diff_agent = (ROOT / "scripts/browser_replication_diff_agent.py").read_text(encoding="utf-8")
 
     assert "python -m playwright install --with-deps chromium" in workflow
     assert "python scripts/smoke_harness_browser.py" in workflow
     assert "python scripts/smoke_finding_replication_browser.py" in workflow
+    assert "python scripts/smoke_replication_diff_browser.py" in workflow
+    assert "scripts/browser_replication_diff_agent.py" in workflow
+    assert "--port 8766" in workflow
+    assert 'VERITAS_REPLICATION_AGENT_NAME="Browser diff fixture agent"' in workflow
     assert "actions/upload-artifact@v4" in workflow
     assert "veritas-ui-screenshots" in workflow
 
@@ -55,6 +61,19 @@ def test_ui_visual_smoke_workflow_captures_product_surfaces() -> None:
     assert '"finding-replication-return.png"' in finding_replication
     assert "does not by itself verify or resolve this finding" in finding_replication
     assert "do not treat a successful code run as resolving the finding" in finding_replication
+
+    assert '"replication-diff.png"' in diff_smoke
+    assert '"replication-diff-unavailable.png"' in diff_smoke
+    assert '"replication-diff-truncated.png"' in diff_smoke
+    assert "[data-rep-diff-available='true']" in diff_smoke
+    assert "[data-rep-diff-available='false']" in diff_smoke
+    assert "[data-rep-diff-reason='current_too_large']" in diff_smoke
+    assert 'binary.json().get("diff_reason") != "current_binary"' in diff_smoke
+    assert 'large_payload.get("diff_reason") != "current_too_large"' in diff_smoke
+    assert "source.content != original" in diff_smoke
+    assert "workspace mutation" in diff_agent
+    assert "binary.bin" in diff_agent
+    assert "large.txt" in diff_agent
 
 
 def test_reference_workbench_uses_live_backend_contracts() -> None:
@@ -129,6 +148,35 @@ def test_notes_workspace_has_explicit_visual_state_contracts() -> None:
     assert "display: none" in styles
 
 
+def test_replication_diff_ui_discloses_bounded_states() -> None:
+    script = (ROOT / "src/veritas/harness/static/reproduction-diff-state.js").read_text(
+        encoding="utf-8"
+    )
+    styles = (ROOT / "src/veritas/harness/static/reproduction-diff-state.css").read_text(
+        encoding="utf-8"
+    )
+    shell = (ROOT / "src/veritas/harness/static/index.html").read_text(encoding="utf-8")
+
+    assert "Diff unavailable" in script
+    assert "current_too_large" in script
+    assert "baseline_too_large" in script
+    assert "diff_too_large" in script
+    assert "current_binary" in script
+    assert "baseline_binary" in script
+    assert "No partial diff" not in script
+    assert "will not present a partial diff as complete" in script
+    assert "generated outputs remain untrusted" in script
+    assert "data-rep-diff-state" in script or "repDiffState" in script
+    assert "data-rep-diff-rendered" in script or "repDiffRendered" in script
+    assert "Preview capped at" in script
+    assert "/api/v1/runs/${encodeURIComponent(runId)}/workspace/file?path=" in script
+    assert ".rep-diff-state.unavailable" in styles
+    assert ".rep-diff-line.add" in styles
+    assert ".rep-diff-line.remove" in styles
+    assert "/static/reproduction-diff-state.css" in shell
+    assert "/static/reproduction-diff-state.js" in shell
+
+
 def test_mobile_workflow_syntax_checks_all_workbench_modules() -> None:
     workflow = (ROOT / ".github/workflows/mobile.yml").read_text(encoding="utf-8")
     expected_modules = {
@@ -137,6 +185,7 @@ def test_mobile_workflow_syntax_checks_all_workbench_modules() -> None:
         "audit-harness-product.js",
         "audit-notes.js",
         "reproduction.js",
+        "reproduction-diff-state.js",
         "runs.js",
         "settings.js",
         "benchmarks.js",
