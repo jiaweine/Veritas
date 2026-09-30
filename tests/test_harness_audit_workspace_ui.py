@@ -75,7 +75,10 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert settings_interactions.status_code == 200
     assert 'pointermove' in settings_interactions.text
     assert 'data-router-pointer-inspector' in settings_interactions.text
+    assert 'data-router-network-field' in settings_interactions.text
+    assert 'networkFocus' in settings_interactions.text
     assert 'aria-pressed' in settings_interactions.text
+    assert 'aria-controls' in settings_interactions.text
 
     settings_stylesheet = client.get("/static/settings.css")
     assert settings_stylesheet.status_code == 200
@@ -86,7 +89,9 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     settings_interaction_stylesheet = client.get("/static/settings-interactions.css")
     assert settings_interaction_stylesheet.status_code == 200
     assert '.router-pointer-inspector' in settings_interaction_stylesheet.text
+    assert '.router-network-field' in settings_interaction_stylesheet.text
     assert '--tilt-x' in settings_interaction_stylesheet.text
+    assert 'provider-pin-scan' in settings_interaction_stylesheet.text
     assert 'prefers-reduced-motion' in settings_interaction_stylesheet.text
 
     stylesheet = client.get("/static/audit-harness.css")
@@ -119,7 +124,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'veritas-shell-v25' in service_worker.text
+    assert 'veritas-shell-v26' in service_worker.text
     assert '/static/audit-harness.js' in service_worker.text
     assert '/static/audit-harness.css' in service_worker.text
     assert '/static/audit-harness-product.js' in service_worker.text
