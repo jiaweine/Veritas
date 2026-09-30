@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from veritas.replication import AcpTurnRunner, AgentCommand, PermissionPolicy
 from veritas.replication.acp import _jsonable, _select_allow_once
 
@@ -127,6 +129,7 @@ if __name__ == "__main__":
     assert events[0]["payload"]["agent"] == "fixture agent"
     assert events[0]["payload"]["permission_policy"] == "deny"
     assert events[0]["payload"]["workspace_scope"] == "run_specific"
+    assert events[0]["payload"]["max_stream_events"] > 0
     assert "argv" not in events[0]["payload"]
     assert "workspace" not in events[0]["payload"]
     start_rendered = json.dumps(events[0], sort_keys=True)
@@ -142,14 +145,9 @@ if __name__ == "__main__":
     assert events[-1]["payload"]["stop_reason"] == "end_turn"
 
 
-def test_acp_event_queue_applies_backpressure_without_losing_updates(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr("veritas.replication.acp._EVENT_QUEUE_MAXSIZE", 1)
-    agent_script = tmp_path / "flood_agent.py"
-    agent_script.write_text(
-        '''from __future__ import annotations
+def _write_flood_agent(path: Path, *, updates: int) -> None:
+    path.write_text(
+        f'''from __future__ import annotations
 
 import asyncio
 from typing import Any
@@ -171,10 +169,10 @@ class FloodAgent(Agent):
         return NewSessionResponse(session_id=uuid4().hex)
 
     async def prompt(self, session_id: str, prompt: list[object], **_: Any) -> PromptResponse:
-        for index in range(80):
+        for index in range({updates}):
             message = AgentMessageChunk(
                 session_update="agent_message_chunk",
-                content=TextContentBlock(type="text", text=f"update-{index}"),
+                content=TextContentBlock(type="text", text=f"update-{{index}}"),
             )
             await self._conn.session_update(session_id=session_id, update=message)
         return PromptResponse(stop_reason="end_turn")
@@ -185,6 +183,15 @@ if __name__ == "__main__":
 ''',
         encoding="utf-8",
     )
+
+
+def test_acp_event_budget_preserves_burst_without_losing_updates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("veritas.replication.acp._MAX_EVENTS_PER_TURN", 100)
+    agent_script = tmp_path / "flood_agent.py"
+    _write_flood_agent(agent_script, updates=80)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     runner = AcpTurnRunner(
@@ -196,6 +203,33 @@ if __name__ == "__main__":
 
     updates = [event for event in events if event["kind"] == "agent_update"]
     assert len(updates) == 80
-    assert updates[0]["detail"] == "update-0"
-    assert updates[-1]["detail"] == "update-79"
+    assert {event["detail"] for event in updates} == {f"update-{index}" for index in range(80)}
     assert events[-1]["kind"] == "turn_completed"
+
+
+def test_acp_event_budget_fails_closed_on_excessive_agent_flood(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("veritas.replication.acp._MAX_EVENTS_PER_TURN", 16)
+    agent_script = tmp_path / "overflow_agent.py"
+    _write_flood_agent(agent_script, updates=80)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    runner = AcpTurnRunner(
+        AgentCommand(argv=(sys.executable, str(agent_script)), name="overflow fixture"),
+        permission_policy=PermissionPolicy.DENY,
+    )
+
+    async def collect() -> list[dict[str, object]]:
+        observed: list[dict[str, object]] = []
+        with pytest.raises(RuntimeError, match="event limit exceeded"):
+            async for event in runner.stream_turn(workspace, "overflow the client"):
+                observed.append(event)
+        return observed
+
+    events = asyncio.run(collect())
+    updates = [event for event in events if event["kind"] == "agent_update"]
+    assert len(updates) <= 16
+    assert any(event["kind"] == "transport_limit" for event in events)
+    assert all(event["kind"] != "turn_completed" for event in events)
