@@ -131,6 +131,41 @@ def test_event_journal_corruption_fails_closed(tmp_path, monkeypatch) -> None:
         store.get_audit(audit_id)
 
 
+def test_missing_marked_event_journal_fails_closed(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("veritas.harness.telemetry.export_terminal_run", lambda *_args, **_kwargs: None)
+    store = HarnessStore(tmp_path)
+    audit_id = _seed_audit(store)
+    store.append_event(HarnessEvent(audit_id=audit_id, kind="test", title="valid"))
+    journal = tmp_path / audit_id / EVENT_JOURNAL_FILENAME
+    journal.unlink()
+
+    with pytest.raises(ValueError, match="journal is missing"):
+        store.get_audit(audit_id)
+    with pytest.raises(ValueError, match="journal is missing"):
+        store.set_notes(audit_id, "must not silently discard history")
+
+
+def test_event_journal_symlink_replacement_fails_closed(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("veritas.harness.telemetry.export_terminal_run", lambda *_args, **_kwargs: None)
+    store = HarnessStore(tmp_path)
+    audit_id = _seed_audit(store)
+    store.append_event(HarnessEvent(audit_id=audit_id, kind="test", title="valid"))
+    journal = tmp_path / audit_id / EVENT_JOURNAL_FILENAME
+    outside = tmp_path / "outside.ndjson"
+    outside.write_text("sentinel\n", encoding="utf-8")
+    journal.unlink()
+    try:
+        journal.symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"symlinks unavailable on this platform: {exc}")
+
+    with pytest.raises(ValueError, match="regular file"):
+        store.get_audit(audit_id)
+    with pytest.raises(ValueError, match="regular file"):
+        store.append_event(HarnessEvent(audit_id=audit_id, kind="test", title="blocked"))
+    assert outside.read_text(encoding="utf-8") == "sentinel\n"
+
+
 def test_shared_root_stores_preserve_concurrent_attachment_manifest_updates(tmp_path) -> None:
     stores = [HarnessStore(tmp_path) for _ in range(6)]
     audit_id = _seed_audit(stores[0])
