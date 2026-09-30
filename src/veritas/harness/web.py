@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from . import web_core as _core
+from .replication_review import register_replication_review_routes
 from .request_limits import RequestBodyLimitMiddleware
 from .service import AuditHarness
 
@@ -35,6 +36,7 @@ def create_app(
     """
 
     app = _core.create_app(data_dir, harness=harness)
+    register_replication_review_routes(app, app.state.harness)
     app.add_middleware(_CompatRequestBodyLimitMiddleware)
     return app
 

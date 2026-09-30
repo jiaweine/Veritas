@@ -25,6 +25,7 @@ def main() -> None:
     with httpx.Client(base_url=base_url, timeout=60.0) as client:
         _wait_for_server(client)
         audit_id, finding_id = _seed_contradiction_audit(client)
+        binding_id = f"{audit_id}:finding:0"
 
         page_errors: list[str] = []
         with sync_playwright() as playwright:
@@ -50,7 +51,13 @@ def main() -> None:
                 f".fn-finding-row[data-fn-finding-id='{finding_id}']"
             )
             finding.wait_for(state="visible", timeout=10_000)
-            finding.locator("[data-fn-reproduce='true']").click()
+            reproduce = finding.locator("[data-fn-reproduce='true']")
+            if reproduce.get_attribute("data-fn-replication-finding-id") != binding_id:
+                raise AssertionError(
+                    "Finding UI did not map the detector-native id to the canonical "
+                    f"replication binding id {binding_id!r}"
+                )
+            reproduce.click()
 
             workspace = page.locator("[data-reproduction-surface='true']")
             workspace.wait_for(state="visible", timeout=20_000)
