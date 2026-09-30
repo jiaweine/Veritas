@@ -2,7 +2,15 @@ const main = document.querySelector("#main-content");
 
 const providerLabel = (card) => card.querySelector(".provider-node-name strong")?.textContent?.trim() || card.dataset.modelProvider || "Provider";
 const providerFamily = (card) => card.querySelector(".provider-node-name span")?.textContent?.trim() || "Model family";
-const providerMeta = (card) => [...card.querySelectorAll(".provider-node-meta span")].map((node) => node.textContent.trim()).filter(Boolean);
+const providerMeta = (card) => [...card.querySelectorAll(".provider-node-meta span")].map((node) => {
+  const label = node.querySelector("b")?.textContent?.trim() || "DETAIL";
+  const value = [...node.childNodes]
+    .filter((child) => child.nodeType === Node.TEXT_NODE)
+    .map((child) => child.textContent?.trim() || "")
+    .filter(Boolean)
+    .join(" ");
+  return { label, value: value || "—" };
+});
 const finePointer = window.matchMedia("(pointer: fine)");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const escapeHtml = (value = "") => String(value)
@@ -41,7 +49,7 @@ function renderInspector(inspector, card, mode = "hover") {
   const state = String(card.dataset.providerState || "available").replaceAll("_", " ").toUpperCase();
   const selected = card.dataset.providerSelected === "true";
   const meta = providerMeta(card);
-  inspector.innerHTML = `<div><span class="router-inspector-kicker">${mode === "pinned" ? "PINNED NODE" : "POINTER LINK"}</span><strong>${providerLabel(card)}</strong><small>${providerFamily(card)} · ${selected ? "active route" : "standby route"}</small></div><div class="router-inspector-meta"><span><b>STATE</b>${state}</span>${meta.slice(0, 3).map((item) => `<span>${item}</span>`).join("")}</div><div class="router-inspector-orbit" aria-hidden="true"><i></i><i></i><i></i></div>`;
+  inspector.innerHTML = `<div><span class="router-inspector-kicker">${mode === "pinned" ? "PINNED NODE" : "POINTER LINK"}</span><strong>${providerLabel(card)}</strong><small>${providerFamily(card)} · ${selected ? "active route" : "standby route"}</small></div><div class="router-inspector-meta"><span><b>STATE</b>${state}</span>${meta.slice(0, 3).map((item) => `<span><b>${escapeHtml(item.label)}</b>${escapeHtml(item.value)}</span>`).join("")}</div><div class="router-inspector-orbit" aria-hidden="true"><i></i><i></i><i></i></div>`;
   inspector.dataset.provider = card.dataset.modelProvider || "";
   inspector.dataset.mode = mode;
 }
