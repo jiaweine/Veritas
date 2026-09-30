@@ -151,13 +151,25 @@ def _exercise_claim_graph(page: Page, output_dir: Path) -> None:
     for expected in ("Minimum wage", "-0.021", "0.026", "Evidence source"):
         if expected not in graph_text:
             raise AssertionError(f"Claim graph is missing persisted audit content: {expected!r}")
+
+    estimate_node = page.locator("[data-cg-field='beta']")
+    estimate_node.click()
+    detail = page.locator("[data-cg-detail-panel='true']")
+    detail.wait_for(state="visible", timeout=10_000)
+    detail_text = detail.inner_text()
+    if "Estimate" not in detail_text or "-0.021" not in detail_text:
+        raise AssertionError(f"Claim graph detail panel lost the selected persisted value: {detail_text!r}")
+    if estimate_node.get_attribute("aria-current") != "true":
+        raise AssertionError("Selected claim graph node is not exposed through aria-current")
+    if page.locator("[data-reference-claim-graph='true']").count() != 1:
+        raise AssertionError("Selecting a graph node unexpectedly navigated away from Claim Graph")
     page.screenshot(path=output_dir / "claim-graph.png", full_page=True)
 
-    page.locator("[data-cg-field='beta']").click()
+    page.locator("[data-cg-detail-action='source']").click()
     linked = page.locator("[data-ref-field='beta'].is-linked-selection")
     linked.wait_for(state="visible", timeout=10_000)
     if linked.inner_text().strip() != "-0.021":
-        raise AssertionError("Claim graph did not navigate back to the matching evidence cell")
+        raise AssertionError("Claim graph detail action did not navigate back to the matching evidence cell")
     if not page.locator("[data-ah-tab='source']").evaluate("node => node.classList.contains('active')"):
         raise AssertionError("Claim graph evidence navigation did not reactivate Source")
 
