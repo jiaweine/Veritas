@@ -6,9 +6,13 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_ui_visual_smoke_workflow_captures_product_surfaces() -> None:
     workflow = (ROOT / ".github/workflows/ui-visual-smoke.yml").read_text(encoding="utf-8")
     script = (ROOT / "scripts/smoke_harness_browser.py").read_text(encoding="utf-8")
+    finding_replication = (ROOT / "scripts/smoke_finding_replication_browser.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "python -m playwright install --with-deps chromium" in workflow
     assert "python scripts/smoke_harness_browser.py" in workflow
+    assert "python scripts/smoke_finding_replication_browser.py" in workflow
     assert "actions/upload-artifact@v4" in workflow
     assert "veritas-ui-screenshots" in workflow
 
@@ -42,6 +46,15 @@ def test_ui_visual_smoke_workflow_captures_product_surfaces() -> None:
     assert "Evidence Inspector tabs remain visible while Notes is active" in script
     assert "Notes header timestamp did not refresh after save" in script
     assert "Notes did not persist through the real browser save path" in script
+
+    assert "_seed_contradiction_audit" in finding_replication
+    assert "[data-fn-reproduce='true']" in finding_replication
+    assert "[data-rep-finding-context='true']" in finding_replication
+    assert "[data-rep-return-finding='true']" in finding_replication
+    assert '"finding-replication-context.png"' in finding_replication
+    assert '"finding-replication-return.png"' in finding_replication
+    assert "does not by itself verify or resolve this finding" in finding_replication
+    assert "do not treat a successful code run as resolving the finding" in finding_replication
 
 
 def test_reference_workbench_uses_live_backend_contracts() -> None:
@@ -83,6 +96,9 @@ def test_reference_workbench_uses_live_backend_contracts() -> None:
     assert "veritas:finding-select" in graph
     assert "/api/v1/audits/${encodeURIComponent(auditId)}" in finding_navigation
     assert "data-fn-finding-id" in finding_navigation
+    assert "data-fn-reproduce" in finding_navigation
+    assert "veritas.replication.context.v1" in finding_navigation
+    assert "veritas.finding.focus.v1" in finding_navigation
     assert "veritas:claim-finding" in finding_navigation
     assert ".audit-harness .ah-left" in styles
     assert "display: none !important" in styles
