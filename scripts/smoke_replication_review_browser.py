@@ -13,13 +13,16 @@ from smoke_harness_browser import _seed_contradiction_audit, _wait_for_server
 REVIEW_NOTE = "The deterministic reproduction output is consistent with the detector concern."
 
 
-def _seed_linked_replication(client: httpx.Client) -> tuple[str, str, str, dict[str, object]]:
+def _seed_linked_replication(
+    client: httpx.Client,
+) -> tuple[str, str, str, str, dict[str, object]]:
     capabilities = client.get("/api/v1/capabilities")
     capabilities.raise_for_status()
     if not (capabilities.json().get("replication") or {}).get("configured"):
         raise AssertionError("Replication review smoke requires the deterministic ACP fixture agent")
 
-    audit_id, finding_id = _seed_contradiction_audit(client)
+    audit_id, detector_finding_id = _seed_contradiction_audit(client)
+    binding_finding_id = f"{audit_id}:finding:0"
     audit_before = client.get(f"/api/v1/audits/{audit_id}")
     audit_before.raise_for_status()
     scientific_result = audit_before.json().get("latest_result") or {}
@@ -39,7 +42,7 @@ def _seed_linked_replication(client: httpx.Client) -> tuple[str, str, str, dict[
     response = client.post(
         f"/api/v1/audits/{audit_id}/replication",
         json={
-            "finding_id": finding_id,
+            "finding_id": binding_finding_id,
             "prompt": (
                 "Create deterministic reproduction outputs for this linked finding. "
                 "Completion is execution provenance only and must not resolve the finding."
@@ -61,8 +64,10 @@ def _seed_linked_replication(client: httpx.Client) -> tuple[str, str, str, dict[
     detail.raise_for_status()
     run = detail.json()
     origin = run.get("origin_finding") or {}
-    if origin.get("finding_id") != finding_id:
+    if origin.get("finding_id") != binding_finding_id:
         raise AssertionError(f"Run lost its server-owned finding context: {origin}")
+    if origin.get("title") != "Regression reporting contradiction":
+        raise AssertionError(f"Canonical binding did not resolve server-owned detector context: {origin}")
     if run.get("phase") != "finish":
         raise AssertionError(f"Fixture replication is not terminal: {run.get('phase')!r}")
     if run.get("evidence") is not False:
@@ -77,7 +82,7 @@ def _seed_linked_replication(client: httpx.Client) -> tuple[str, str, str, dict[
         if empty_payload.get(boundary) is not True:
             raise AssertionError(f"Review API lost safety boundary {boundary!r}: {empty_payload}")
 
-    return audit_id, finding_id, run_id, scientific_result
+    return audit_id, detector_finding_id, binding_finding_id, run_id, scientific_result
 
 
 def _open_review(page: Page, base_url: str, audit_id: str, run_id: str) -> None:
@@ -147,7 +152,13 @@ def main() -> None:
 
     with httpx.Client(base_url=base_url, timeout=60.0) as client:
         _wait_for_server(client)
-        audit_id, finding_id, run_id, scientific_result = _seed_linked_replication(client)
+        (
+            audit_id,
+            detector_finding_id,
+            binding_finding_id,
+            run_id,
+            scientific_result,
+        ) = _seed_linked_replication(client)
 
         page_errors: list[str] = []
         with sync_playwright() as playwright:
@@ -169,6 +180,8 @@ def main() -> None:
         review = review_response.json().get("review") or {}
         if review.get("disposition") != "supports" or review.get("note") != REVIEW_NOTE:
             raise AssertionError(f"Saved review did not round-trip through the API: {review}")
+        if review.get("finding_id") != binding_finding_id:
+            raise AssertionError(f"Review lost the server-owned canonical finding binding: {review}")
         for boundary in ("review_only", "does_not_resolve_finding", "does_not_promote_evidence"):
             if review.get(boundary) is not True:
                 raise AssertionError(f"Saved review lost boundary {boundary!r}: {review}")
@@ -176,16 +189,29 @@ def main() -> None:
         run_after = client.get(f"/api/v1/runs/{run_id}")
         run_after.raise_for_status()
         run = run_after.json()
-        if run.get("phase") != "finish" or run.get("origin_finding", {}).get("finding_id") != finding_id:
+        if (
+            run.get("phase") != "finish"
+            or run.get("origin_finding", {}).get("finding_id") != binding_finding_id
+        ):
             raise AssertionError("Review annotation changed terminal run/finding context")
-        review_events = [event for event in run.get("events") or [] if event.get("kind") == "replication_review"]
+        review_events = [
+            event
+            for event in run.get("events") or []
+            if event.get("kind") == "replication_review"
+        ]
         if len(review_events) != 1:
             raise AssertionError(f"Expected one append-only review event, got {len(review_events)}")
 
         audit_after = client.get(f"/api/v1/audits/{audit_id}")
         audit_after.raise_for_status()
-        if (audit_after.json().get("latest_result") or {}) != scientific_result:
+        after_result = audit_after.json().get("latest_result") or {}
+        if after_result != scientific_result:
             raise AssertionError("Operator review mutated the detector result or finding state")
+        detector_ids = {
+            str(item.get("finding_id") or "") for item in after_result.get("findings") or []
+        }
+        if detector_finding_id not in detector_ids:
+            raise AssertionError("Detector-native finding disappeared after operator review")
 
     if page_errors:
         raise AssertionError("Browser page errors: " + " | ".join(page_errors))
@@ -200,7 +226,8 @@ def main() -> None:
             {
                 "status": "success",
                 "audit_id": audit_id,
-                "finding_id": finding_id,
+                "detector_finding_id": detector_finding_id,
+                "binding_finding_id": binding_finding_id,
                 "run_id": run_id,
                 "screenshots": sorted(expected),
                 "output_dir": str(output_dir),
