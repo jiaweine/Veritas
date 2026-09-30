@@ -3,11 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from . import web_core as _core
 from .request_limits import RequestBodyLimitMiddleware
 from .service import AuditHarness
+
+MAX_UPLOAD_BYTES = _core.MAX_UPLOAD_BYTES
+MAX_ATTACHMENT_BYTES = _core.MAX_ATTACHMENT_BYTES
 
 
 def create_app(
@@ -23,6 +26,17 @@ def create_app(
     """
 
     app = _core.create_app(data_dir, harness=harness)
+
+    @app.middleware("http")
+    async def sync_compat_upload_limits(request: Request, call_next):
+        # Existing callers/tests patch these public module constants. Mirror them
+        # into the delegated core at request time so that contract remains intact.
+        _core.MAX_UPLOAD_BYTES = MAX_UPLOAD_BYTES
+        _core.MAX_ATTACHMENT_BYTES = MAX_ATTACHMENT_BYTES
+        return await call_next(request)
+
+    # Added last so the pure-ASGI guard remains outside BaseHTTP middleware and
+    # therefore bounds the body before FastAPI/Starlette request parsing.
     app.add_middleware(RequestBodyLimitMiddleware)
     return app
 
