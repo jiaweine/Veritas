@@ -231,13 +231,14 @@ def _exercise_finding_roundtrip(
     finding_row.wait_for(state="visible", timeout=10_000)
     if "Regression reporting contradiction" not in finding_row.inner_text():
         raise AssertionError("Real detector finding did not render in the Findings inspector")
-    graph_button = finding_row.locator("[data-fn-graph='true']")
-    graph_button.click()
+    finding_row.locator("[data-fn-graph='true']").click()
 
     graph = page.locator("[data-reference-claim-graph='true']")
     graph.wait_for(state="visible", timeout=10_000)
     linked_node = page.locator(f"[data-cg-finding-id='{finding_id}'].is-selected")
     linked_node.wait_for(state="visible", timeout=10_000)
+    if linked_node.get_attribute("data-cg-field") != "p_value":
+        raise AssertionError("Finding → Claim Graph did not select the failed p-value check")
     detail = page.locator("[data-cg-detail-panel='true']")
     detail_text = detail.inner_text()
     if "Regression reporting contradiction" not in detail_text:
@@ -246,15 +247,6 @@ def _exercise_finding_roundtrip(
         raise AssertionError(f"Finding → Claim Graph lost the detector explanation: {detail_text!r}")
     page.screenshot(path=output_dir / "finding-graph-roundtrip.png", full_page=True)
 
-    page.locator("[data-cg-detail-action='findings']").click()
-    selected_finding = page.locator(f".fn-finding-row[data-fn-finding-id='{finding_id}'].is-linked-finding")
-    selected_finding.wait_for(state="visible", timeout=10_000)
-    if selected_finding.get_attribute("aria-current") != "true":
-        raise AssertionError("Claim Graph → Findings did not expose the selected finding through aria-current")
-
-    selected_finding.locator("[data-fn-graph='true']").click()
-    linked_node = page.locator(f"[data-cg-finding-id='{finding_id}'].is-selected")
-    linked_node.wait_for(state="visible", timeout=10_000)
     source_action = page.locator("[data-cg-detail-source='true']")
     source_action.wait_for(state="visible", timeout=10_000)
     source_action.click()
@@ -262,6 +254,16 @@ def _exercise_finding_roundtrip(
     linked_p.wait_for(state="visible", timeout=10_000)
     if linked_p.inner_text().strip() != "0.010":
         raise AssertionError("Finding-linked p-value check did not navigate back to the exact contradictory evidence field")
+
+    page.locator("[data-reference-claim-tab]").click()
+    graph.wait_for(state="visible", timeout=10_000)
+    linked_node = page.locator(f"[data-cg-finding-id='{finding_id}'].is-selected")
+    linked_node.wait_for(state="visible", timeout=10_000)
+    page.locator("[data-cg-detail-action='findings']").click()
+    selected_finding = page.locator(f".fn-finding-row[data-fn-finding-id='{finding_id}'].is-linked-finding")
+    selected_finding.wait_for(state="visible", timeout=10_000)
+    if selected_finding.get_attribute("aria-current") != "true":
+        raise AssertionError("Claim Graph → Findings did not expose the selected finding through aria-current")
 
 
 def _capture_desktop(page: Page, base_url: str, audit_id: str, output_dir: Path) -> None:
