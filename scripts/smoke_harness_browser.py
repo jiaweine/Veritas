@@ -225,7 +225,7 @@ def _exercise_finding_roundtrip(
     root = page.locator("[data-audit-harness='true']")
     root.wait_for(state="visible", timeout=20_000)
     page.locator("[data-reference-claim-tab]").wait_for(state="visible", timeout=10_000)
-    page.locator("[data-ah-tab='findings']").click()
+    page.locator(".ah-tabs [data-ah-tab='findings']").click()
 
     finding_row = page.locator(f".fn-finding-row[data-fn-finding-id='{finding_id}']")
     finding_row.wait_for(state="visible", timeout=10_000)
