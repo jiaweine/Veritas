@@ -97,8 +97,13 @@ function assignmentControl(auditId) {
 
 function openProject(projectId) {
   setActiveProject(projectId);
-  history.replaceState(null, "", "/#audits");
-  window.location.reload();
+  document.body.classList.remove("reference-audit-active");
+  const auditsNavigation = document.querySelector("#sidebar [data-view='audits']");
+  if (auditsNavigation) {
+    auditsNavigation.click();
+    return;
+  }
+  window.location.assign("/#audits");
 }
 
 async function assignCurrentAudit(select) {
