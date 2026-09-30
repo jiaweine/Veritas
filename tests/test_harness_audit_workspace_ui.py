@@ -18,6 +18,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/static/audit-notes.js' in index.text
     assert '/static/projects.css' in index.text
     assert '/static/projects.js' in index.text
+    assert '/static/projects-reference.js' in index.text
     assert '/static/reference-workbench.css' in index.text
     assert '/static/reference-workbench.js' in index.text
     assert '/static/reference-surfaces.css' in index.text
@@ -48,6 +49,13 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/project`' in projects_script.text
     assert 'Organization only' in projects_script.text
     assert 'data-pw-assignment' in projects_script.text
+
+    reference_projects_script = client.get("/static/projects-reference.js")
+    assert reference_projects_script.status_code == 200
+    assert 'data-pw-reference-projects' in reference_projects_script.text
+    assert 'data-pw-ref-assignment' in reference_projects_script.text
+    assert 'outside evidence provenance' in reference_projects_script.text
+    assert '/api/v1/projects' in reference_projects_script.text
 
     claim_script = client.get("/static/claim-graph.js")
     assert claim_script.status_code == 200
@@ -83,6 +91,8 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '.pw-project-group' in projects_stylesheet.text
     assert '.pw-audit-project' in projects_stylesheet.text
     assert '.pw-filter-banner' in projects_stylesheet.text
+    assert '.pw-ref-projects' in projects_stylesheet.text
+    assert '.pw-ref-current' in projects_stylesheet.text
 
     claim_stylesheet = client.get("/static/claim-graph.css")
     assert claim_stylesheet.status_code == 200
@@ -103,7 +113,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'veritas-shell-v22' in service_worker.text
+    assert 'veritas-shell-v23' in service_worker.text
     assert '/static/audit-harness.js' in service_worker.text
     assert '/static/audit-harness.css' in service_worker.text
     assert '/static/audit-harness-product.js' in service_worker.text
@@ -111,6 +121,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/static/audit-notes.js' in service_worker.text
     assert '/static/audit-notes.css' in service_worker.text
     assert '/static/projects.js' in service_worker.text
+    assert '/static/projects-reference.js' in service_worker.text
     assert '/static/projects.css' in service_worker.text
     assert '/static/reference-workbench.js' in service_worker.text
     assert '/static/reference-workbench.css' in service_worker.text
