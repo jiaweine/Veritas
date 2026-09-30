@@ -139,6 +139,34 @@ def test_operator_review_is_append_only_and_does_not_resolve_finding(tmp_path) -
     assert after["artifact_sha256"] == before["artifact_sha256"]
 
 
+def test_replication_review_input_is_bounded_and_enumerated(tmp_path) -> None:
+    client = TestClient(create_app(tmp_path))
+    created = client.post(
+        "/api/v1/audits",
+        data={"title": "Review validation paper"},
+        files={"file": ("paper.pdf", _make_pdf(), "application/pdf")},
+    )
+    assert created.status_code == 200
+    audit_id = created.json()["audit_id"]
+    run_id = "run_review_validation"
+    _seed_linked_run(client, audit_id, run_id)
+
+    invalid_disposition = client.post(
+        f"/api/v1/runs/{run_id}/review",
+        json={"disposition": "verified", "note": "Must not invent a stronger review state."},
+    )
+    assert invalid_disposition.status_code == 422
+
+    oversized_note = client.post(
+        f"/api/v1/runs/{run_id}/review",
+        json={"disposition": "supports", "note": "x" * 4_001},
+    )
+    assert oversized_note.status_code == 422
+
+    detail = client.get(f"/api/v1/runs/{run_id}").json()
+    assert not [event for event in detail["events"] if event["kind"] == "replication_review"]
+
+
 def test_replication_review_requires_linked_terminal_replication_run(tmp_path) -> None:
     client = TestClient(create_app(tmp_path))
     created = client.post(
