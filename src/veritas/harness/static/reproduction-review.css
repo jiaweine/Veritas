@@ -1,32 +1,32 @@
 .rep-review-card {
   margin: 9px 0;
   padding: 9px;
-  border: 1px solid #d7dcf5;
+  border: 1px solid #28434e;
   border-radius: 9px;
-  background: #f8f9ff;
+  background: #0d1a20;
 }
 .rep-review-kicker {
   margin-bottom: 4px;
-  color: var(--accent-ink);
+  color: #61ddd8;
   font-size: 5.8px;
   font-weight: 900;
   letter-spacing: .08em;
 }
 .rep-review-card > strong {
   display: block;
-  color: var(--text);
+  color: #eef4f7;
   font-size: 7.4px;
 }
 .rep-review-copy {
   margin: 5px 0 7px;
-  color: var(--text-muted);
+  color: #a7b8c1;
   font-size: 6.4px;
   line-height: 1.5;
 }
 .rep-review-finding {
   display: block;
   margin-bottom: 7px;
-  color: var(--text-faint);
+  color: #7f949f;
   font-family: ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size: 5.8px;
   overflow-wrap: anywhere;
@@ -35,50 +35,52 @@
 .rep-review-option {
   width: 100%;
   padding: 7px;
-  border: 1px solid var(--line);
+  border: 1px solid #2d424b;
   border-radius: 7px;
-  background: #fff;
-  color: var(--text-muted);
+  background: #091419;
+  color: #a7b8c1;
   text-align: left;
   cursor: pointer;
   font: inherit;
 }
-.rep-review-option:hover { border-color: #bdc6ff; }
+.rep-review-option:hover { border-color: #6275f6; }
 .rep-review-option.selected {
-  border-color: #aeb9ff;
-  background: #eef1ff;
-  box-shadow: inset 2px 0 0 var(--accent);
+  border-color: #6f80ff;
+  background: #141b38;
+  box-shadow: inset 2px 0 0 #6f80ff;
 }
 .rep-review-option span,
 .rep-review-option small { display: block; }
-.rep-review-option span { color: var(--text); font-size: 6.7px; font-weight: 750; }
-.rep-review-option small { margin-top: 2px; color: var(--text-faint); font-size: 5.8px; line-height: 1.35; }
+.rep-review-option span { color: #eef4f7; font-size: 6.7px; font-weight: 750; }
+.rep-review-option small { margin-top: 2px; color: #8da0aa; font-size: 5.8px; line-height: 1.35; }
 .rep-review-note { display: block; margin-top: 8px; }
-.rep-review-note > span { display: block; margin-bottom: 4px; color: var(--text-faint); font-size: 6px; font-weight: 700; text-transform: uppercase; }
+.rep-review-note > span { display: block; margin-bottom: 4px; color: #8da0aa; font-size: 6px; font-weight: 700; text-transform: uppercase; }
 .rep-review-note em { font-weight: 500; font-style: normal; text-transform: none; }
 .rep-review-note textarea {
   width: 100%;
   min-height: 58px;
   padding: 7px;
-  border: 1px solid var(--line);
+  border: 1px solid #2d424b;
   border-radius: 7px;
-  background: #fff;
-  color: var(--text);
+  background: #071116;
+  color: #eef4f7;
+  caret-color: #61ddd8;
   font: inherit;
   font-size: 6.5px;
   line-height: 1.45;
   resize: vertical;
   outline: 0;
 }
-.rep-review-note textarea:focus { border-color: #aeb9ff; box-shadow: 0 0 0 2px rgba(83,104,245,.07); }
+.rep-review-note textarea::placeholder { color: #657983; }
+.rep-review-note textarea:focus { border-color: #6f80ff; box-shadow: 0 0 0 2px rgba(111,128,255,.12); }
 .rep-review-actions { display: flex; align-items: center; justify-content: space-between; gap: 7px; margin-top: 7px; }
-.rep-review-actions small { color: var(--text-faint); font-size: 5.7px; line-height: 1.35; }
+.rep-review-actions small { color: #81959f; font-size: 5.7px; line-height: 1.35; }
 .rep-review-actions .primary-button { min-height: 27px; padding: 0 8px; font-size: 6.3px; white-space: nowrap; }
 .rep-review-boundary {
   margin-top: 7px;
   padding-top: 7px;
-  border-top: 1px solid #dfe3f4;
-  color: #6e7487;
+  border-top: 1px solid #28404a;
+  color: #879aa4;
   font-size: 5.7px;
   line-height: 1.45;
 }
