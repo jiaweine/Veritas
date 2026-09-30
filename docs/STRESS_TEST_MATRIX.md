@@ -7,6 +7,7 @@ This matrix supplements the ordinary unit, integration, browser-smoke, PDF-regre
 | Harness audit store | Hundreds of concurrent event appends through many store instances sharing one root | No lost events, no corrupt JSON, no leaked temporary metadata files |
 | Attachment manifest | Concurrent immutable attachment creation | Every payload remains addressable by its recorded id and digest |
 | Benchmark result store | Many store instances ingest the same content-addressed result concurrently | Idempotent single-record persistence with no temp-file collisions |
+| Replication workspace inspection | Parent paths and files are swapped to symlinks between scan/open operations | Descriptor-relative no-follow traversal cannot be redirected outside the already-open workspace tree and races fail closed |
 | Replication control plane | Repeated activation, state reads, cancellation, teardown | No stale active run and duplicate activation fails closed |
 | ACP burst streaming | A real subprocess emits a dense burst below the per-turn event budget | Every accepted update is delivered without transport-order assumptions or callback deadlock |
 | ACP flood limiting | A real subprocess exceeds a deliberately tiny event budget | The turn stops fail-closed with an explicit transport-limit event instead of unbounded growth |
