@@ -171,8 +171,8 @@ def test_streaming_scanner_releases_root_lock_before_visiting_snapshot(tmp_path)
     release_visitor = threading.Event()
     append_done = threading.Event()
     seen: list[str] = []
-    scan_errors: list[BaseException] = []
-    append_errors: list[BaseException] = []
+    scan_errors: list[Exception] = []
+    append_errors: list[Exception] = []
 
     def visitor(event: dict[str, object]) -> None:
         seen.append(str(event.get("title") or ""))
@@ -183,7 +183,7 @@ def test_streaming_scanner_releases_root_lock_before_visiting_snapshot(tmp_path)
     def scan() -> None:
         try:
             runtime.store.scan_events(audit_id, visitor)
-        except BaseException as exc:  # pragma: no cover - surfaced by assertion below
+        except Exception as exc:  # pragma: no cover - surfaced by assertion below
             scan_errors.append(exc)
 
     def append() -> None:
@@ -196,7 +196,7 @@ def test_streaming_scanner_releases_root_lock_before_visiting_snapshot(tmp_path)
                     detail="must not wait for the dashboard visitor",
                 )
             )
-        except BaseException as exc:  # pragma: no cover - surfaced by assertion below
+        except Exception as exc:  # pragma: no cover - surfaced by assertion below
             append_errors.append(exc)
         finally:
             append_done.set()
