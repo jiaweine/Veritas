@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 import httpx
 import pymupdf
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 
 def _paper_pdf(title: str) -> bytes:
@@ -68,6 +68,22 @@ def _assert_assignment_response(response, project_id: str | None) -> None:
     payload = response.json()
     if payload.get("project_id") != project_id:
         raise AssertionError(f"Project assignment UI persisted wrong project: {payload}")
+
+
+def _navigation_debug(page: Page, output_dir: Path) -> str:
+    debug = page.evaluate(
+        """() => ({
+          url: location.href,
+          hash: location.hash,
+          bodyClass: document.body.className,
+          pageTitles: [...document.querySelectorAll('.page-title')].map(node => ({text: node.textContent, visible: !!(node.offsetWidth || node.offsetHeight || node.getClientRects().length)})),
+          mainText: (document.querySelector('#main-content')?.innerText || '').slice(0, 1800),
+          auditRoot: document.querySelector('[data-audit-harness="true"]')?.dataset.auditId || '',
+          navAudits: [...document.querySelectorAll('[data-view="audits"]')].map(node => ({tag: node.tagName, text: node.textContent, connected: node.isConnected, hidden: getComputedStyle(node).display === 'none'})),
+        })"""
+    )
+    page.screenshot(path=output_dir / "project-navigation-debug.png", full_page=True)
+    return json.dumps(debug, ensure_ascii=False, sort_keys=True)
 
 
 def _exercise_projects(
@@ -135,7 +151,14 @@ def _exercise_projects(
 
     page.locator(f"[data-pw-ref-open='{project_id}']").click()
     page.wait_for_url(f"{base_url}/#audits", timeout=10_000)
-    page.locator(".page-title").filter(has_text="Audits").wait_for(state="visible", timeout=10_000)
+    try:
+        page.locator(".page-title").filter(has_text="Audits").wait_for(
+            state="visible", timeout=10_000
+        )
+    except PlaywrightTimeoutError as exc:
+        debug = _navigation_debug(page, output_dir)
+        raise AssertionError(f"Project navigation did not render Audits: {debug}") from exc
+
     banner = page.locator("[data-pw-filter-banner]")
     banner.wait_for(state="visible", timeout=10_000)
     if project_name not in banner.inner_text():
