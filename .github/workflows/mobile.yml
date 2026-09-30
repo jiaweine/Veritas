@@ -40,6 +40,7 @@ jobs:
           node --check ../src/veritas/harness/static/reproduction-review.js
           node --check ../src/veritas/harness/static/runs.js
           node --check ../src/veritas/harness/static/settings.js
+          node --check ../src/veritas/harness/static/settings-interactions.js
           node --check ../src/veritas/harness/static/benchmarks.js
           node --check ../src/veritas/harness/static/reference-workbench.js
           node --check ../src/veritas/harness/static/reference-evidence-preview.js
