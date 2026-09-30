@@ -38,10 +38,7 @@
   filter: saturate(1.14) drop-shadow(0 0 15px rgba(73, 215, 204, .07));
 }
 
-.router-network-field[data-network-focus]:not([data-network-focus=""]) {
-  opacity: .68;
-}
-
+.router-network-field[data-network-focus]:not([data-network-focus=""]) { opacity: .68; }
 .router-network-field[data-network-focus-mode="pinned"] {
   opacity: .88;
   filter: saturate(1.2) drop-shadow(0 0 18px rgba(78, 232, 219, .1));
@@ -121,6 +118,121 @@
 .provider-node > * { position: relative; z-index: 1; transform: translateZ(12px); }
 .provider-node .provider-node-meta { transform: translateZ(7px); }
 
+.router-probe-strip {
+  margin: 0 18px 10px;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 11px;
+  border: 1px solid rgba(80, 169, 170, .2);
+  border-radius: 9px;
+  background:
+    linear-gradient(90deg, rgba(7, 24, 29, .96), rgba(6, 17, 22, .92)),
+    repeating-linear-gradient(90deg, transparent 0 31px, rgba(95, 220, 211, .025) 32px);
+  position: relative;
+  overflow: hidden;
+}
+
+.router-probe-strip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, rgba(82, 234, 220, .09), transparent);
+  transform: translateX(-100%);
+}
+
+.router-probe-strip:has(.router-probe-status[data-probe-state="probing"])::after {
+  opacity: 1;
+  animation: router-probe-scan 1.3s linear infinite;
+}
+
+.router-probe-status {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+.router-probe-status b {
+  display: block;
+  margin-bottom: 3px;
+  color: #51bcb7;
+  font: 700 6px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .14em;
+}
+.router-probe-status strong { display: block; color: #b8d1d2; font-size: 8px; }
+.router-probe-status small {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: #607a80;
+  font-size: 6.7px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.router-probe-signal {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(84, 191, 188, .24);
+  border-radius: 50%;
+  background: rgba(30, 93, 92, .08);
+}
+.router-probe-signal i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #58767a;
+  box-shadow: 0 0 0 4px rgba(86, 118, 122, .06);
+}
+.router-probe-status[data-probe-state="probing"] .router-probe-signal i {
+  background: #70e4dc;
+  box-shadow: 0 0 0 4px rgba(112, 228, 220, .08), 0 0 16px rgba(112, 228, 220, .7);
+  animation: router-probe-pulse .85s ease-in-out infinite;
+}
+.router-probe-status[data-probe-state="ready"] .router-probe-signal i {
+  background: #87efb4;
+  box-shadow: 0 0 0 4px rgba(135, 239, 180, .08), 0 0 14px rgba(135, 239, 180, .58);
+}
+.router-probe-status[data-probe-state="auth_rejected"] .router-probe-signal i,
+.router-probe-status[data-probe-state="provider_error"] .router-probe-signal i,
+.router-probe-status[data-probe-state="unreachable"] .router-probe-signal i,
+.router-probe-status[data-probe-state="client_error"] .router-probe-signal i {
+  background: #ef9e87;
+  box-shadow: 0 0 0 4px rgba(239, 158, 135, .07), 0 0 14px rgba(239, 158, 135, .42);
+}
+.router-probe-status[data-probe-state="rate_limited"] .router-probe-signal i,
+.router-probe-status[data-probe-state="model_or_endpoint_missing"] .router-probe-signal i,
+.router-probe-status[data-probe-state="not_ready"] .router-probe-signal i {
+  background: #e6c875;
+  box-shadow: 0 0 0 4px rgba(230, 200, 117, .07), 0 0 14px rgba(230, 200, 117, .35);
+}
+.router-probe-button {
+  min-width: 86px;
+  min-height: 30px;
+  border: 1px solid rgba(102, 226, 217, .38);
+  border-radius: 7px;
+  background: rgba(28, 94, 93, .12);
+  color: #7de0d8;
+  font: 800 6.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .12em;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.router-probe-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(111, 241, 229, .7);
+  background: rgba(40, 129, 124, .16);
+  box-shadow: 0 0 22px rgba(62, 222, 207, .12);
+}
+.router-probe-button:disabled { cursor: not-allowed; opacity: .38; }
+
 .router-pointer-inspector {
   min-height: 72px;
   margin: 10px 0 0;
@@ -138,7 +250,6 @@
   overflow: hidden;
   box-shadow: inset 0 1px 0 rgba(123, 246, 235, .025);
 }
-
 .router-pointer-inspector::before {
   content: "";
   position: absolute;
@@ -148,7 +259,6 @@
   transform: translateX(-100%);
   animation: router-inspector-sweep 5.8s linear infinite;
 }
-
 .router-pointer-inspector::after {
   content: "";
   position: absolute;
@@ -161,12 +271,10 @@
   background-size: 18px 18px;
   mask-image: linear-gradient(90deg, transparent, black 22%, black 78%, transparent);
 }
-
 .router-pointer-inspector[data-mode="pinned"] {
   border-color: rgba(93, 227, 216, .42);
   box-shadow: inset 0 1px 0 rgba(123, 246, 235, .035), 0 0 28px rgba(51, 187, 178, .07);
 }
-
 .router-pointer-inspector > * { position: relative; z-index: 1; }
 .router-inspector-kicker {
   display: block;
@@ -177,7 +285,6 @@
 }
 .router-pointer-inspector strong { color: #e3f8f6; font-size: 12px; }
 .router-pointer-inspector small { display: block; margin-top: 3px; color: #6f8e93; font-size: 9px; line-height: 1.45; }
-
 .router-inspector-meta {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -195,7 +302,6 @@
   white-space: nowrap;
 }
 .router-inspector-meta b { display: block; margin-bottom: 2px; color: #4fbeb8; font-size: 7px; letter-spacing: .12em; }
-
 .router-inspector-orbit {
   width: 58px;
   height: 58px;
@@ -218,6 +324,8 @@
 .router-inspector-orbit i:nth-child(2) { width: 3px; height: 3px; right: 8px; bottom: 14px; background: #4f8f96; }
 .router-inspector-orbit i:nth-child(3) { width: 2px; height: 2px; left: 10px; bottom: 17px; background: #86eee6; }
 
+@keyframes router-probe-scan { to { transform: translateX(100%); } }
+@keyframes router-probe-pulse { 50% { transform: scale(1.65); } }
 @keyframes router-inspector-sweep { to { transform: translateX(100%); } }
 @keyframes router-orbit-spin { to { transform: rotate(360deg); } }
 @keyframes router-orbit-pulse { 50% { transform: scale(1.6); box-shadow: 0 0 10px rgba(84, 200, 193, .6); } }
@@ -238,11 +346,16 @@
   .router-pointer-inspector { display: none; }
   .router-network-field { display: none; }
   .model-router::after { display: none; }
+  .router-probe-strip { margin-inline: 12px; grid-template-columns: 1fr; }
+  .router-probe-button { width: 100%; }
+  .router-probe-status small { white-space: normal; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .provider-node { transform: none !important; transition-duration: 0s; }
   .provider-node[data-pinned="true"]::after,
+  .router-probe-strip::after,
+  .router-probe-signal i,
   .router-pointer-inspector::before,
   .router-inspector-orbit::before,
   .router-inspector-orbit i { animation: none !important; }
