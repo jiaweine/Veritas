@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from veritas.replication import AcpTurnRunner, AgentCommand, PermissionPolicy
-from veritas.replication.acp import _select_allow_once
+from veritas.replication.acp import _jsonable, _select_allow_once
 
 
 def test_agent_command_forwards_only_explicit_environment() -> None:
@@ -43,6 +43,31 @@ def test_allow_once_policy_never_upgrades_to_allow_always() -> None:
 
     allow_once = SimpleNamespace(kind="allow_once", option_id="once")
     assert _select_allow_once([options[0], allow_once]) is allow_once
+
+
+def test_jsonable_bounds_untrusted_agent_payloads() -> None:
+    nested: dict[str, object] = {}
+    cursor = nested
+    for _ in range(12):
+        child: dict[str, object] = {}
+        cursor["child"] = child
+        cursor = child
+    payload = {
+        "content": {"text": "x" * 50_000},
+        "items": list(range(400)),
+        "mapping": {f"key-{index}": index for index in range(400)},
+        "deep": nested,
+    }
+
+    bounded = _jsonable(payload)
+
+    text = bounded["content"]["text"]
+    assert isinstance(text, str)
+    assert len(text) < 50_000
+    assert "chars truncated" in text
+    assert len(bounded["items"]) == 257
+    assert bounded["mapping"]["__veritas_truncated_items__"] == 144
+    assert "maximum JSON depth" in json.dumps(bounded["deep"])
 
 
 def test_acp_turn_streams_real_agent_process(tmp_path: Path) -> None:
@@ -115,3 +140,62 @@ if __name__ == "__main__":
     assert str(workspace.resolve()) in updates[0]["detail"]
     assert events[-1]["kind"] == "turn_completed"
     assert events[-1]["payload"]["stop_reason"] == "end_turn"
+
+
+def test_acp_event_queue_applies_backpressure_without_losing_updates(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("veritas.replication.acp._EVENT_QUEUE_MAXSIZE", 1)
+    agent_script = tmp_path / "flood_agent.py"
+    agent_script.write_text(
+        '''from __future__ import annotations
+
+import asyncio
+from typing import Any
+from uuid import uuid4
+
+from acp import Agent, InitializeResponse, NewSessionResponse, PromptResponse, run_agent
+from acp.interfaces import Client
+from acp.schema import AgentMessageChunk, TextContentBlock
+
+
+class FloodAgent(Agent):
+    def on_connect(self, conn: Client) -> None:
+        self._conn = conn
+
+    async def initialize(self, protocol_version: int, **_: Any) -> InitializeResponse:
+        return InitializeResponse(protocol_version=protocol_version)
+
+    async def new_session(self, cwd: str, **_: Any) -> NewSessionResponse:
+        return NewSessionResponse(session_id=uuid4().hex)
+
+    async def prompt(self, session_id: str, prompt: list[object], **_: Any) -> PromptResponse:
+        for index in range(80):
+            message = AgentMessageChunk(
+                session_update="agent_message_chunk",
+                content=TextContentBlock(type="text", text=f"update-{index}"),
+            )
+            await self._conn.session_update(session_id=session_id, update=message)
+        return PromptResponse(stop_reason="end_turn")
+
+
+if __name__ == "__main__":
+    asyncio.run(run_agent(FloodAgent()))
+''',
+        encoding="utf-8",
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    runner = AcpTurnRunner(
+        AgentCommand(argv=(sys.executable, str(agent_script)), name="flood fixture"),
+        permission_policy=PermissionPolicy.DENY,
+    )
+
+    events = asyncio.run(runner.run_turn(workspace, "flood the client"))
+
+    updates = [event for event in events if event["kind"] == "agent_update"]
+    assert len(updates) == 80
+    assert updates[0]["detail"] == "update-0"
+    assert updates[-1]["detail"] == "update-79"
+    assert events[-1]["kind"] == "turn_completed"
