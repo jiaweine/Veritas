@@ -20,6 +20,8 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "/static/claim-graph.js" in shell.text
     assert "/static/finding-navigation.css" in shell.text
     assert "/static/finding-navigation.js" in shell.text
+    assert "/static/settings.css" in shell.text
+    assert "/static/settings.js" in shell.text
     assert "/static/mobile-polish.css" in shell.text
 
     script = client.get("/static/audit-harness-product.js")
@@ -79,6 +81,21 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "Context binding only" in reproduction_script.text
     assert "data-rep-return-finding" in reproduction_script.text
 
+    settings_script = client.get("/static/settings.js")
+    assert settings_script.status_code == 200
+    assert 'getJson("/api/v1/model-providers")' in settings_script.text
+    assert 'data-model-provider-matrix="true"' in settings_script.text
+    assert "Evidence firewall active" in settings_script.text
+    assert "ACP BRIDGE REQUIRED" in settings_script.text
+    assert "secrets_exposed" in settings_script.text
+
+    settings_styles = client.get("/static/settings.css")
+    assert settings_styles.status_code == 200
+    assert ".model-router" in settings_styles.text
+    assert ".provider-node" in settings_styles.text
+    assert "router-scan" in settings_styles.text
+    assert "packet-flow" in settings_styles.text
+
     finding_styles = client.get("/static/finding-navigation.css")
     assert finding_styles.status_code == 200
     assert ".fn-finding-row" in finding_styles.text
@@ -102,7 +119,7 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'const CACHE = "veritas-shell-v23"' in service_worker.text
+    assert 'const CACHE = "veritas-shell-v24"' in service_worker.text
     assert "/static/audit-harness-product.css" in service_worker.text
     assert "/static/audit-harness-product.js" in service_worker.text
     assert "/static/reference-workbench.css" in service_worker.text
@@ -113,4 +130,9 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "/static/claim-graph.js" in service_worker.text
     assert "/static/finding-navigation.css" in service_worker.text
     assert "/static/finding-navigation.js" in service_worker.text
+    assert "/static/settings.css" in service_worker.text
+    assert "/static/settings.js" in service_worker.text
+    assert "/static/reproduction-diff-state.css" in service_worker.text
+    assert "/static/reproduction-review.css" in service_worker.text
+    assert "/static/finding-replication-review.css" in service_worker.text
     assert "/static/mobile-polish.css" in service_worker.text
