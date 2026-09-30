@@ -97,7 +97,8 @@ function assignmentControl(auditId) {
 
 function openProject(projectId) {
   setActiveProject(projectId);
-  window.location.assign("/#audits");
+  history.replaceState(null, "", "/#audits");
+  window.location.reload();
 }
 
 async function assignCurrentAudit(select) {
