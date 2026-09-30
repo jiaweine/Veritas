@@ -1,0 +1,78 @@
+name: harness-stress
+
+on:
+  pull_request:
+    paths:
+      - "src/veritas/harness/**"
+      - "src/veritas/replication/**"
+      - "tests/test_harness_store_stress.py"
+      - "tests/test_benchmark_result_store_stress.py"
+      - "tests/test_replication_acp.py"
+      - "tests/test_replication_permission_control.py"
+      - "scripts/stress_harness_runtime.py"
+      - ".github/workflows/harness-stress.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/veritas/harness/**"
+      - "src/veritas/replication/**"
+      - "tests/test_harness_store_stress.py"
+      - "tests/test_benchmark_result_store_stress.py"
+      - "tests/test_replication_acp.py"
+      - "tests/test_replication_permission_control.py"
+      - "scripts/stress_harness_runtime.py"
+      - ".github/workflows/harness-stress.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e '.[dev,replication]'
+      - name: Concurrent store, control-plane, and ACP payload stress
+        run: python scripts/stress_harness_runtime.py
+      - name: Repeat audit-store concurrency tests
+        run: |
+          for attempt in 1 2 3; do
+            echo "audit-store stress attempt ${attempt}"
+            pytest -q tests/test_harness_store_stress.py
+          done
+      - name: Repeat benchmark-store concurrency tests
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "benchmark-store stress attempt ${attempt}"
+            pytest -q tests/test_benchmark_result_store_stress.py
+          done
+      - name: Repeat replication control-plane tests
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "control-plane stress attempt ${attempt}"
+            pytest -q tests/test_replication_permission_control.py
+          done
+      - name: Repeat ACP echo-process transport
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "ACP echo transport attempt ${attempt}"
+            pytest -q tests/test_replication_acp.py::test_acp_turn_streams_real_agent_process
+          done
+      - name: Repeat ACP in-budget burst transport
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "ACP in-budget burst attempt ${attempt}"
+            pytest -q tests/test_replication_acp.py::test_acp_event_budget_preserves_burst_without_losing_updates
+          done
+      - name: Repeat ACP excessive-flood fail-closed limit
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "ACP overflow limit attempt ${attempt}"
+            pytest -q tests/test_replication_acp.py::test_acp_event_budget_fails_closed_on_excessive_agent_flood
+          done

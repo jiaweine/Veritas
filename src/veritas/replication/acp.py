@@ -13,6 +13,13 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+_MAX_EVENTS_PER_TURN = 2_048
+_EVENT_DRAIN_QUIET_SECONDS = 0.25
+_JSON_MAX_DEPTH = 8
+_JSON_MAX_STRING_CHARS = 32_768
+_JSON_MAX_COLLECTION_ITEMS = 256
+_JSON_MAX_KEY_CHARS = 256
+
 
 class PermissionPolicy(StrEnum):
     """Host-side policy for ACP permission requests.
@@ -154,6 +161,8 @@ class _InteractiveControlPlane:
     def activate(self, run_id: str, *, interactive_permissions: bool) -> None:
         _validate_run_id(run_id)
         with self._lock:
+            if run_id in self._runs:
+                raise RuntimeError(f"replication run control is already active: {run_id}")
             self._runs[run_id] = _RunControl(
                 run_id=run_id,
                 interactive_permissions=interactive_permissions,
@@ -393,6 +402,20 @@ class AcpTurnRunner:
 
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         policy = self.permission_policy
+        inflight_updates = 0
+        accepted_events = 0
+        event_limit_exceeded = False
+
+        def enqueue_event(event: dict[str, Any]) -> bool:
+            nonlocal accepted_events, event_limit_exceeded
+            if event_limit_exceeded:
+                return False
+            if accepted_events >= _MAX_EVENTS_PER_TURN:
+                event_limit_exceeded = True
+                return False
+            accepted_events += 1
+            queue.put_nowait(event)
+            return True
 
         class StreamingClient(Client):
             async def session_update(
@@ -401,26 +424,31 @@ class AcpTurnRunner:
                 update: object,
                 **_: Any,
             ) -> None:
-                payload = _jsonable(update)
-                update_kind = str(
-                    payload.get("sessionUpdate")
-                    or payload.get("session_update")
-                    or type(update).__name__
-                )
-                detail = _update_detail(payload)
-                await queue.put(
-                    ReplicationEvent(
-                        kind="agent_update",
-                        title=update_kind,
-                        detail=detail,
-                        status=_status_for_update(update_kind, payload),
-                        payload={
-                            "session_id": session_id,
-                            "update_kind": update_kind,
-                            "update": payload,
-                        },
-                    ).to_dict()
-                )
+                nonlocal inflight_updates
+                inflight_updates += 1
+                try:
+                    payload = _jsonable(update)
+                    update_kind = str(
+                        payload.get("sessionUpdate")
+                        or payload.get("session_update")
+                        or type(update).__name__
+                    )
+                    detail = _update_detail(payload)
+                    enqueue_event(
+                        ReplicationEvent(
+                            kind="agent_update",
+                            title=update_kind,
+                            detail=detail,
+                            status=_status_for_update(update_kind, payload),
+                            payload={
+                                "session_id": session_id,
+                                "update_kind": update_kind,
+                                "update": payload,
+                            },
+                        ).to_dict()
+                    )
+                finally:
+                    inflight_updates -= 1
 
             async def request_permission(
                 self,
@@ -444,7 +472,7 @@ class AcpTurnRunner:
                     and run_id
                     and _CONTROL_PLANE.interactive(run_id)
                 ):
-                    await queue.put(
+                    queued = enqueue_event(
                         ReplicationEvent(
                             kind="permission",
                             title=title,
@@ -460,17 +488,18 @@ class AcpTurnRunner:
                             },
                         ).to_dict()
                     )
-                    selected_id = await _CONTROL_PLANE.request(
-                        run_id,
-                        request_id,
-                        option_payloads,
-                    )
-                    selected = _select_allow_once_by_id(options, selected_id)
-                elif policy is PermissionPolicy.ALLOW_ONCE:
+                    if queued:
+                        selected_id = await _CONTROL_PLANE.request(
+                            run_id,
+                            request_id,
+                            option_payloads,
+                        )
+                        selected = _select_allow_once_by_id(options, selected_id)
+                elif policy is PermissionPolicy.ALLOW_ONCE and not event_limit_exceeded:
                     selected = _select_allow_once(options)
 
                 decision = "selected" if selected is not None else "cancelled"
-                await queue.put(
+                enqueue_event(
                     ReplicationEvent(
                         kind="permission",
                         title=title,
@@ -507,6 +536,7 @@ class AcpTurnRunner:
                 "permission_policy": self.permission_policy.value,
                 "workspace_scope": "run_specific",
                 "workspace_is_security_boundary": False,
+                "max_stream_events": _MAX_EVENTS_PER_TURN,
             },
         ).to_dict()
 
@@ -524,8 +554,29 @@ class AcpTurnRunner:
                     prompt=[TextContentBlock(type="text", text=prompt.strip())],
                 )
             )
+            loop = asyncio.get_running_loop()
+            quiet_deadline: float | None = None
 
-            while not prompt_task.done() or not queue.empty():
+            while True:
+                if event_limit_exceeded:
+                    if not prompt_task.done():
+                        prompt_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await prompt_task
+                    while not queue.empty():
+                        yield queue.get_nowait()
+                    yield ReplicationEvent(
+                        kind="transport_limit",
+                        title="Replication event limit exceeded",
+                        detail=(
+                            f"The ACP agent emitted more than {_MAX_EVENTS_PER_TURN:,} streamed events; "
+                            "the turn was stopped to bound memory and persisted event growth."
+                        ),
+                        status="blocked",
+                        payload={"session_id": session.session_id, "limit": _MAX_EVENTS_PER_TURN},
+                    ).to_dict()
+                    raise RuntimeError("ACP replication event limit exceeded")
+
                 if run_id and _CONTROL_PLANE.cancelled(run_id):
                     prompt_task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
@@ -540,6 +591,26 @@ class AcpTurnRunner:
                         payload={"session_id": session.session_id},
                     ).to_dict()
                     raise ReplicationCancelledError("replication run cancelled by user")
+
+                prompt_done = prompt_task.done()
+                if prompt_done and queue.empty() and inflight_updates == 0:
+                    if quiet_deadline is None:
+                        quiet_deadline = loop.time() + _EVENT_DRAIN_QUIET_SECONDS
+                    remaining = quiet_deadline - loop.time()
+                    if remaining <= 0:
+                        break
+                    try:
+                        event = await asyncio.wait_for(queue.get(), timeout=remaining)
+                    except TimeoutError:
+                        if queue.empty() and inflight_updates == 0:
+                            break
+                        quiet_deadline = None
+                        continue
+                    quiet_deadline = None
+                    yield event
+                    continue
+
+                quiet_deadline = None
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=0.1)
                 except TimeoutError:
@@ -610,28 +681,56 @@ def _validate_run_id(run_id: str) -> None:
         raise ValueError("invalid replication run id")
 
 
-def _jsonable(value: object) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return {str(key): _json_value(item) for key, item in value.items()}
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        dumped = model_dump(mode="json", by_alias=True, exclude_none=True)
-        if isinstance(dumped, dict):
-            return {str(key): _json_value(item) for key, item in dumped.items()}
-    return {"value": str(value)}
-
-
-def _json_value(value: object) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
+def _clip_text(value: str, limit: int = _JSON_MAX_STRING_CHARS) -> str:
+    if len(value) <= limit:
         return value
+    omitted = len(value) - limit
+    return f"{value[:limit]}… <{omitted} chars truncated>"
+
+
+def _jsonable(value: object) -> dict[str, Any]:
+    converted = _json_value(value, depth=0)
+    if isinstance(converted, dict):
+        return converted
+    return {"value": converted}
+
+
+def _json_value(value: object, *, depth: int) -> Any:
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return _clip_text(value)
+    if depth >= _JSON_MAX_DEPTH:
+        return "<truncated: maximum JSON depth reached>"
     if isinstance(value, dict):
-        return {str(key): _json_value(item) for key, item in value.items()}
+        items = list(value.items())
+        result: dict[str, Any] = {}
+        for key, item in items[:_JSON_MAX_COLLECTION_ITEMS]:
+            result[_clip_text(str(key), _JSON_MAX_KEY_CHARS)] = _json_value(
+                item,
+                depth=depth + 1,
+            )
+        omitted = len(items) - _JSON_MAX_COLLECTION_ITEMS
+        if omitted > 0:
+            result["__veritas_truncated_items__"] = omitted
+        return result
     if isinstance(value, (list, tuple)):
-        return [_json_value(item) for item in value]
+        items = list(value)
+        result = [
+            _json_value(item, depth=depth + 1)
+            for item in items[:_JSON_MAX_COLLECTION_ITEMS]
+        ]
+        omitted = len(items) - _JSON_MAX_COLLECTION_ITEMS
+        if omitted > 0:
+            result.append(f"<{omitted} items truncated>")
+        return result
     model_dump = getattr(value, "model_dump", None)
     if callable(model_dump):
-        return _json_value(model_dump(mode="json", by_alias=True, exclude_none=True))
-    return str(value)
+        return _json_value(
+            model_dump(mode="json", by_alias=True, exclude_none=True),
+            depth=depth + 1,
+        )
+    return _clip_text(str(value))
 
 
 def _update_detail(payload: Mapping[str, Any]) -> str:

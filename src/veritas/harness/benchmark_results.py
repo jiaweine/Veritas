@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import json
 import math
-import threading
+import os
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+from uuid import uuid4
 
 from .benchmark_catalog import benchmark_definition
 from .models import utc_now_iso
+from .store import _shared_root_lock
 
 _RESULT_SCHEMA_VERSION = "1"
 _RESULT_FIELDS = frozenset(
@@ -194,7 +196,7 @@ class BenchmarkResultStore:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).expanduser().resolve() / "benchmark-results"
         self.root.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.RLock()
+        self._lock = _shared_root_lock(self.root)
 
     def ingest(self, payload: object, *, source_bytes: bytes | None = None) -> dict[str, Any]:
         if source_bytes is not None and not isinstance(source_bytes, bytes):
@@ -247,12 +249,22 @@ class BenchmarkResultStore:
                 if existing.get("payload_sha256") != payload_sha256:
                     raise ValueError(f"benchmark result id collision: {result_id}")
                 return existing
-            temporary = destination.with_suffix(".json.tmp")
-            temporary.write_text(
-                json.dumps(record, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n",
-                encoding="utf-8",
+            temporary = self.root / f".{result_id}.{uuid4().hex}.tmp"
+            rendered = (
+                json.dumps(record, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+                + "\n"
             )
-            temporary.replace(destination)
+            try:
+                with temporary.open("w", encoding="utf-8") as handle:
+                    handle.write(rendered)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                temporary.replace(destination)
+            finally:
+                try:
+                    temporary.unlink()
+                except FileNotFoundError:
+                    pass
             try:
                 destination.chmod(0o444)
             except OSError:

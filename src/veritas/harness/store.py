@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from hashlib import sha256
 from pathlib import Path
@@ -10,6 +11,27 @@ from uuid import uuid4
 from .models import HarnessEvent, utc_now_iso
 
 MAX_AUDIT_NOTES_CHARS = 50_000
+
+_ROOT_LOCKS_GUARD = threading.Lock()
+_ROOT_LOCKS: dict[Path, threading.RLock] = {}
+
+
+def _shared_root_lock(root: Path) -> threading.RLock:
+    """Return one process-wide lock for every store instance sharing a root.
+
+    A single FastAPI process can create more than one ``HarnessStore`` for the
+    same data directory (tests, reloads, embedded apps). Instance-local locks
+    let those stores race on the same ``audit.json`` temporary file and can
+    lose read-modify-write updates. Sharing the lock by resolved root keeps
+    same-process access serial without changing the on-disk schema.
+    """
+
+    with _ROOT_LOCKS_GUARD:
+        lock = _ROOT_LOCKS.get(root)
+        if lock is None:
+            lock = threading.RLock()
+            _ROOT_LOCKS[root] = lock
+        return lock
 
 
 class HarnessStore:
@@ -24,7 +46,7 @@ class HarnessStore:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.RLock()
+        self._lock = _shared_root_lock(self.root)
 
     def create_audit(
         self,
@@ -242,12 +264,19 @@ class HarnessStore:
         audit_dir = self._audit_dir(audit_id)
         audit_dir.mkdir(parents=True, exist_ok=True)
         destination = audit_dir / "audit.json"
-        temporary = audit_dir / "audit.json.tmp"
-        temporary.write_text(
-            json.dumps(record, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        temporary.replace(destination)
+        temporary = audit_dir / f".audit.json.{uuid4().hex}.tmp"
+        rendered = json.dumps(record, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+        try:
+            with temporary.open("w", encoding="utf-8") as handle:
+                handle.write(rendered)
+                handle.flush()
+                os.fsync(handle.fileno())
+            temporary.replace(destination)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
 
     @staticmethod
     def _file_sha256(path: Path) -> str:

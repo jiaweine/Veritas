@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from veritas.replication.acp import _InteractiveControlPlane
 
 _OPTIONS = (
@@ -115,3 +117,17 @@ def test_cancel_atomically_revokes_all_pending_approvals() -> None:
         control.deactivate(run_id)
 
     asyncio.run(scenario())
+
+
+def test_duplicate_activation_fails_closed_without_replacing_live_control() -> None:
+    control = _InteractiveControlPlane()
+    run_id = "run_duplicate1"
+    control.activate(run_id, interactive_permissions=True)
+
+    with pytest.raises(RuntimeError, match="already active"):
+        control.activate(run_id, interactive_permissions=False)
+
+    state = control.state(run_id)
+    assert state["active"] is True
+    assert state["interactive_permissions"] is True
+    control.deactivate(run_id)
