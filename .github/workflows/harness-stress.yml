@@ -6,6 +6,7 @@ on:
       - "src/veritas/harness/**"
       - "src/veritas/replication/**"
       - "tests/test_harness_store_stress.py"
+      - "tests/test_benchmark_result_store_stress.py"
       - "tests/test_replication_acp.py"
       - "tests/test_replication_permission_control.py"
       - "scripts/stress_harness_runtime.py"
@@ -16,6 +17,7 @@ on:
       - "src/veritas/harness/**"
       - "src/veritas/replication/**"
       - "tests/test_harness_store_stress.py"
+      - "tests/test_benchmark_result_store_stress.py"
       - "tests/test_replication_acp.py"
       - "tests/test_replication_permission_control.py"
       - "scripts/stress_harness_runtime.py"
@@ -28,7 +30,7 @@ permissions:
 jobs:
   stress:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -38,3 +40,27 @@ jobs:
       - run: pip install -e '.[dev,replication]'
       - name: Concurrent store, control-plane, and ACP payload stress
         run: python scripts/stress_harness_runtime.py
+      - name: Repeat audit-store concurrency tests
+        run: |
+          for attempt in 1 2 3; do
+            echo "audit-store stress attempt ${attempt}"
+            pytest -q tests/test_harness_store_stress.py
+          done
+      - name: Repeat benchmark-store concurrency tests
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "benchmark-store stress attempt ${attempt}"
+            pytest -q tests/test_benchmark_result_store_stress.py
+          done
+      - name: Repeat replication control-plane tests
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "control-plane stress attempt ${attempt}"
+            pytest -q tests/test_replication_permission_control.py
+          done
+      - name: Repeat real ACP subprocess transport tests
+        run: |
+          for attempt in 1 2 3; do
+            echo "ACP transport stress attempt ${attempt}"
+            pytest -q tests/test_replication_acp.py
+          done
