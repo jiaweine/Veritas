@@ -6,7 +6,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from .product_store import ProductHarnessStore
+from .product_store_compact import ProductHarnessStore
 from .run_views import project_run_detail
 from .service import AuditHarness
 from .tools import PaperToolbox
