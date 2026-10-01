@@ -8,9 +8,10 @@ from fastapi import FastAPI
 
 from . import web_core as _core
 from .model_providers import register_model_provider_routes
-from .product_service import ProductAuditHarness
+from .product_service_runs import ProductAuditHarness
 from .replication_review import register_replication_review_routes
 from .request_limits import RequestBodyLimitMiddleware
+from .run_pagination import register_run_pagination_routes
 from .service import AuditHarness
 
 MAX_UPLOAD_BYTES = _core.MAX_UPLOAD_BYTES
@@ -34,8 +35,8 @@ def create_app(
     """Create the product app with bounded derived views and a body guard.
 
     ``web_core`` owns the product/API surface. The default runtime uses
-    ``ProductAuditHarness`` so dashboard/search projections never hydrate every
-    audit history at once. Explicitly supplied Harness instances remain
+    ``ProductAuditHarness`` so dashboard/search/run projections never hydrate
+    every audit history at once. Explicitly supplied Harness instances remain
     untouched for embedding and backwards compatibility.
     """
 
@@ -46,6 +47,7 @@ def create_app(
     app = _core.create_app(resolved_data_dir, harness=runtime)
     register_model_provider_routes(app)
     register_replication_review_routes(app, app.state.harness)
+    register_run_pagination_routes(app, app.state.harness)
     app.add_middleware(_CompatRequestBodyLimitMiddleware)
     return app
 
