@@ -173,6 +173,18 @@ def create_app(
     app.state.benchmark_results = benchmark_results
     app.state.projects = projects
 
+    def runtime_audit_ids() -> list[str]:
+        projector = getattr(runtime, "audit_ids", None)
+        if callable(projector):
+            return [str(audit_id) for audit_id in projector()]
+        return [str(item["audit_id"]) for item in runtime.list_audits()]
+
+    def require_audit_metadata(audit_id: str) -> dict[str, object]:
+        projector = getattr(runtime, "get_audit_metadata", None)
+        if callable(projector):
+            return projector(audit_id)
+        return runtime.get_audit(audit_id)
+
     origins = _cors_origins()
     if origins:
         app.add_middleware(
@@ -310,8 +322,7 @@ def create_app(
 
     def project_snapshot() -> dict[str, object]:
         try:
-            audit_ids = [str(item["audit_id"]) for item in runtime.list_audits()]
-            return projects.snapshot(audit_ids)
+            return projects.snapshot(runtime_audit_ids())
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise HTTPException(
                 status_code=500,
@@ -341,7 +352,7 @@ def create_app(
     @app.get("/api/v1/audits/{audit_id}/project")
     def audit_project(audit_id: str) -> dict[str, object]:
         try:
-            runtime.get_audit(audit_id)
+            require_audit_metadata(audit_id)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         try:
@@ -368,7 +379,7 @@ def create_app(
         request: ProjectAssignmentRequest,
     ) -> dict[str, object]:
         try:
-            runtime.get_audit(audit_id)
+            require_audit_metadata(audit_id)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         project_snapshot()
@@ -461,7 +472,7 @@ def create_app(
         file: Annotated[UploadFile, File()],
     ) -> dict[str, object]:
         try:
-            runtime.get_audit(audit_id)
+            require_audit_metadata(audit_id)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         payload = await _read_upload_limited(
@@ -498,7 +509,7 @@ def create_app(
         if not request.message.strip():
             raise HTTPException(status_code=422, detail="message must not be empty")
         try:
-            runtime.get_audit(audit_id)
+            require_audit_metadata(audit_id)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -516,7 +527,7 @@ def create_app(
         if not request.prompt.strip():
             raise HTTPException(status_code=422, detail="replication prompt must not be empty")
         try:
-            runtime.get_audit(audit_id)
+            require_audit_metadata(audit_id)
         except (FileNotFoundError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         try:
