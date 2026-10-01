@@ -118,11 +118,13 @@ class ClaimEstimateAlignment:
     matcher_confidence: float
     claim_source: SourceLocation
     estimate_source: SourceLocation
+    source_identity_confidence: float = 1.0
 
     def __post_init__(self) -> None:
         for label, value in (
             ("extraction_confidence", self.extraction_confidence),
             ("matcher_confidence", self.matcher_confidence),
+            ("source_identity_confidence", self.source_identity_confidence),
         ):
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise TypeError(f"{label} must be numeric")
@@ -135,6 +137,7 @@ class ClaimEstimateAlignment:
             self.identity_match.confidence,
             float(self.extraction_confidence),
             float(self.matcher_confidence),
+            float(self.source_identity_confidence),
         )
 
     def eligible_for_cross_location_e3(
@@ -146,6 +149,7 @@ class ClaimEstimateAlignment:
         return (
             self.identity_match.exact_core_identity
             and self.identity_match.confidence >= minimum_identity_confidence
+            and self.source_identity_confidence >= minimum_identity_confidence
             and self.effective_confidence >= minimum_effective_confidence
         )
 
@@ -267,11 +271,16 @@ def build_claim_estimate_alignment(
     except KeyError as exc:
         raise ValueError(f"unknown estimate object id: {estimate_object_id!r}") from exc
 
-    field_confidence = min(
+    field_extraction_confidence = min(
         (field.extraction_confidence for field in estimate.fields.values()),
         default=1.0,
     )
-    extraction_confidence = min(claim.extraction_confidence, field_confidence)
+    field_identity_confidence = min(
+        (field.identity_confidence for field in estimate.fields.values()),
+        default=1.0,
+    )
+    extraction_confidence = min(claim.extraction_confidence, field_extraction_confidence)
+    source_identity_confidence = min(claim.identity_confidence, field_identity_confidence)
     return ClaimEstimateAlignment(
         claim_id=claim_id,
         estimate_object_id=estimate_object_id,
@@ -280,6 +289,7 @@ def build_claim_estimate_alignment(
         matcher_confidence=matcher_confidence,
         claim_source=claim.source,
         estimate_source=estimate.source,
+        source_identity_confidence=source_identity_confidence,
     )
 
 
@@ -295,7 +305,10 @@ def add_claim_estimate_candidate(
         relation=RelationType.REPORTS,
         confidence=alignment.matcher_confidence,
         extraction_confidence=alignment.extraction_confidence,
-        identity_confidence=alignment.identity_match.confidence,
+        identity_confidence=min(
+            alignment.identity_match.confidence,
+            alignment.source_identity_confidence,
+        ),
         sources=(alignment.claim_source, alignment.estimate_source),
     )
     graph.add_edge(edge)
@@ -316,7 +329,7 @@ def require_cross_location_e3_identity(
     ):
         raise ValueError(
             "cross-location E3 requires high-confidence claim/estimand identity with "
-            "high-confidence extraction"
+            "high-confidence extraction and source identity"
         )
 
 
@@ -350,7 +363,11 @@ def link_empirical_evidence_chain(
             sample_id,
             RelationType.USES_SAMPLE,
             confidence=confidence,
-            extraction_confidence=min(sample.extraction_confidence, _object_confidence(estimate)),
+            extraction_confidence=min(
+                sample.extraction_confidence,
+                _object_extraction_confidence(estimate),
+            ),
+            identity_confidence=_object_identity_confidence(estimate),
             sources=(estimate.source, sample.source),
         ),
         ClaimEdge(
@@ -390,9 +407,16 @@ def link_empirical_evidence_chain(
     return tuple(links)
 
 
-def _object_confidence(graph_object) -> float:
+def _object_extraction_confidence(graph_object) -> float:
     return min(
         (field.extraction_confidence for field in graph_object.fields.values()),
+        default=1.0,
+    )
+
+
+def _object_identity_confidence(graph_object) -> float:
+    return min(
+        (field.identity_confidence for field in graph_object.fields.values()),
         default=1.0,
     )
 
