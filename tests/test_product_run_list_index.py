@@ -162,7 +162,7 @@ def test_ten_thousand_run_cold_scan_then_bounded_warm_pages(tmp_path, monkeypatc
     second = reloaded.runs_page(limit=100, cursor=first["next_cursor"])
     assert len(second["items"]) == 100
     assert second["items"][0]["run_id"] == "run_009899"
-    assert set(item["run_id"] for item in first["items"]).isdisjoint(
+    assert {item["run_id"] for item in first["items"]}.isdisjoint(
         item["run_id"] for item in second["items"]
     )
 
