@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any
 
 from .models import SourceLocation
+from .types import ComparisonOperator
 
 JsonScalar = str | int | float | bool | None
 
@@ -50,13 +51,47 @@ class ArtifactRef:
 
 @dataclass(frozen=True)
 class ExtractedField:
+    """One source-addressable displayed field before deterministic judgment.
+
+    ``raw`` preserves the exact displayed string while ``value`` carries the
+    parser's normalized JSON scalar. ``displayed_precision`` is the number of
+    decimal places explicitly displayed when that concept applies; ``None``
+    means the parser did not establish a precision. ``comparison_operator`` is
+    likewise explicit rather than inferred from the normalized value.
+
+    Extraction and claim-identity uncertainty remain separate so downstream
+    detectors can conservatively propagate the weaker confidence without
+    needing the original parser state.
+    """
+
     raw: str
     value: JsonScalar
     source: SourceLocation
     extraction_confidence: float
+    displayed_precision: int | None = None
+    comparison_operator: ComparisonOperator | None = None
+    identity_confidence: float = 1.0
 
     def __post_init__(self) -> None:
         _validate_probability(self.extraction_confidence, label="extraction_confidence")
+        _validate_probability(self.identity_confidence, label="identity_confidence")
+        if self.displayed_precision is not None:
+            if isinstance(self.displayed_precision, bool) or not isinstance(
+                self.displayed_precision, int
+            ):
+                raise TypeError("displayed_precision must be an integer or None")
+            if self.displayed_precision < 0:
+                raise ValueError("displayed_precision must be non-negative")
+        if self.comparison_operator is not None and not isinstance(
+            self.comparison_operator, ComparisonOperator
+        ):
+            raise TypeError("comparison_operator must be a ComparisonOperator or None")
+
+    @property
+    def effective_confidence(self) -> float:
+        """Conservative confidence available to parser-independent detectors."""
+
+        return min(self.extraction_confidence, self.identity_confidence)
 
 
 @dataclass(frozen=True)
@@ -209,8 +244,17 @@ class StatisticalClaimGraph:
                     "source": asdict(value.source),
                     "fields": {
                         field_name: {
-                            **asdict(field_value),
+                            "raw": field_value.raw,
+                            "value": field_value.value,
                             "source": asdict(field_value.source),
+                            "extraction_confidence": field_value.extraction_confidence,
+                            "displayed_precision": field_value.displayed_precision,
+                            "comparison_operator": (
+                                field_value.comparison_operator.value
+                                if field_value.comparison_operator is not None
+                                else None
+                            ),
+                            "identity_confidence": field_value.identity_confidence,
                         }
                         for field_name, field_value in value.fields.items()
                     },
@@ -262,6 +306,13 @@ class StatisticalClaimGraph:
                     value=value["value"],
                     source=_source_from_dict(value["source"]),
                     extraction_confidence=value["extraction_confidence"],
+                    displayed_precision=value.get("displayed_precision"),
+                    comparison_operator=(
+                        ComparisonOperator(value["comparison_operator"])
+                        if value.get("comparison_operator") is not None
+                        else None
+                    ),
+                    identity_confidence=value.get("identity_confidence", 1.0),
                 )
                 for name, value in obj.get("fields", {}).items()
             }
