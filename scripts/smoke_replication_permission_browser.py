@@ -108,6 +108,14 @@ def _exercise_decision(
     resolved = page.locator(f".rep-permission.resolved[data-permission-card='{request_id}']").last
     resolved.wait_for(state="visible", timeout=20_000)
     _wait_for_run_ready(page)
+
+    archived_cards = page.locator(f".rep-permission[data-permission-card='{request_id}']")
+    if archived_cards.locator("[data-permission-decision]").count():
+        raise AssertionError("Historical permission request remained actionable after the run ended")
+    archived_text = archived_cards.first.inner_text().lower()
+    if "historical permission request" not in archived_text:
+        raise AssertionError(f"Archived approval did not disclose its non-actionable state: {archived_text!r}")
+
     page.screenshot(path=output_dir / screenshot_name, full_page=True)
 
     control_after = client.get(f"/api/v1/replication/runs/{run_id}/control")
@@ -124,10 +132,17 @@ def _exercise_decision(
     permission_events = _permission_events(run)
     event_decisions = [str((event.get("payload") or {}).get("decision") or "") for event in permission_events]
     expected_terminal = "selected" if decision == "allow_once" else "cancelled"
-    if event_decisions != ["pending", expected_terminal]:
+    if event_decisions != ["historical_pending", expected_terminal]:
         raise AssertionError(
-            f"Permission audit trail is incomplete: expected pending/{expected_terminal}, got {event_decisions}"
+            "Permission audit trail is incomplete or archived unsafely: "
+            f"expected historical_pending/{expected_terminal}, got {event_decisions}"
         )
+    historical_payload = permission_events[0].get("payload") or {}
+    if historical_payload.get("policy") != "interactive":
+        raise AssertionError(f"Archived permission event lost the interactive policy: {historical_payload}")
+    if "historical permission request" not in str(permission_events[0].get("detail") or "").lower():
+        raise AssertionError(f"Archived permission event lost its non-actionable disclosure: {permission_events[0]}")
+
     terminal_payload = permission_events[-1].get("payload") or {}
     if terminal_payload.get("policy") != "interactive":
         raise AssertionError(f"Permission event lost the interactive policy: {terminal_payload}")
