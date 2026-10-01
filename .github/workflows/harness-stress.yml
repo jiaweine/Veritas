@@ -9,6 +9,7 @@ on:
       - "tests/test_harness_event_reads.py"
       - "tests/test_harness_product_view_reads.py"
       - "tests/test_product_run_index_compaction.py"
+      - "tests/test_product_run_list_index.py"
       - "tests/test_benchmark_result_store_stress.py"
       - "tests/test_harness_workspace_descriptor_safety.py"
       - "tests/test_harness_request_limits.py"
@@ -25,6 +26,7 @@ on:
       - "tests/test_harness_event_reads.py"
       - "tests/test_harness_product_view_reads.py"
       - "tests/test_product_run_index_compaction.py"
+      - "tests/test_product_run_list_index.py"
       - "tests/test_benchmark_result_store_stress.py"
       - "tests/test_harness_workspace_descriptor_safety.py"
       - "tests/test_harness_request_limits.py"
@@ -73,6 +75,12 @@ jobs:
           for attempt in 1 2 3 4 5; do
             echo "run-index compaction stress attempt ${attempt}"
             pytest -q tests/test_product_run_index_compaction.py
+          done
+      - name: Repeat indexed run-page tests
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "indexed run-page stress attempt ${attempt}"
+            pytest -q tests/test_product_run_list_index.py
           done
       - name: Repeat benchmark-store concurrency tests
         run: |
