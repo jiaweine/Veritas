@@ -4,13 +4,7 @@ A `StatisticalClaimGraph` is intended to be a durable detector-input boundary, n
 
 ## RegressionResult adapter
 
-`veritas.claim_reconstruction.reconstruct_statistical_object()` supports `RegressionResult` nodes. The adapter rebuilds detector-facing `ReportedNumber` values from graph fields using only:
-
-- parsed numeric value;
-- displayed precision;
-- explicit comparison operator;
-- graph/object source provenance;
-- explicit inference metadata needed by the regression detector.
+`veritas.claim_reconstruction.reconstruct_statistical_object()` supports `RegressionResult` nodes. The adapter rebuilds detector-facing `ReportedNumber` values from graph fields using only parsed numeric value, displayed precision, explicit comparison operator, graph/object source provenance, and explicit inference metadata needed by the regression detector.
 
 The exact raw displayed string remains in `ExtractedField.raw` for provenance and review even though `ReportedNumber` itself stores the parsed value, precision, and comparison operator.
 
@@ -21,8 +15,8 @@ The graph's field payload is intentionally scalar so every displayed quantity ca
 ### SamplePartition
 
 - `total_n` — optional integer total.
-- `group_count:<label>` — one integer field per displayed group count. Everything after the first prefix is the exact group label.
-- `non_overlapping` — required boolean whenever group counts exist, because silently accepting the model default could create a hard arithmetic contradiction.
+- `group_count:<label>` — one integer field per displayed group count.
+- `non_overlapping` — required boolean whenever group counts exist.
 - `exhaustive` — optional boolean.
 - `explanation_present` — optional boolean.
 
@@ -35,6 +29,14 @@ Counts remain independently source-addressable. Negative counts reject reconstru
 
 Cells need not duplicate both triangles: missing cells remain `None` and the correlation detector performs its existing symmetry/interval logic. Every displayed cell must carry its explicit comparison operator, while displayed precision flows into the reconstructed rounding interval.
 
+### MeanSD
+
+A standalone reported N/mean/SD row reconstructs to the existing `GroupSummary` type using required `label`, integer `n >= 2`, reported `mean` and `sd`, optional `sd_definition`, and optional `weighted` status. A negative SD or invalid sample size rejects reconstruction. Missing weighting or SD-definition semantics do not get guessed into detector-applicable values.
+
+### GroupComparison
+
+A two-group comparison reconstructs directly to the existing `TwoGroupComparison` detector input. Each group remains independently source-addressable through `group_a:` / `group_b:` prefixes. Optional reported statistics and test-definition metadata stay explicit, while missing verification flags only drive the detector toward `UNVERIFIABLE`. If a p-value is reported, `p_value_adjusted` is required because silently defaulting it to `False` could create a hard numerical check that the graph did not justify.
+
 ### DiscreteSummary
 
 - `n` — required positive integer.
@@ -42,51 +44,45 @@ Cells need not duplicate both triangles: missing cells remain `None` and the cor
 - `sd` — optional reported number with explicit comparison operator.
 - `support:<index>` — finite support values with contiguous zero-based indexes; at least two distinct values are required.
 - `sd_definition` — required when `sd` exists and must be `sample`, `population`, or `unknown`.
-- `support_verified`, `n_verified`, and `weighted` — required booleans. These detector applicability gates are never inherited from model defaults.
-
-This preserves the distinction between a mathematically feasible finite-support check and the separate evidence needed to establish that the displayed statistic is actually an unweighted count summary over the claimed support.
+- `support_verified`, `n_verified`, and `weighted` — required booleans and never inherited from model defaults.
 
 ### LogitResult
 
-- `beta` and `odds_ratio` — required reported numbers.
-- `exp_beta_relation_verified` — required boolean establishing that the two displayed quantities are claimed on the same logit scale with OR = exp(beta).
+`beta` and `odds_ratio` are required reported numbers, while `exp_beta_relation_verified` is a required boolean establishing that the displayed quantities are claimed on the same logit scale with OR = exp(beta).
 
 ### MediationResult
 
-- `a_path`, `b_path`, and `indirect_effect` — required reported numbers.
-- `product_definition_verified` — required boolean establishing that the reported indirect effect is defined as `a*b`.
-- `scale_consistent_verified` — required boolean establishing compatible scales for the three quantities.
-
-The relation/scale booleans are explicit provenance gates. Missing gates reject reconstruction instead of becoming the dataclass defaults that could accidentally authorize a numerical contradiction.
+`a_path`, `b_path`, and `indirect_effect` are required reported numbers. `product_definition_verified` and `scale_consistent_verified` are required booleans establishing the product definition and compatible scales.
 
 ### StandardizedRegressionReconstruction
 
 The standardized OLS object references a separately source-addressable `CorrelationMatrix` graph object instead of embedding matrix bytes inside a second object.
 
-- `correlation_matrix_object_id` — required string ID of an existing `CorrelationMatrix` object in the same graph.
+- `correlation_matrix_object_id` — required string ID of an existing `CorrelationMatrix` in the same graph.
 - `outcome` — required outcome label.
 - `predictor:<index>` — contiguous zero-based predictor labels.
 - `standardized_beta:<index>` — one reported coefficient per predictor with the exact same index set.
-- `ols_identity_verified`, `same_sample_verified`, and `complete_predictor_set_verified` — required booleans matching the deterministic detector's applicability boundary.
+- `ols_identity_verified`, `same_sample_verified`, and `complete_predictor_set_verified` — required booleans matching the detector's applicability boundary.
 
-Reconstruction resolves and independently validates the referenced correlation object, rejects missing or wrong-typed references, and preserves every standardized beta's displayed precision and comparison operator. A missing gate never inherits the permissive dataclass default.
+Reconstruction independently validates the referenced correlation object, rejects missing or wrong-typed references, and preserves every standardized beta's displayed precision and comparison operator.
 
 ## Fail-closed requirements
 
 Reconstruction does not infer detector-relevant semantics from model defaults.
 
-- Every reported numeric field must carry an explicit `comparison_operator`. Missing operators reject reconstruction rather than silently becoming equality.
-- A reported p-value or confidence interval requires an explicit `inference_distribution` field.
-- A reported p-value requires explicit `p_value_adjusted` status. Missing adjustment status must not silently become `False` because that could turn an otherwise unverifiable p-value into a hard numerical check.
+- Every reported numeric field must carry an explicit `comparison_operator`.
+- A reported p-value or confidence interval requires explicit inference metadata where that metadata changes detector applicability.
 - Any reported confidence-interval bound requires an explicit `ci_level`.
 - A populated sample partition must state whether groups are non-overlapping.
-- Correlation, finite-support, predictor, and standardized-beta indexes must be contiguous and every indexed quantity must refer to a declared position.
-- Discrete, logit, mediation, and standardized-regression detector applicability gates must be present explicitly even when their value is `False`.
-- Cross-object references must resolve to the exact expected graph object type; reconstruction never coerces a nearby schema.
+- Indexed correlation, finite-support, predictor, and standardized-beta fields must be contiguous and internally consistent.
+- Mean/SD sample sizes and SD values must satisfy the existing typed-model constraints.
+- Group-comparison flags default only toward `UNVERIFIABLE`; they never default toward detector authority.
+- Discrete, logit, mediation, and standardized-regression applicability gates must be explicit even when false.
+- Cross-object references must resolve to the exact expected graph object type.
 - Unsupported statistical object types raise `ClaimObjectReconstructionError`; callers must not guess a nearby schema.
 
 This means older or incomplete graphs can remain valid provenance records while still being ineligible for parser-independent detector execution.
 
 ## Current scope
 
-Adapters currently cover `RegressionResult`, `SamplePartition`, `CorrelationMatrix`, `DiscreteSummary`, `LogitResult`, `MediationResult`, and `StandardizedRegressionReconstruction`. Additional adapters should be added object-by-object with their own fail-closed metadata contract and round-trip detector tests rather than through a permissive generic coercion layer.
+Adapters currently cover `RegressionResult`, `SamplePartition`, `CorrelationMatrix`, `MeanSD`, `GroupComparison`, `DiscreteSummary`, `LogitResult`, `MediationResult`, and `StandardizedRegressionReconstruction`. Additional adapters should be added object-by-object with their own fail-closed metadata contract and round-trip detector tests rather than through a permissive generic coercion layer.
