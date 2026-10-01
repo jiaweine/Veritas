@@ -58,7 +58,7 @@ def test_provider_power_interactions_are_wired_and_accessible() -> None:
     assert "page.keyboard.press(\"j\")" in browser
     assert "click(button=\"right\"" in browser
     assert 'data-quicklook=\'true\'' in browser
-    assert "Provider ID copied" in browser
+    assert "provider id copied" in browser
     assert "First Escape" in browser
     assert "Second Escape" in browser
     assert "Third Escape" not in browser  # final unpin is asserted by state, not prose only
