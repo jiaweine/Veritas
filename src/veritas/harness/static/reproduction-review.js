@@ -149,9 +149,154 @@ async function enhanceRunInspector() {
   currentOrigin.insertAdjacentElement("afterend", reviewCard(runId, payload));
 }
 
+function permissionToolData(card) {
+  const raw = card.querySelector(".rep-permission-copy .rep-json")?.textContent || "";
+  if (!raw.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function permissionRawInput(tool) {
+  const raw = tool.rawInput || tool.raw_input || {};
+  return raw && typeof raw === "object" ? raw : {};
+}
+
+function permissionCapability(tool) {
+  const value = String(tool.kind || "operation").trim().toLowerCase();
+  return value || "operation";
+}
+
+function enhancePermissionCard(card) {
+  if (card.dataset.permissionEnhanced === "true") return;
+  card.dataset.permissionEnhanced = "true";
+  card.classList.add("rep-permission-surface");
+
+  const pending = card.classList.contains("pending");
+  card.setAttribute("role", "group");
+  card.setAttribute("aria-label", pending ? "Sensitive operation approval" : "Permission audit record");
+
+  const copy = card.querySelector(".rep-permission-copy");
+  const actions = card.querySelector(".rep-permission-actions");
+  const tool = permissionToolData(card);
+  const rawInput = permissionRawInput(tool);
+  const capability = permissionCapability(tool);
+  card.dataset.permissionCapability = capability;
+
+  if (copy) {
+    const payload = copy.querySelector(".rep-json");
+    const meta = document.createElement("div");
+    meta.className = "rep-permission-meta";
+    meta.dataset.permissionMeta = "true";
+    meta.innerHTML = `<span><b>Capability</b>${escapeHtml(capability)}</span><span><b>Scope</b>One operation</span><span><b>Persistence</b>Never remembered</span>`;
+    copy.insertBefore(meta, payload || null);
+
+    const command = typeof rawInput.command === "string" ? rawInput.command.trim() : "";
+    if (command) {
+      const code = document.createElement("code");
+      code.className = "rep-permission-command";
+      code.dataset.permissionCommand = "true";
+      code.textContent = command;
+      code.title = command;
+      copy.insertBefore(code, payload || null);
+    }
+
+    const boundary = document.createElement("div");
+    boundary.className = "rep-permission-boundary";
+    boundary.dataset.permissionBoundary = "true";
+    boundary.textContent = pending
+      ? "Your decision applies only to this request. Veritas never turns this into permanent approval."
+      : "Audit record only. This historical request cannot be approved again.";
+    copy.insertBefore(boundary, payload || null);
+  }
+
+  if (pending && actions) {
+    actions.setAttribute("aria-label", "Permission decision");
+    actions.setAttribute("aria-live", "polite");
+    const reject = actions.querySelector("[data-permission-decision='reject']");
+    const allow = actions.querySelector("[data-permission-decision='allow_once']");
+    if (reject) {
+      reject.setAttribute("type", "button");
+      reject.setAttribute("title", "Do not run this operation");
+      reject.setAttribute("aria-label", "Reject this operation");
+    }
+    if (allow) {
+      allow.setAttribute("type", "button");
+      allow.setAttribute("title", "Approve this operation once; the choice is not remembered");
+      allow.setAttribute("aria-label", "Allow this operation once");
+    }
+  }
+
+  card.addEventListener("pointermove", (event) => {
+    if (!card.classList.contains("pending")) return;
+    const rect = card.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    card.style.setProperty("--permission-x", `${Math.max(0, Math.min(rect.width, event.clientX - rect.left))}px`);
+    card.style.setProperty("--permission-y", `${Math.max(0, Math.min(rect.height, event.clientY - rect.top))}px`);
+  });
+  card.addEventListener("pointerleave", () => {
+    card.style.setProperty("--permission-x", "50%");
+    card.style.setProperty("--permission-y", "50%");
+  });
+
+  bindPermissionDecisionLock(card);
+}
+
+function bindPermissionDecisionLock(card) {
+  const actions = card.querySelector(".rep-permission-actions");
+  if (!actions) return;
+  actions.querySelectorAll("[data-permission-decision]").forEach((button) => {
+    if (button.dataset.permissionPolishBound === "true") return;
+    button.dataset.permissionPolishBound = "true";
+    button.addEventListener("click", () => {
+      if (card.dataset.permissionSubmitting === "true") return;
+      card.dataset.permissionSubmitting = "true";
+      card.classList.add("submitting");
+      actions.setAttribute("aria-busy", "true");
+      const buttons = [...actions.querySelectorAll("[data-permission-decision]")];
+      buttons.forEach((candidate) => { candidate.disabled = true; });
+
+      const observer = new MutationObserver(() => {
+        const remaining = [...actions.querySelectorAll("[data-permission-decision]")];
+        if (!remaining.length) {
+          card.classList.remove("submitting");
+          card.classList.add("decision-dispatched");
+          card.dataset.permissionSubmitting = "false";
+          actions.removeAttribute("aria-busy");
+          observer.disconnect();
+          return;
+        }
+        if (!button.disabled) {
+          remaining.forEach((candidate) => { candidate.disabled = false; });
+          card.classList.remove("submitting");
+          card.dataset.permissionSubmitting = "false";
+          actions.removeAttribute("aria-busy");
+          observer.disconnect();
+        }
+      });
+      observer.observe(actions, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["disabled"],
+      });
+    });
+  });
+}
+
+function enhancePermissionCards(root = document) {
+  root.querySelectorAll(".rep-permission").forEach(enhancePermissionCard);
+}
+
 function scheduleEnhancement() {
   clearTimeout(enhanceTimer);
-  enhanceTimer = setTimeout(() => { void enhanceRunInspector(); }, 0);
+  enhanceTimer = setTimeout(() => {
+    enhancePermissionCards();
+    void enhanceRunInspector();
+  }, 0);
 }
 
 if (main) {
