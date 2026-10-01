@@ -3,9 +3,12 @@ from __future__ import annotations
 import math
 
 from .claims import ExtractedField, StatisticalClaimGraph, StatisticalObjectNode
-from .models import RegressionResult, ReportedNumber
+from .models import CorrelationMatrix, RegressionResult, ReportedNumber, SamplePartition
 
 _SUPPORTED_INFERENCE_DISTRIBUTIONS = {"normal", "student_t", "unknown"}
+_GROUP_COUNT_PREFIX = "group_count:"
+_LABEL_PREFIX = "label:"
+_CELL_PREFIX = "cell:"
 
 
 class ClaimObjectReconstructionError(ValueError):
@@ -32,6 +35,10 @@ def reconstruct_statistical_object(
 
     if node.object_type == "RegressionResult":
         return reconstruct_regression_result(node)
+    if node.object_type == "SamplePartition":
+        return reconstruct_sample_partition(node)
+    if node.object_type == "CorrelationMatrix":
+        return reconstruct_correlation_matrix(node)
     raise ClaimObjectReconstructionError(
         f"unsupported statistical object type: {node.object_type!r}"
     )
@@ -100,6 +107,109 @@ def reconstruct_regression_result(node: StatisticalObjectNode) -> RegressionResu
     )
 
 
+def reconstruct_sample_partition(node: StatisticalObjectNode) -> SamplePartition:
+    """Rebuild a sample partition from individually source-addressable counts."""
+
+    if node.object_type != "SamplePartition":
+        raise ClaimObjectReconstructionError(
+            f"expected SamplePartition node, got {node.object_type!r}"
+        )
+
+    total_n = _int_field(node, "total_n")
+    if total_n is not None and total_n < 0:
+        raise ClaimObjectReconstructionError("total_n must be non-negative")
+
+    groups: dict[str, int] = {}
+    for field_name, field in node.fields.items():
+        if not field_name.startswith(_GROUP_COUNT_PREFIX):
+            continue
+        label = field_name[len(_GROUP_COUNT_PREFIX) :]
+        if not label.strip():
+            raise ClaimObjectReconstructionError("group_count field requires a non-empty label")
+        count = _integer_value(field, field_name)
+        if count < 0:
+            raise ClaimObjectReconstructionError(f"field {field_name!r} must be non-negative")
+        groups[label] = count
+
+    non_overlapping = _bool_field(
+        node,
+        "non_overlapping",
+        required=bool(groups),
+        default=True,
+    )
+    assert non_overlapping is not None
+    exhaustive = _bool_field(node, "exhaustive")
+    explanation_present = _bool_field(node, "explanation_present")
+
+    return SamplePartition(
+        object_id=node.object_id,
+        total_n=total_n,
+        groups=groups,
+        exhaustive=exhaustive,
+        non_overlapping=non_overlapping,
+        explanation_present=explanation_present,
+        source=node.source,
+    )
+
+
+def reconstruct_correlation_matrix(node: StatisticalObjectNode) -> CorrelationMatrix:
+    """Rebuild a correlation matrix from indexed label/cell graph fields.
+
+    Labels use ``label:<index>`` and cells use ``cell:<row>:<column>``. Every
+    numerical cell remains its own ``ExtractedField`` and therefore retains its
+    source location, raw display string, rounding precision, operator, and
+    extraction/identity confidence in the graph.
+    """
+
+    if node.object_type != "CorrelationMatrix":
+        raise ClaimObjectReconstructionError(
+            f"expected CorrelationMatrix node, got {node.object_type!r}"
+        )
+
+    labels_by_index: dict[int, str] = {}
+    for field_name, field in node.fields.items():
+        if not field_name.startswith(_LABEL_PREFIX):
+            continue
+        index = _single_index(field_name, _LABEL_PREFIX)
+        if index in labels_by_index:
+            raise ClaimObjectReconstructionError(f"duplicate correlation label index {index}")
+        if not isinstance(field.value, str) or not field.value.strip():
+            raise ClaimObjectReconstructionError(
+                f"field {field_name!r} must contain a non-empty label"
+            )
+        labels_by_index[index] = field.value.strip()
+
+    if len(labels_by_index) < 2:
+        raise ClaimObjectReconstructionError("CorrelationMatrix requires at least two label fields")
+    expected_indexes = set(range(len(labels_by_index)))
+    if set(labels_by_index) != expected_indexes:
+        raise ClaimObjectReconstructionError(
+            "correlation label indexes must be contiguous and start at zero"
+        )
+    labels = tuple(labels_by_index[index] for index in range(len(labels_by_index)))
+    if len(set(labels)) != len(labels):
+        raise ClaimObjectReconstructionError("correlation labels must be unique")
+
+    size = len(labels)
+    cells: list[list[ReportedNumber | None]] = [[None for _ in range(size)] for _ in range(size)]
+    for field_name, field in node.fields.items():
+        if not field_name.startswith(_CELL_PREFIX):
+            continue
+        row, column = _matrix_indexes(field_name)
+        if row >= size or column >= size:
+            raise ClaimObjectReconstructionError(
+                f"correlation cell {field_name!r} references label index outside matrix"
+            )
+        cells[row][column] = _reported_from_field(field, field_name)
+
+    return CorrelationMatrix(
+        object_id=node.object_id,
+        labels=labels,
+        cells=tuple(tuple(row) for row in cells),
+        source=node.source,
+    )
+
+
 def _reported_number(
     node: StatisticalObjectNode,
     name: str,
@@ -109,6 +219,10 @@ def _reported_number(
     field = _field(node, name, required=required)
     if field is None:
         return None
+    return _reported_from_field(field, name)
+
+
+def _reported_from_field(field: ExtractedField, name: str) -> ReportedNumber:
     value = _finite_number(field, name)
     if field.comparison_operator is None:
         raise ClaimObjectReconstructionError(
@@ -132,6 +246,19 @@ def _float_field(
     if field is None:
         return default
     return _finite_number(field, name)
+
+
+def _int_field(
+    node: StatisticalObjectNode,
+    name: str,
+    *,
+    required: bool = False,
+    default: int | None = None,
+) -> int | None:
+    field = _field(node, name, required=required)
+    if field is None:
+        return default
+    return _integer_value(field, name)
 
 
 def _string_field(
@@ -173,7 +300,7 @@ def _field(
     field = node.fields.get(name)
     if field is None and required:
         raise ClaimObjectReconstructionError(
-            f"RegressionResult reconstruction requires field {name!r}"
+            f"{node.object_type} reconstruction requires field {name!r}"
         )
     return field
 
@@ -186,3 +313,43 @@ def _finite_number(field: ExtractedField, name: str) -> float:
     if not math.isfinite(number):
         raise ClaimObjectReconstructionError(f"field {name!r} must contain a finite value")
     return number
+
+
+def _integer_value(field: ExtractedField, name: str) -> int:
+    value = field.value
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ClaimObjectReconstructionError(f"field {name!r} must contain an integer")
+    return value
+
+
+def _single_index(field_name: str, prefix: str) -> int:
+    raw = field_name[len(prefix) :]
+    try:
+        index = int(raw)
+    except ValueError as exc:
+        raise ClaimObjectReconstructionError(
+            f"field {field_name!r} requires an integer index"
+        ) from exc
+    if index < 0:
+        raise ClaimObjectReconstructionError(f"field {field_name!r} requires a non-negative index")
+    return index
+
+
+def _matrix_indexes(field_name: str) -> tuple[int, int]:
+    raw = field_name[len(_CELL_PREFIX) :]
+    parts = raw.split(":")
+    if len(parts) != 2:
+        raise ClaimObjectReconstructionError(
+            f"field {field_name!r} must use cell:<row>:<column>"
+        )
+    try:
+        row, column = (int(part) for part in parts)
+    except ValueError as exc:
+        raise ClaimObjectReconstructionError(
+            f"field {field_name!r} requires integer matrix indexes"
+        ) from exc
+    if row < 0 or column < 0:
+        raise ClaimObjectReconstructionError(
+            f"field {field_name!r} requires non-negative matrix indexes"
+        )
+    return row, column

@@ -145,12 +145,12 @@ def test_unsupported_graph_object_type_is_not_guessed() -> None:
     graph.add_artifact(ArtifactRef("paper", "pdf"))
     graph.add_object(
         StatisticalObjectNode(
-            object_id="sample-1",
-            object_type="SamplePartition",
+            object_id="design-1",
+            object_type="DesignDescriptor",
             fields={},
             source=SourceLocation(artifact_id="paper", page=2),
         )
     )
 
     with pytest.raises(ClaimObjectReconstructionError, match="unsupported statistical object type"):
-        reconstruct_statistical_object(graph, "sample-1")
+        reconstruct_statistical_object(graph, "design-1")
