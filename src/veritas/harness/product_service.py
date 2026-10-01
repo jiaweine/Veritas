@@ -35,6 +35,29 @@ class ProductAuditHarness(AuditHarness):
     def _metadata_audits(self) -> list[dict[str, Any]]:
         return self.store.list_audits(include_events=False)
 
+    def audit_ids(self) -> list[str]:
+        """Return valid audit ids without materializing any event history."""
+
+        audit_ids: list[str] = []
+        for audit in self._metadata_audits():
+            audit_id = str(audit.get("audit_id") or "")
+            try:
+                self.store.scan_events(audit_id, lambda _event: None)
+            except _INTEGRITY_ERRORS:
+                continue
+            audit_ids.append(audit_id)
+        return audit_ids
+
+    def get_audit_metadata(self, audit_id: str) -> dict[str, Any]:
+        """Return one integrity-checked audit record without its event list."""
+
+        for audit in self._metadata_audits():
+            if str(audit.get("audit_id") or "") != audit_id:
+                continue
+            self.store.scan_events(audit_id, lambda _event: None)
+            return audit
+        raise FileNotFoundError(f"audit not found: {audit_id}")
+
     def overview(self) -> dict[str, Any]:
         audits = self._metadata_audits()
         total_pages = 0

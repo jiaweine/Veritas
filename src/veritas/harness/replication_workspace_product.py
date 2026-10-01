@@ -29,6 +29,20 @@ _MAX_DIFF_OUTPUT_BYTES = 512 * 1024
 def find_replication_audit(runtime: AuditHarness, run_id: str) -> dict[str, Any]:
     """Resolve a replication run to its owning audit without trusting client input."""
 
+    runtime_projector = getattr(runtime, "run_detail", None)
+    metadata_projector = getattr(runtime, "get_audit_metadata", None)
+    if callable(runtime_projector) and callable(metadata_projector):
+        detail = runtime_projector(run_id)
+        if (
+            isinstance(detail, dict)
+            and detail.get("run_kind") == "replication"
+            and detail.get("tool") == "replication.acp"
+        ):
+            audit_id = str(detail.get("audit_id") or "")
+            if audit_id:
+                return metadata_projector(audit_id)
+        raise FileNotFoundError(f"replication run not found: {run_id}")
+
     for audit in runtime.list_audits():
         for event in audit.get("events") or []:
             if not isinstance(event, dict) or event.get("kind") != "tool":
