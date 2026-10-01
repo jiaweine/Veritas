@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 from .claims import ExtractedField, StatisticalClaimGraph, StatisticalObjectNode
+from .group_stats import GroupSummary, TwoGroupComparison
 from .models import (
     CorrelationMatrix,
     DiscreteSummary,
@@ -15,6 +16,8 @@ from .models import (
 
 _SUPPORTED_INFERENCE_DISTRIBUTIONS = {"normal", "student_t", "unknown"}
 _SUPPORTED_SD_DEFINITIONS = {"sample", "population", "unknown"}
+_SUPPORTED_TWO_GROUP_TESTS = {"student_equal_var", "welch", "unknown"}
+_SUPPORTED_HEDGES_CORRECTIONS = {"exact_gamma", "approx_4df_minus_1", "unknown"}
 _GROUP_COUNT_PREFIX = "group_count:"
 _LABEL_PREFIX = "label:"
 _CELL_PREFIX = "cell:"
@@ -49,6 +52,10 @@ def reconstruct_statistical_object(
         return reconstruct_sample_partition(node)
     if node.object_type == "CorrelationMatrix":
         return reconstruct_correlation_matrix(node)
+    if node.object_type == "MeanSD":
+        return reconstruct_mean_sd(node)
+    if node.object_type == "GroupComparison":
+        return reconstruct_group_comparison(node)
     if node.object_type == "DiscreteSummary":
         return reconstruct_discrete_summary(node)
     if node.object_type == "LogitResult":
@@ -169,13 +176,7 @@ def reconstruct_sample_partition(node: StatisticalObjectNode) -> SamplePartition
 
 
 def reconstruct_correlation_matrix(node: StatisticalObjectNode) -> CorrelationMatrix:
-    """Rebuild a correlation matrix from indexed label/cell graph fields.
-
-    Labels use ``label:<index>`` and cells use ``cell:<row>:<column>``. Every
-    numerical cell remains its own ``ExtractedField`` and therefore retains its
-    source location, raw display string, rounding precision, operator, and
-    extraction/identity confidence in the graph.
-    """
+    """Rebuild a correlation matrix from indexed label/cell graph fields."""
 
     if node.object_type != "CorrelationMatrix":
         raise ClaimObjectReconstructionError(
@@ -223,6 +224,111 @@ def reconstruct_correlation_matrix(node: StatisticalObjectNode) -> CorrelationMa
         labels=labels,
         cells=tuple(tuple(row) for row in cells),
         source=node.source,
+    )
+
+
+def reconstruct_mean_sd(node: StatisticalObjectNode) -> GroupSummary:
+    """Rebuild one N/mean/SD summary while preserving fail-closed semantics."""
+
+    if node.object_type != "MeanSD":
+        raise ClaimObjectReconstructionError(f"expected MeanSD node, got {node.object_type!r}")
+    return _group_summary(node, "")
+
+
+def reconstruct_group_comparison(node: StatisticalObjectNode) -> TwoGroupComparison:
+    """Rebuild a two-group detector input from scalar source-addressable fields."""
+
+    if node.object_type != "GroupComparison":
+        raise ClaimObjectReconstructionError(
+            f"expected GroupComparison node, got {node.object_type!r}"
+        )
+
+    group_a = _group_summary(node, "group_a:")
+    group_b = _group_summary(node, "group_b:")
+    if group_a.label == group_b.label:
+        raise ClaimObjectReconstructionError("group comparison labels must be distinct")
+
+    reported_p_value = _reported_number(node, "reported_p_value")
+    test_definition = _string_field(node, "test_definition", default="unknown")
+    if test_definition not in _SUPPORTED_TWO_GROUP_TESTS:
+        raise ClaimObjectReconstructionError(
+            "test_definition must be student_equal_var, welch, or unknown"
+        )
+    hedges_correction = _string_field(node, "hedges_correction", default="unknown")
+    if hedges_correction not in _SUPPORTED_HEDGES_CORRECTIONS:
+        raise ClaimObjectReconstructionError(
+            "hedges_correction must be exact_gamma, approx_4df_minus_1, or unknown"
+        )
+
+    p_value_adjusted = _bool_field(
+        node,
+        "p_value_adjusted",
+        required=reported_p_value is not None,
+        default=False,
+    )
+    assert p_value_adjusted is not None
+
+    return TwoGroupComparison(
+        object_id=node.object_id,
+        group_a=group_a,
+        group_b=group_b,
+        reported_mean_difference=_reported_number(node, "reported_mean_difference"),
+        reported_t=_reported_number(node, "reported_t"),
+        reported_df=_reported_number(node, "reported_df"),
+        reported_p_value=reported_p_value,
+        reported_cohen_d=_reported_number(node, "reported_cohen_d"),
+        reported_hedges_g=_reported_number(node, "reported_hedges_g"),
+        test_definition=test_definition,
+        hedges_correction=hedges_correction,
+        independent_groups_verified=bool(
+            _bool_field(node, "independent_groups_verified", default=False)
+        ),
+        same_outcome_scale_verified=bool(
+            _bool_field(node, "same_outcome_scale_verified", default=False)
+        ),
+        difference_direction_verified=bool(
+            _bool_field(node, "difference_direction_verified", default=False)
+        ),
+        pooled_sd_effect_size_verified=bool(
+            _bool_field(node, "pooled_sd_effect_size_verified", default=False)
+        ),
+        p_value_adjusted=p_value_adjusted,
+        source=node.source,
+    )
+
+
+def _group_summary(node: StatisticalObjectNode, prefix: str) -> GroupSummary:
+    label_name = f"{prefix}label"
+    n_name = f"{prefix}n"
+    mean_name = f"{prefix}mean"
+    sd_name = f"{prefix}sd"
+    sd_definition_name = f"{prefix}sd_definition"
+    weighted_name = f"{prefix}weighted"
+
+    label = _string_field(node, label_name, required=True)
+    n = _int_field(node, n_name, required=True)
+    mean = _reported_number(node, mean_name, required=True)
+    sd = _reported_number(node, sd_name, required=True)
+    assert label is not None and n is not None and mean is not None and sd is not None
+
+    if n < 2:
+        raise ClaimObjectReconstructionError(f"field {n_name!r} must be at least 2")
+    if sd.value < 0:
+        raise ClaimObjectReconstructionError(f"field {sd_name!r} must be non-negative")
+
+    sd_definition = _string_field(node, sd_definition_name, default="unknown")
+    if sd_definition not in _SUPPORTED_SD_DEFINITIONS:
+        raise ClaimObjectReconstructionError(
+            f"field {sd_definition_name!r} must be sample, population, or unknown"
+        )
+
+    return GroupSummary(
+        label=label,
+        n=n,
+        mean=mean,
+        sd=sd,
+        sd_definition=sd_definition,
+        weighted=_bool_field(node, weighted_name),
     )
 
 
