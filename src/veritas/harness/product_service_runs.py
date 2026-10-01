@@ -119,7 +119,7 @@ class ProductAuditHarness(_BaseProductAuditHarness):
         created_at = value.get("created_at")
         run_id = value.get("run_id")
         if not isinstance(created_at, str) or not isinstance(run_id, str):
-            raise ValueError("run cursor payload is invalid")
+            raise TypeError("run cursor payload is invalid")
         if not run_id or len(run_id) > 512 or len(created_at) > 128:
             raise ValueError("run cursor payload is invalid")
         return created_at, run_id
