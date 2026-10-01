@@ -42,7 +42,7 @@ class ProductAuditHarness(AuditHarness):
         for audit in self._metadata_audits():
             audit_id = str(audit.get("audit_id") or "")
             try:
-                self.store.scan_events(audit_id, lambda _event: None)
+                self.store.validate_events(audit_id)
             except _INTEGRITY_ERRORS:
                 continue
             audit_ids.append(audit_id)
@@ -54,7 +54,7 @@ class ProductAuditHarness(AuditHarness):
         for audit in self._metadata_audits():
             if str(audit.get("audit_id") or "") != audit_id:
                 continue
-            self.store.scan_events(audit_id, lambda _event: None)
+            self.store.validate_events(audit_id)
             return audit
         raise FileNotFoundError(f"audit not found: {audit_id}")
 
@@ -146,7 +146,7 @@ class ProductAuditHarness(AuditHarness):
         items: list[dict[str, Any]] = []
         for audit in self._metadata_audits():
             try:
-                self.store.scan_events(str(audit["audit_id"]), lambda _event: None)
+                self.store.validate_events(str(audit["audit_id"]))
             except _INTEGRITY_ERRORS:
                 continue
             result = audit.get("latest_result") or {}
@@ -231,8 +231,29 @@ class ProductAuditHarness(AuditHarness):
     def run_detail(self, run_id: str) -> dict[str, Any] | None:
         """Project one correlated run without hydrating unrelated histories."""
 
-        for audit in self._metadata_audits():
-            matched: list[dict[str, Any]] = []
+        audits = self._metadata_audits()
+        try:
+            indexed = self.store.indexed_run_events(run_id)
+        except _INTEGRITY_ERRORS:
+            indexed = None
+        if indexed is not None:
+            audit_id, matched = indexed
+            audit = next(
+                (item for item in audits if str(item.get("audit_id") or "") == audit_id),
+                None,
+            )
+            if audit is not None:
+                projected_audit = dict(audit)
+                projected_audit["events"] = matched
+                detail = project_run_detail([projected_audit], run_id)
+                if detail is not None:
+                    return detail
+
+        # Cold/stale/corrupt cache path: scan authoritative journals. Successful
+        # scans rebuild the range index, so subsequent lookups take the bounded
+        # indexed path without materializing unrelated histories.
+        for audit in audits:
+            matched = []
             try:
                 self.store.scan_events(
                     str(audit["audit_id"]),
