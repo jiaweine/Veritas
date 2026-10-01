@@ -35,6 +35,30 @@ Counts remain independently source-addressable. Negative counts reject reconstru
 
 Cells need not duplicate both triangles: missing cells remain `None` and the correlation detector performs its existing symmetry/interval logic. Every displayed cell must carry its explicit comparison operator, while displayed precision flows into the reconstructed rounding interval.
 
+### DiscreteSummary
+
+- `n` — required positive integer.
+- `mean` — required reported number with explicit comparison operator.
+- `sd` — optional reported number with explicit comparison operator.
+- `support:<index>` — finite support values with contiguous zero-based indexes; at least two distinct values are required.
+- `sd_definition` — required when `sd` exists and must be `sample`, `population`, or `unknown`.
+- `support_verified`, `n_verified`, and `weighted` — required booleans. These detector applicability gates are never inherited from model defaults.
+
+This preserves the distinction between a mathematically feasible finite-support check and the separate evidence needed to establish that the displayed statistic is actually an unweighted count summary over the claimed support.
+
+### LogitResult
+
+- `beta` and `odds_ratio` — required reported numbers.
+- `exp_beta_relation_verified` — required boolean establishing that the two displayed quantities are claimed on the same logit scale with OR = exp(beta).
+
+### MediationResult
+
+- `a_path`, `b_path`, and `indirect_effect` — required reported numbers.
+- `product_definition_verified` — required boolean establishing that the reported indirect effect is defined as `a*b`.
+- `scale_consistent_verified` — required boolean establishing compatible scales for the three quantities.
+
+The relation/scale booleans are explicit provenance gates. Missing gates reject reconstruction instead of becoming the dataclass defaults that could accidentally authorize a numerical contradiction.
+
 ## Fail-closed requirements
 
 Reconstruction does not infer detector-relevant semantics from model defaults.
@@ -44,11 +68,12 @@ Reconstruction does not infer detector-relevant semantics from model defaults.
 - A reported p-value requires explicit `p_value_adjusted` status. Missing adjustment status must not silently become `False` because that could turn an otherwise unverifiable p-value into a hard numerical check.
 - Any reported confidence-interval bound requires an explicit `ci_level`.
 - A populated sample partition must state whether groups are non-overlapping.
-- Correlation label indexes must be contiguous and every cell index must refer to a declared label.
+- Correlation and finite-support indexes must be contiguous and every indexed quantity must refer to a declared position.
+- Discrete, logit, and mediation detector applicability gates must be present explicitly even when their value is `False`.
 - Unsupported statistical object types raise `ClaimObjectReconstructionError`; callers must not guess a nearby schema.
 
 This means older or incomplete graphs can remain valid provenance records while still being ineligible for parser-independent detector execution.
 
 ## Current scope
 
-Adapters currently cover `RegressionResult`, `SamplePartition`, and `CorrelationMatrix`. Additional adapters should be added object-by-object with their own fail-closed metadata contract and round-trip detector tests rather than through a permissive generic coercion layer.
+Adapters currently cover `RegressionResult`, `SamplePartition`, `CorrelationMatrix`, `DiscreteSummary`, `LogitResult`, and `MediationResult`. Additional adapters should be added object-by-object with their own fail-closed metadata contract and round-trip detector tests rather than through a permissive generic coercion layer.
