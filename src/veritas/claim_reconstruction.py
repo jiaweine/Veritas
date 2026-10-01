@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import math
-from typing import TypeVar
 
 from .claims import ExtractedField, StatisticalClaimGraph, StatisticalObjectNode
 from .models import RegressionResult, ReportedNumber
 
-_T = TypeVar("_T")
 _SUPPORTED_INFERENCE_DISTRIBUTIONS = {"normal", "student_t", "unknown"}
 
 
