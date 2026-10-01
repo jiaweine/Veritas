@@ -20,6 +20,8 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/static/reference-workbench.js' in index.text
     assert '/static/reference-surfaces.css' in index.text
     assert '/static/reference-evidence-preview.js' in index.text
+    assert '/static/evidence-lens.css' in index.text
+    assert '/static/evidence-lens.js' in index.text
     assert '/static/claim-graph.css' in index.text
     assert '/static/claim-graph.js' in index.text
     assert '/static/finding-navigation.css' in index.text
@@ -43,6 +45,15 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert 'data-ah-notes-tab' in notes_script.text
     assert '/notes' in notes_script.text
     assert 'Save notes' in notes_script.text
+
+    lens_script = client.get("/static/evidence-lens.js")
+    assert lens_script.status_code == 200
+    assert 'data-evidence-lens-hud' in lens_script.text
+    assert 'data-evidence-open-graph' in lens_script.text
+    assert 'evidenceLensState' in lens_script.text
+    assert 'requestAnimationFrame' in lens_script.text
+    assert 'veritas:evidence-field' in lens_script.text
+    assert 'aria-pressed' in lens_script.text
 
     claim_script = client.get("/static/claim-graph.js")
     assert claim_script.status_code == 200
@@ -105,6 +116,13 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '.ah-notes-pane' in notes_stylesheet.text
     assert '#ah-notes-editor' in notes_stylesheet.text
 
+    lens_stylesheet = client.get("/static/evidence-lens.css")
+    assert lens_stylesheet.status_code == 200
+    assert '--lens-x' in lens_stylesheet.text
+    assert '.evidence-lens-hud' in lens_stylesheet.text
+    assert 'data-lens-pinned' in lens_stylesheet.text
+    assert 'prefers-reduced-motion' in lens_stylesheet.text
+
     claim_stylesheet = client.get("/static/claim-graph.css")
     assert claim_stylesheet.status_code == 200
     assert '.claim-graph' in claim_stylesheet.text
@@ -124,7 +142,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'veritas-shell-v26' in service_worker.text
+    assert 'veritas-shell-v27' in service_worker.text
     assert '/static/audit-harness.js' in service_worker.text
     assert '/static/audit-harness.css' in service_worker.text
     assert '/static/audit-harness-product.js' in service_worker.text
@@ -135,6 +153,8 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '/static/reference-workbench.css' in service_worker.text
     assert '/static/reference-evidence-preview.js' in service_worker.text
     assert '/static/reference-surfaces.css' in service_worker.text
+    assert '/static/evidence-lens.js' in service_worker.text
+    assert '/static/evidence-lens.css' in service_worker.text
     assert '/static/claim-graph.js' in service_worker.text
     assert '/static/claim-graph.css' in service_worker.text
     assert '/static/finding-navigation.js' in service_worker.text

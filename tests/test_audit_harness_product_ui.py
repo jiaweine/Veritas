@@ -16,6 +16,8 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "/static/reference-workbench.js" in shell.text
     assert "/static/reference-surfaces.css" in shell.text
     assert "/static/reference-evidence-preview.js" in shell.text
+    assert "/static/evidence-lens.css" in shell.text
+    assert "/static/evidence-lens.js" in shell.text
     assert "/static/claim-graph.css" in shell.text
     assert "/static/claim-graph.js" in shell.text
     assert "/static/finding-navigation.css" in shell.text
@@ -53,6 +55,21 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "/api/v1/audits/${encodeURIComponent(auditId)}" in evidence_script.text
     assert "result.fields" in evidence_script.text
     assert "data-reference-evidence-preview" in evidence_script.text
+
+    lens_script = client.get("/static/evidence-lens.js")
+    assert lens_script.status_code == 200
+    assert "data-evidence-lens-hud" in lens_script.text
+    assert "data-evidence-open-graph" in lens_script.text
+    assert "veritas:evidence-field" in lens_script.text
+    assert "requestAnimationFrame" in lens_script.text
+    assert "aria-pressed" in lens_script.text
+
+    lens_styles = client.get("/static/evidence-lens.css")
+    assert lens_styles.status_code == 200
+    assert "--lens-x" in lens_styles.text
+    assert ".evidence-lens-hud" in lens_styles.text
+    assert "data-lens-pinned" in lens_styles.text
+    assert "prefers-reduced-motion" in lens_styles.text
 
     claim_script = client.get("/static/claim-graph.js")
     assert claim_script.status_code == 200
@@ -140,13 +157,15 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'const CACHE = "veritas-shell-v26"' in service_worker.text
+    assert 'const CACHE = "veritas-shell-v27"' in service_worker.text
     assert "/static/audit-harness-product.css" in service_worker.text
     assert "/static/audit-harness-product.js" in service_worker.text
     assert "/static/reference-workbench.css" in service_worker.text
     assert "/static/reference-workbench.js" in service_worker.text
     assert "/static/reference-surfaces.css" in service_worker.text
     assert "/static/reference-evidence-preview.js" in service_worker.text
+    assert "/static/evidence-lens.css" in service_worker.text
+    assert "/static/evidence-lens.js" in service_worker.text
     assert "/static/claim-graph.css" in service_worker.text
     assert "/static/claim-graph.js" in service_worker.text
     assert "/static/finding-navigation.css" in service_worker.text
