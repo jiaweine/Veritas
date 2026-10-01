@@ -12,6 +12,7 @@ from .models import (
     RegressionResult,
     ReportedNumber,
     SamplePartition,
+    StandardizedRegressionReconstruction,
 )
 
 _SUPPORTED_INFERENCE_DISTRIBUTIONS = {"normal", "student_t", "unknown"}
@@ -22,6 +23,8 @@ _GROUP_COUNT_PREFIX = "group_count:"
 _LABEL_PREFIX = "label:"
 _CELL_PREFIX = "cell:"
 _SUPPORT_PREFIX = "support:"
+_PREDICTOR_PREFIX = "predictor:"
+_STANDARDIZED_BETA_PREFIX = "standardized_beta:"
 
 
 class ClaimObjectReconstructionError(ValueError):
@@ -62,19 +65,18 @@ def reconstruct_statistical_object(
         return reconstruct_logit_result(node)
     if node.object_type == "MediationResult":
         return reconstruct_mediation_result(node)
+    if node.object_type == "StandardizedRegressionReconstruction":
+        return reconstruct_standardized_regression(graph, node)
     raise ClaimObjectReconstructionError(
         f"unsupported statistical object type: {node.object_type!r}"
     )
 
 
 def reconstruct_regression_result(node: StatisticalObjectNode) -> RegressionResult:
-    """Rebuild a ``RegressionResult`` without access to the original parser."""
-
     if node.object_type != "RegressionResult":
         raise ClaimObjectReconstructionError(
             f"expected RegressionResult node, got {node.object_type!r}"
         )
-
     beta = _reported_number(node, "beta", required=True)
     assert beta is not None
     se = _reported_number(node, "se")
@@ -83,7 +85,6 @@ def reconstruct_regression_result(node: StatisticalObjectNode) -> RegressionResu
     ci_lower = _reported_number(node, "ci_lower")
     ci_upper = _reported_number(node, "ci_upper")
     has_ci = ci_lower is not None or ci_upper is not None
-
     inference_distribution = _string_field(
         node,
         "inference_distribution",
@@ -94,18 +95,11 @@ def reconstruct_regression_result(node: StatisticalObjectNode) -> RegressionResu
         raise ClaimObjectReconstructionError(
             "inference_distribution must be one of normal, student_t, or unknown"
         )
-
     degrees_of_freedom = _float_field(node, "degrees_of_freedom")
-    ci_level = _float_field(
-        node,
-        "ci_level",
-        required=has_ci,
-        default=0.95,
-    )
+    ci_level = _float_field(node, "ci_level", required=has_ci, default=0.95)
     assert ci_level is not None
     if not 0.0 < ci_level < 1.0:
         raise ClaimObjectReconstructionError("ci_level must be in (0, 1)")
-
     p_value_adjusted = _bool_field(
         node,
         "p_value_adjusted",
@@ -113,7 +107,6 @@ def reconstruct_regression_result(node: StatisticalObjectNode) -> RegressionResu
         default=False,
     )
     assert p_value_adjusted is not None
-
     return RegressionResult(
         object_id=node.object_id,
         beta=beta,
@@ -131,17 +124,13 @@ def reconstruct_regression_result(node: StatisticalObjectNode) -> RegressionResu
 
 
 def reconstruct_sample_partition(node: StatisticalObjectNode) -> SamplePartition:
-    """Rebuild a sample partition from individually source-addressable counts."""
-
     if node.object_type != "SamplePartition":
         raise ClaimObjectReconstructionError(
             f"expected SamplePartition node, got {node.object_type!r}"
         )
-
     total_n = _int_field(node, "total_n")
     if total_n is not None and total_n < 0:
         raise ClaimObjectReconstructionError("total_n must be non-negative")
-
     groups: dict[str, int] = {}
     for field_name, field in node.fields.items():
         if not field_name.startswith(_GROUP_COUNT_PREFIX):
@@ -153,7 +142,6 @@ def reconstruct_sample_partition(node: StatisticalObjectNode) -> SamplePartition
         if count < 0:
             raise ClaimObjectReconstructionError(f"field {field_name!r} must be non-negative")
         groups[label] = count
-
     non_overlapping = _bool_field(
         node,
         "non_overlapping",
@@ -161,28 +149,22 @@ def reconstruct_sample_partition(node: StatisticalObjectNode) -> SamplePartition
         default=True,
     )
     assert non_overlapping is not None
-    exhaustive = _bool_field(node, "exhaustive")
-    explanation_present = _bool_field(node, "explanation_present")
-
     return SamplePartition(
         object_id=node.object_id,
         total_n=total_n,
         groups=groups,
-        exhaustive=exhaustive,
+        exhaustive=_bool_field(node, "exhaustive"),
         non_overlapping=non_overlapping,
-        explanation_present=explanation_present,
+        explanation_present=_bool_field(node, "explanation_present"),
         source=node.source,
     )
 
 
 def reconstruct_correlation_matrix(node: StatisticalObjectNode) -> CorrelationMatrix:
-    """Rebuild a correlation matrix from indexed label/cell graph fields."""
-
     if node.object_type != "CorrelationMatrix":
         raise ClaimObjectReconstructionError(
             f"expected CorrelationMatrix node, got {node.object_type!r}"
         )
-
     labels_by_index: dict[int, str] = {}
     for field_name, field in node.fields.items():
         if not field_name.startswith(_LABEL_PREFIX):
@@ -195,7 +177,6 @@ def reconstruct_correlation_matrix(node: StatisticalObjectNode) -> CorrelationMa
                 f"field {field_name!r} must contain a non-empty label"
             )
         labels_by_index[index] = field.value.strip()
-
     if len(labels_by_index) < 2:
         raise ClaimObjectReconstructionError("CorrelationMatrix requires at least two label fields")
     expected_indexes = set(range(len(labels_by_index)))
@@ -206,7 +187,6 @@ def reconstruct_correlation_matrix(node: StatisticalObjectNode) -> CorrelationMa
     labels = tuple(labels_by_index[index] for index in range(len(labels_by_index)))
     if len(set(labels)) != len(labels):
         raise ClaimObjectReconstructionError("correlation labels must be unique")
-
     size = len(labels)
     cells: list[list[ReportedNumber | None]] = [[None for _ in range(size)] for _ in range(size)]
     for field_name, field in node.fields.items():
@@ -218,7 +198,6 @@ def reconstruct_correlation_matrix(node: StatisticalObjectNode) -> CorrelationMa
                 f"correlation cell {field_name!r} references label index outside matrix"
             )
         cells[row][column] = _reported_from_field(field, field_name)
-
     return CorrelationMatrix(
         object_id=node.object_id,
         labels=labels,
@@ -228,26 +207,20 @@ def reconstruct_correlation_matrix(node: StatisticalObjectNode) -> CorrelationMa
 
 
 def reconstruct_mean_sd(node: StatisticalObjectNode) -> GroupSummary:
-    """Rebuild one N/mean/SD summary while preserving fail-closed semantics."""
-
     if node.object_type != "MeanSD":
         raise ClaimObjectReconstructionError(f"expected MeanSD node, got {node.object_type!r}")
     return _group_summary(node, "")
 
 
 def reconstruct_group_comparison(node: StatisticalObjectNode) -> TwoGroupComparison:
-    """Rebuild a two-group detector input from scalar source-addressable fields."""
-
     if node.object_type != "GroupComparison":
         raise ClaimObjectReconstructionError(
             f"expected GroupComparison node, got {node.object_type!r}"
         )
-
     group_a = _group_summary(node, "group_a:")
     group_b = _group_summary(node, "group_b:")
     if group_a.label == group_b.label:
         raise ClaimObjectReconstructionError("group comparison labels must be distinct")
-
     reported_p_value = _reported_number(node, "reported_p_value")
     test_definition = _string_field(node, "test_definition", default="unknown")
     if test_definition not in _SUPPORTED_TWO_GROUP_TESTS:
@@ -259,7 +232,6 @@ def reconstruct_group_comparison(node: StatisticalObjectNode) -> TwoGroupCompari
         raise ClaimObjectReconstructionError(
             "hedges_correction must be exact_gamma, approx_4df_minus_1, or unknown"
         )
-
     p_value_adjusted = _bool_field(
         node,
         "p_value_adjusted",
@@ -267,7 +239,6 @@ def reconstruct_group_comparison(node: StatisticalObjectNode) -> TwoGroupCompari
         default=False,
     )
     assert p_value_adjusted is not None
-
     return TwoGroupComparison(
         object_id=node.object_id,
         group_a=group_a,
@@ -304,24 +275,20 @@ def _group_summary(node: StatisticalObjectNode, prefix: str) -> GroupSummary:
     sd_name = f"{prefix}sd"
     sd_definition_name = f"{prefix}sd_definition"
     weighted_name = f"{prefix}weighted"
-
     label = _string_field(node, label_name, required=True)
     n = _int_field(node, n_name, required=True)
     mean = _reported_number(node, mean_name, required=True)
     sd = _reported_number(node, sd_name, required=True)
     assert label is not None and n is not None and mean is not None and sd is not None
-
     if n < 2:
         raise ClaimObjectReconstructionError(f"field {n_name!r} must be at least 2")
     if sd.value < 0:
         raise ClaimObjectReconstructionError(f"field {sd_name!r} must be non-negative")
-
     sd_definition = _string_field(node, sd_definition_name, default="unknown")
     if sd_definition not in _SUPPORTED_SD_DEFINITIONS:
         raise ClaimObjectReconstructionError(
             f"field {sd_definition_name!r} must be sample, population, or unknown"
         )
-
     return GroupSummary(
         label=label,
         n=n,
@@ -333,13 +300,10 @@ def _group_summary(node: StatisticalObjectNode, prefix: str) -> GroupSummary:
 
 
 def reconstruct_discrete_summary(node: StatisticalObjectNode) -> DiscreteSummary:
-    """Rebuild a finite-support summary without inventing applicability gates."""
-
     if node.object_type != "DiscreteSummary":
         raise ClaimObjectReconstructionError(
             f"expected DiscreteSummary node, got {node.object_type!r}"
         )
-
     n = _int_field(node, "n", required=True)
     assert n is not None
     if n <= 0:
@@ -347,15 +311,11 @@ def reconstruct_discrete_summary(node: StatisticalObjectNode) -> DiscreteSummary
     mean = _reported_number(node, "mean", required=True)
     assert mean is not None
     sd = _reported_number(node, "sd")
-
     support_by_index: dict[int, float] = {}
     for field_name, field in node.fields.items():
-        if not field_name.startswith(_SUPPORT_PREFIX):
-            continue
-        index = _single_index(field_name, _SUPPORT_PREFIX)
-        if index in support_by_index:
-            raise ClaimObjectReconstructionError(f"duplicate support index {index}")
-        support_by_index[index] = _finite_number(field, field_name)
+        if field_name.startswith(_SUPPORT_PREFIX):
+            index = _single_index(field_name, _SUPPORT_PREFIX)
+            support_by_index[index] = _finite_number(field, field_name)
     if len(support_by_index) < 2:
         raise ClaimObjectReconstructionError("DiscreteSummary requires at least two support fields")
     if set(support_by_index) != set(range(len(support_by_index))):
@@ -365,7 +325,6 @@ def reconstruct_discrete_summary(node: StatisticalObjectNode) -> DiscreteSummary
     support = tuple(support_by_index[index] for index in range(len(support_by_index)))
     if len(set(support)) != len(support):
         raise ClaimObjectReconstructionError("DiscreteSummary support values must be unique")
-
     sd_definition = _string_field(
         node,
         "sd_definition",
@@ -381,7 +340,6 @@ def reconstruct_discrete_summary(node: StatisticalObjectNode) -> DiscreteSummary
     n_verified = _bool_field(node, "n_verified", required=True)
     weighted = _bool_field(node, "weighted", required=True)
     assert support_verified is not None and n_verified is not None and weighted is not None
-
     return DiscreteSummary(
         object_id=node.object_id,
         n=n,
@@ -397,8 +355,6 @@ def reconstruct_discrete_summary(node: StatisticalObjectNode) -> DiscreteSummary
 
 
 def reconstruct_logit_result(node: StatisticalObjectNode) -> LogitResult:
-    """Rebuild a logit coefficient/odds-ratio pair with explicit relation identity."""
-
     if node.object_type != "LogitResult":
         raise ClaimObjectReconstructionError(
             f"expected LogitResult node, got {node.object_type!r}"
@@ -417,8 +373,6 @@ def reconstruct_logit_result(node: StatisticalObjectNode) -> LogitResult:
 
 
 def reconstruct_mediation_result(node: StatisticalObjectNode) -> MediationResult:
-    """Rebuild an a*b mediation object with explicit definition/scale gates."""
-
     if node.object_type != "MediationResult":
         raise ClaimObjectReconstructionError(
             f"expected MediationResult node, got {node.object_type!r}"
@@ -450,6 +404,87 @@ def reconstruct_mediation_result(node: StatisticalObjectNode) -> MediationResult
         indirect_effect=indirect_effect,
         product_definition_verified=product_definition_verified,
         scale_consistent_verified=scale_consistent_verified,
+        source=node.source,
+    )
+
+
+def reconstruct_standardized_regression(
+    graph: StatisticalClaimGraph,
+    node: StatisticalObjectNode,
+) -> StandardizedRegressionReconstruction:
+    if node.object_type != "StandardizedRegressionReconstruction":
+        raise ClaimObjectReconstructionError(
+            "expected StandardizedRegressionReconstruction node, "
+            f"got {node.object_type!r}"
+        )
+    matrix_object_id = _string_field(
+        node,
+        "correlation_matrix_object_id",
+        required=True,
+    )
+    assert matrix_object_id is not None
+    try:
+        matrix_node = graph.objects[matrix_object_id]
+    except KeyError as exc:
+        raise ClaimObjectReconstructionError(
+            f"standardized regression references unknown correlation matrix {matrix_object_id!r}"
+        ) from exc
+    correlation_matrix = reconstruct_correlation_matrix(matrix_node)
+    outcome = _string_field(node, "outcome", required=True)
+    assert outcome is not None
+    predictors_by_index: dict[int, str] = {}
+    betas_by_index: dict[int, ReportedNumber] = {}
+    for field_name, field in node.fields.items():
+        if field_name.startswith(_PREDICTOR_PREFIX):
+            index = _single_index(field_name, _PREDICTOR_PREFIX)
+            if not isinstance(field.value, str) or not field.value.strip():
+                raise ClaimObjectReconstructionError(
+                    f"field {field_name!r} must contain a non-empty predictor label"
+                )
+            predictors_by_index[index] = field.value.strip()
+        elif field_name.startswith(_STANDARDIZED_BETA_PREFIX):
+            index = _single_index(field_name, _STANDARDIZED_BETA_PREFIX)
+            betas_by_index[index] = _reported_from_field(field, field_name)
+    if not predictors_by_index:
+        raise ClaimObjectReconstructionError(
+            "StandardizedRegressionReconstruction requires at least one predictor"
+        )
+    expected_indexes = set(range(len(predictors_by_index)))
+    if set(predictors_by_index) != expected_indexes:
+        raise ClaimObjectReconstructionError(
+            "predictor indexes must be contiguous and start at zero"
+        )
+    if set(betas_by_index) != expected_indexes:
+        raise ClaimObjectReconstructionError(
+            "standardized beta indexes must exactly match predictor indexes"
+        )
+    predictors = tuple(predictors_by_index[index] for index in range(len(predictors_by_index)))
+    if len(set(predictors)) != len(predictors):
+        raise ClaimObjectReconstructionError("predictor labels must be unique")
+    if outcome in predictors:
+        raise ClaimObjectReconstructionError("outcome may not also be a predictor")
+    standardized_betas = tuple(betas_by_index[index] for index in range(len(betas_by_index)))
+    ols_identity_verified = _bool_field(node, "ols_identity_verified", required=True)
+    same_sample_verified = _bool_field(node, "same_sample_verified", required=True)
+    complete_predictor_set_verified = _bool_field(
+        node,
+        "complete_predictor_set_verified",
+        required=True,
+    )
+    assert (
+        ols_identity_verified is not None
+        and same_sample_verified is not None
+        and complete_predictor_set_verified is not None
+    )
+    return StandardizedRegressionReconstruction(
+        object_id=node.object_id,
+        correlation_matrix=correlation_matrix,
+        outcome=outcome,
+        predictors=predictors,
+        standardized_betas=standardized_betas,
+        ols_identity_verified=ols_identity_verified,
+        same_sample_verified=same_sample_verified,
+        complete_predictor_set_verified=complete_predictor_set_verified,
         source=node.source,
     )
 
