@@ -50,7 +50,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert lens_script.status_code == 200
     assert 'data-evidence-lens-hud' in lens_script.text
     assert 'data-evidence-open-graph' in lens_script.text
-    assert 'data-evidence-lens-state' in lens_script.text
+    assert 'evidenceLensState' in lens_script.text
     assert 'requestAnimationFrame' in lens_script.text
     assert 'veritas:evidence-field' in lens_script.text
     assert 'aria-pressed' in lens_script.text
