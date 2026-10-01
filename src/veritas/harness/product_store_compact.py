@@ -9,9 +9,9 @@ from .product_store import (
     _MAX_RUN_INDEX_BYTES,
     _RUN_INDEX_FILENAME,
     _RUN_INDEX_SCHEMA_VERSION,
-    ProductHarnessStore as _BaseProductHarnessStore,
     _RunRange,
 )
+from .product_store import ProductHarnessStore as _BaseProductHarnessStore
 
 _RUN_INDEX_COMPACT_BYTES = 8 * 1024 * 1024
 _RUN_INDEX_COMPACT_STALE_RATIO = 2
