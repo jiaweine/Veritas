@@ -20,8 +20,10 @@ def test_provider_power_interactions_are_wired_and_accessible() -> None:
     workflow = (ROOT / ".github/workflows/ui-visual-smoke.yml").read_text(encoding="utf-8")
     mobile = (ROOT / ".github/workflows/mobile.yml").read_text(encoding="utf-8")
 
-    assert 'data-provider-quicklook' in script
-    assert 'data-provider-action-panel' in script
+    # Source uses DOMStringMap camelCase assignments. The browser acceptance below
+    # verifies that these materialize as the expected data-* attributes at runtime.
+    assert 'quicklook.dataset.providerQuicklook = "true"' in script
+    assert 'actions.dataset.providerActionPanel = "true"' in script
     assert 'data-roving-focus' not in script  # DOM dataset uses camelCase assignment
     assert "rovingFocus" in script
     assert 'event.key === " "' in script
