@@ -137,10 +137,15 @@ def test_replication_owner_lookup_uses_bounded_run_projection(tmp_path, monkeypa
     assert audit["audit_id"] == audit_id
     assert audit.get("events") in (None, [])
 
+    monkeypatch.setattr(
+        "veritas.harness.web_core.replication_control_state",
+        lambda value: {"run_id": value, "active": False},
+    )
     control = TestClient(create_app(tmp_path, harness=runtime)).get(
         f"/api/v1/replication/runs/{run_id}/control"
     )
     assert control.status_code == 200
+    assert control.json() == {"run_id": run_id, "active": False}
 
 
 def test_replication_owner_lookup_keeps_legacy_hydrated_fallback(tmp_path) -> None:
