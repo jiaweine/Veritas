@@ -34,10 +34,15 @@ jobs:
             --data-dir "$RUNNER_TEMP/veritas-permission-ui/data" \
             > "$RUNNER_TEMP/veritas-permission-ui/harness.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/veritas-permission-ui/harness.pid"
-      - name: Exercise interactive permission approval in real Chromium
+      - name: Exercise interactive permission semantics in real Chromium
         run: |
           rm -rf artifacts/permission-ui
           python scripts/smoke_replication_permission_browser.py \
+            --base-url http://127.0.0.1:8767 \
+            --output-dir artifacts/permission-ui
+      - name: Exercise polished permission review surface in real Chromium
+        run: |
+          python scripts/smoke_replication_permission_polish_browser.py \
             --base-url http://127.0.0.1:8767 \
             --output-dir artifacts/permission-ui
       - name: Upload permission acceptance screenshots
