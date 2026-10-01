@@ -17,6 +17,9 @@ def test_interactive_permission_path_has_real_browser_acceptance() -> None:
         ROOT / "src/veritas/harness/static/reproduction.js"
     ).read_text(encoding="utf-8")
     web = (ROOT / "src/veritas/harness/web_core.py").read_text(encoding="utf-8")
+    projection = (
+        ROOT / "src/veritas/harness/replication_workspace_product.py"
+    ).read_text(encoding="utf-8")
 
     assert 'kind="allow_once"' in agent
     assert 'kind="allow_always"' in agent
@@ -32,6 +35,8 @@ def test_interactive_permission_path_has_real_browser_acceptance() -> None:
     assert 'decision="reject"' in browser
     assert "pending_permissions" in browser
     assert "selected_option_id" in browser
+    assert "historical_pending" in browser
+    assert "Historical permission request remained actionable" in browser
     assert "outputs/permission-allowed.txt" in browser
 
     assert 'item.kind === "allow_once"' in reproduction
@@ -43,6 +48,10 @@ def test_interactive_permission_path_has_real_browser_acceptance() -> None:
     assert '@app.get("/api/v1/replication/runs/{run_id}/control")' in web
     assert '@app.post("/api/v1/replication/runs/{run_id}/permissions/{request_id}")' in web
     assert "resolve_replication_permission(" in web
+
+    assert 'permission_copy["decision"] = "historical_pending"' in projection
+    assert "Historical permission request; this run is no longer actionable." in projection
+    assert "historical_permissions=True" in projection
 
     assert 'VERITAS_REPLICATION_PERMISSION_POLICY="interactive"' in workflow
     assert "browser_replication_permission_agent.py" in workflow
