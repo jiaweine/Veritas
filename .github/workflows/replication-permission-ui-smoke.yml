@@ -1,0 +1,58 @@
+name: replication-permission-ui-smoke
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chromium-permission-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+      - name: Install Veritas browser-smoke dependencies
+        run: pip install -e '.[dev,pdf,web,replication,browser]'
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Start interactive-permission harness
+        run: |
+          mkdir -p "$RUNNER_TEMP/veritas-permission-ui/data"
+          export VERITAS_REPLICATION_AGENT="python $GITHUB_WORKSPACE/scripts/browser_replication_permission_agent.py"
+          export VERITAS_REPLICATION_AGENT_NAME="Browser permission fixture agent"
+          export VERITAS_REPLICATION_PERMISSION_POLICY="interactive"
+          nohup veritas-harness \
+            --host 127.0.0.1 \
+            --port 8767 \
+            --data-dir "$RUNNER_TEMP/veritas-permission-ui/data" \
+            > "$RUNNER_TEMP/veritas-permission-ui/harness.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/veritas-permission-ui/harness.pid"
+      - name: Exercise interactive permission approval in real Chromium
+        run: |
+          rm -rf artifacts/permission-ui
+          python scripts/smoke_replication_permission_browser.py \
+            --base-url http://127.0.0.1:8767 \
+            --output-dir artifacts/permission-ui
+      - name: Upload permission acceptance screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: veritas-replication-permission-screenshots
+          path: artifacts/permission-ui/*.png
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload permission harness log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: veritas-replication-permission-log
+          path: ${{ runner.temp }}/veritas-permission-ui/harness.log
+          if-no-files-found: warn
+          retention-days: 14
