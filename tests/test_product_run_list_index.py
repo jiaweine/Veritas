@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -40,7 +39,7 @@ def _terminal_event(audit_id: str, index: int) -> HarnessEvent:
         detail="done",
         status="success",
         event_id=f"evt_run_{index:06d}",
-        created_at=f"2026-01-01T00:{index // 60:02d}:{index % 60:02d}.{index:06d}Z",
+        created_at=f"2026-01-01T00:00:00.{index:06d}Z",
         payload={
             "tool": "replication.acp",
             "run_kind": "replication",
