@@ -11,6 +11,7 @@ from .models import (
     RegressionResult,
     ReportedNumber,
     SamplePartition,
+    StandardizedRegressionReconstruction,
 )
 
 _SUPPORTED_INFERENCE_DISTRIBUTIONS = {"normal", "student_t", "unknown"}
@@ -19,6 +20,8 @@ _GROUP_COUNT_PREFIX = "group_count:"
 _LABEL_PREFIX = "label:"
 _CELL_PREFIX = "cell:"
 _SUPPORT_PREFIX = "support:"
+_PREDICTOR_PREFIX = "predictor:"
+_STANDARDIZED_BETA_PREFIX = "standardized_beta:"
 
 
 class ClaimObjectReconstructionError(ValueError):
@@ -55,6 +58,8 @@ def reconstruct_statistical_object(
         return reconstruct_logit_result(node)
     if node.object_type == "MediationResult":
         return reconstruct_mediation_result(node)
+    if node.object_type == "StandardizedRegressionReconstruction":
+        return reconstruct_standardized_regression(graph, node)
     raise ClaimObjectReconstructionError(
         f"unsupported statistical object type: {node.object_type!r}"
     )
@@ -344,6 +349,98 @@ def reconstruct_mediation_result(node: StatisticalObjectNode) -> MediationResult
         indirect_effect=indirect_effect,
         product_definition_verified=product_definition_verified,
         scale_consistent_verified=scale_consistent_verified,
+        source=node.source,
+    )
+
+
+def reconstruct_standardized_regression(
+    graph: StatisticalClaimGraph,
+    node: StatisticalObjectNode,
+) -> StandardizedRegressionReconstruction:
+    """Rebuild standardized OLS reconstruction from graph-owned scalar references."""
+
+    if node.object_type != "StandardizedRegressionReconstruction":
+        raise ClaimObjectReconstructionError(
+            "expected StandardizedRegressionReconstruction node, "
+            f"got {node.object_type!r}"
+        )
+
+    matrix_object_id = _string_field(
+        node,
+        "correlation_matrix_object_id",
+        required=True,
+    )
+    assert matrix_object_id is not None
+    try:
+        matrix_node = graph.objects[matrix_object_id]
+    except KeyError as exc:
+        raise ClaimObjectReconstructionError(
+            f"standardized regression references unknown correlation matrix {matrix_object_id!r}"
+        ) from exc
+    correlation_matrix = reconstruct_correlation_matrix(matrix_node)
+
+    outcome = _string_field(node, "outcome", required=True)
+    assert outcome is not None
+    predictors_by_index: dict[int, str] = {}
+    betas_by_index: dict[int, ReportedNumber] = {}
+    for field_name, field in node.fields.items():
+        if field_name.startswith(_PREDICTOR_PREFIX):
+            index = _single_index(field_name, _PREDICTOR_PREFIX)
+            if index in predictors_by_index:
+                raise ClaimObjectReconstructionError(f"duplicate predictor index {index}")
+            if not isinstance(field.value, str) or not field.value.strip():
+                raise ClaimObjectReconstructionError(
+                    f"field {field_name!r} must contain a non-empty predictor label"
+                )
+            predictors_by_index[index] = field.value.strip()
+        elif field_name.startswith(_STANDARDIZED_BETA_PREFIX):
+            index = _single_index(field_name, _STANDARDIZED_BETA_PREFIX)
+            if index in betas_by_index:
+                raise ClaimObjectReconstructionError(f"duplicate standardized beta index {index}")
+            betas_by_index[index] = _reported_from_field(field, field_name)
+
+    if not predictors_by_index:
+        raise ClaimObjectReconstructionError(
+            "StandardizedRegressionReconstruction requires at least one predictor"
+        )
+    expected_indexes = set(range(len(predictors_by_index)))
+    if set(predictors_by_index) != expected_indexes:
+        raise ClaimObjectReconstructionError(
+            "predictor indexes must be contiguous and start at zero"
+        )
+    if set(betas_by_index) != expected_indexes:
+        raise ClaimObjectReconstructionError(
+            "standardized beta indexes must exactly match predictor indexes"
+        )
+    predictors = tuple(predictors_by_index[index] for index in range(len(predictors_by_index)))
+    if len(set(predictors)) != len(predictors):
+        raise ClaimObjectReconstructionError("predictor labels must be unique")
+    if outcome in predictors:
+        raise ClaimObjectReconstructionError("outcome may not also be a predictor")
+    standardized_betas = tuple(betas_by_index[index] for index in range(len(betas_by_index)))
+
+    ols_identity_verified = _bool_field(node, "ols_identity_verified", required=True)
+    same_sample_verified = _bool_field(node, "same_sample_verified", required=True)
+    complete_predictor_set_verified = _bool_field(
+        node,
+        "complete_predictor_set_verified",
+        required=True,
+    )
+    assert (
+        ols_identity_verified is not None
+        and same_sample_verified is not None
+        and complete_predictor_set_verified is not None
+    )
+
+    return StandardizedRegressionReconstruction(
+        object_id=node.object_id,
+        correlation_matrix=correlation_matrix,
+        outcome=outcome,
+        predictors=predictors,
+        standardized_betas=standardized_betas,
+        ols_identity_verified=ols_identity_verified,
+        same_sample_verified=same_sample_verified,
+        complete_predictor_set_verified=complete_predictor_set_verified,
         source=node.source,
     )
 
