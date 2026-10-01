@@ -12,6 +12,7 @@ with publication/artifact provenance on every node and edge.
 
 - `ClaimNode` stores publication claim text and source span.
 - `StatisticalObjectNode` remains the estimate/statistical-object node.
+- `ExtractedField` keeps extraction confidence and source-identity confidence separate; neither may be silently upgraded by a later matcher.
 - `EvidenceNode` adds first-class `sample`, `data`, `code`, `assumption`, and `design` nodes.
 - `ClaimEdge.sources` records the source locations used to justify a link.
 - `ClaimEdge.extraction_confidence` and `ClaimEdge.identity_confidence` travel with the link; `effective_confidence` is the conservative minimum of link, extraction, and identity confidence.
@@ -33,6 +34,10 @@ Scale transformations are explicit enums. In particular, percent and percentage-
 
 `compare_estimand_identity()` is deterministic and deliberately non-fuzzy. Outcome, treatment, and transformation form the core identity and carry 0.90 of the score. Optional population and time-horizon identity account for the remaining 0.10 when both sides provide them. A conflict is not repaired by lexical similarity or detector output.
 
+`build_claim_estimate_alignment()` also preserves source-identity uncertainty independently from deterministic estimand agreement. Its `source_identity_confidence` is the conservative minimum of the claim identity confidence and all extracted-field identity confidences on the estimate object. `effective_confidence` therefore cannot exceed either extraction confidence, source-identity confidence, matcher confidence, or deterministic estimand-match confidence.
+
+When a candidate Claim→Estimate edge is persisted, `identity_confidence` is the minimum of deterministic estimand-match confidence and source-identity confidence. The first Estimate→Sample evidence edge likewise carries the estimate object's field-level identity confidence. Downstream evidence-link identity is not artificially reduced unless that link itself depends on the uncertain estimate identity; traversing the chain still encounters the conservative Estimate→Sample edge.
+
 ## Cross-location E3 gate
 
 Object-level numerical detectors may still produce their ordinary findings. To assert that an E3+ finding at one publication location bears on a claim at another location, callers use `bind_cross_location_claim_findings()`.
@@ -40,13 +45,14 @@ Object-level numerical detectors may still produce their ordinary findings. To a
 That boundary fails closed unless:
 
 1. outcome, treatment, and scale transformation match exactly after normalization;
-2. identity confidence meets the configured threshold (0.90 by default);
-3. the conservative effective confidence, including extraction and matcher uncertainty, meets the threshold (0.90 by default);
-4. the aligned estimate object is the same object referenced by every E3+ finding being bound.
+2. deterministic estimand identity confidence meets the configured threshold (0.90 by default);
+3. source identity confidence from the claim and estimate fields independently meets that threshold;
+4. the conservative effective confidence, including extraction, source-identity, and matcher uncertainty, meets the threshold (0.90 by default);
+5. the aligned estimate object is the same object referenced by every E3+ finding being bound.
 
 Successful bindings write both claim and estimate source locations plus identity/extraction confidence into `finding.evidence["claim_identity_binding"]`.
 
-Lower-grade object-level signals are not upgraded merely because a candidate claim link exists.
+Lower-grade object-level signals are not upgraded merely because a candidate claim link exists. A low-confidence claim label or extracted-field identity remains a hard cap on cross-location E3 authority even when the numerical detector and deterministic estimand comparison are otherwise exact.
 
 ## Identity benchmark
 
