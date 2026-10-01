@@ -4,7 +4,15 @@ import math
 
 from .claims import ExtractedField, StatisticalClaimGraph, StatisticalObjectNode
 from .group_stats import GroupSummary, TwoGroupComparison
-from .models import CorrelationMatrix, RegressionResult, ReportedNumber, SamplePartition
+from .models import (
+    CorrelationMatrix,
+    DiscreteSummary,
+    LogitResult,
+    MediationResult,
+    RegressionResult,
+    ReportedNumber,
+    SamplePartition,
+)
 
 _SUPPORTED_INFERENCE_DISTRIBUTIONS = {"normal", "student_t", "unknown"}
 _SUPPORTED_SD_DEFINITIONS = {"sample", "population", "unknown"}
@@ -13,6 +21,7 @@ _SUPPORTED_HEDGES_CORRECTIONS = {"exact_gamma", "approx_4df_minus_1", "unknown"}
 _GROUP_COUNT_PREFIX = "group_count:"
 _LABEL_PREFIX = "label:"
 _CELL_PREFIX = "cell:"
+_SUPPORT_PREFIX = "support:"
 
 
 class ClaimObjectReconstructionError(ValueError):
@@ -47,6 +56,12 @@ def reconstruct_statistical_object(
         return reconstruct_mean_sd(node)
     if node.object_type == "GroupComparison":
         return reconstruct_group_comparison(node)
+    if node.object_type == "DiscreteSummary":
+        return reconstruct_discrete_summary(node)
+    if node.object_type == "LogitResult":
+        return reconstruct_logit_result(node)
+    if node.object_type == "MediationResult":
+        return reconstruct_mediation_result(node)
     raise ClaimObjectReconstructionError(
         f"unsupported statistical object type: {node.object_type!r}"
     )
@@ -161,13 +176,7 @@ def reconstruct_sample_partition(node: StatisticalObjectNode) -> SamplePartition
 
 
 def reconstruct_correlation_matrix(node: StatisticalObjectNode) -> CorrelationMatrix:
-    """Rebuild a correlation matrix from indexed label/cell graph fields.
-
-    Labels use ``label:<index>`` and cells use ``cell:<row>:<column>``. Every
-    numerical cell remains its own ``ExtractedField`` and therefore retains its
-    source location, raw display string, rounding precision, operator, and
-    extraction/identity confidence in the graph.
-    """
+    """Rebuild a correlation matrix from indexed label/cell graph fields."""
 
     if node.object_type != "CorrelationMatrix":
         raise ClaimObjectReconstructionError(
@@ -320,6 +329,128 @@ def _group_summary(node: StatisticalObjectNode, prefix: str) -> GroupSummary:
         sd=sd,
         sd_definition=sd_definition,
         weighted=_bool_field(node, weighted_name),
+    )
+
+
+def reconstruct_discrete_summary(node: StatisticalObjectNode) -> DiscreteSummary:
+    """Rebuild a finite-support summary without inventing applicability gates."""
+
+    if node.object_type != "DiscreteSummary":
+        raise ClaimObjectReconstructionError(
+            f"expected DiscreteSummary node, got {node.object_type!r}"
+        )
+
+    n = _int_field(node, "n", required=True)
+    assert n is not None
+    if n <= 0:
+        raise ClaimObjectReconstructionError("DiscreteSummary n must be positive")
+    mean = _reported_number(node, "mean", required=True)
+    assert mean is not None
+    sd = _reported_number(node, "sd")
+
+    support_by_index: dict[int, float] = {}
+    for field_name, field in node.fields.items():
+        if not field_name.startswith(_SUPPORT_PREFIX):
+            continue
+        index = _single_index(field_name, _SUPPORT_PREFIX)
+        if index in support_by_index:
+            raise ClaimObjectReconstructionError(f"duplicate support index {index}")
+        support_by_index[index] = _finite_number(field, field_name)
+    if len(support_by_index) < 2:
+        raise ClaimObjectReconstructionError("DiscreteSummary requires at least two support fields")
+    if set(support_by_index) != set(range(len(support_by_index))):
+        raise ClaimObjectReconstructionError(
+            "support indexes must be contiguous and start at zero"
+        )
+    support = tuple(support_by_index[index] for index in range(len(support_by_index)))
+    if len(set(support)) != len(support):
+        raise ClaimObjectReconstructionError("DiscreteSummary support values must be unique")
+
+    sd_definition = _string_field(
+        node,
+        "sd_definition",
+        required=sd is not None,
+        default="unknown",
+    )
+    assert sd_definition is not None
+    if sd_definition not in _SUPPORTED_SD_DEFINITIONS:
+        raise ClaimObjectReconstructionError(
+            "sd_definition must be one of sample, population, or unknown"
+        )
+    support_verified = _bool_field(node, "support_verified", required=True)
+    n_verified = _bool_field(node, "n_verified", required=True)
+    weighted = _bool_field(node, "weighted", required=True)
+    assert support_verified is not None and n_verified is not None and weighted is not None
+
+    return DiscreteSummary(
+        object_id=node.object_id,
+        n=n,
+        mean=mean,
+        support=support,
+        sd=sd,
+        sd_definition=sd_definition,
+        support_verified=support_verified,
+        n_verified=n_verified,
+        weighted=weighted,
+        source=node.source,
+    )
+
+
+def reconstruct_logit_result(node: StatisticalObjectNode) -> LogitResult:
+    """Rebuild a logit coefficient/odds-ratio pair with explicit relation identity."""
+
+    if node.object_type != "LogitResult":
+        raise ClaimObjectReconstructionError(
+            f"expected LogitResult node, got {node.object_type!r}"
+        )
+    beta = _reported_number(node, "beta", required=True)
+    odds_ratio = _reported_number(node, "odds_ratio", required=True)
+    relation_verified = _bool_field(node, "exp_beta_relation_verified", required=True)
+    assert beta is not None and odds_ratio is not None and relation_verified is not None
+    return LogitResult(
+        object_id=node.object_id,
+        beta=beta,
+        odds_ratio=odds_ratio,
+        exp_beta_relation_verified=relation_verified,
+        source=node.source,
+    )
+
+
+def reconstruct_mediation_result(node: StatisticalObjectNode) -> MediationResult:
+    """Rebuild an a*b mediation object with explicit definition/scale gates."""
+
+    if node.object_type != "MediationResult":
+        raise ClaimObjectReconstructionError(
+            f"expected MediationResult node, got {node.object_type!r}"
+        )
+    a_path = _reported_number(node, "a_path", required=True)
+    b_path = _reported_number(node, "b_path", required=True)
+    indirect_effect = _reported_number(node, "indirect_effect", required=True)
+    product_definition_verified = _bool_field(
+        node,
+        "product_definition_verified",
+        required=True,
+    )
+    scale_consistent_verified = _bool_field(
+        node,
+        "scale_consistent_verified",
+        required=True,
+    )
+    assert (
+        a_path is not None
+        and b_path is not None
+        and indirect_effect is not None
+        and product_definition_verified is not None
+        and scale_consistent_verified is not None
+    )
+    return MediationResult(
+        object_id=node.object_id,
+        a_path=a_path,
+        b_path=b_path,
+        indirect_effect=indirect_effect,
+        product_definition_verified=product_definition_verified,
+        scale_consistent_verified=scale_consistent_verified,
+        source=node.source,
     )
 
 
