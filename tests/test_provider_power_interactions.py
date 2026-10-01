@@ -29,8 +29,8 @@ def test_provider_power_interactions_are_wired_and_accessible() -> None:
     assert 'event.key === " "' in script
     assert 'event.key === "F10"' in script
     assert 'event.key === "ContextMenu"' in script
-    assert 'event.key === "ArrowRight"' in script
-    assert 'event.key === "ArrowLeft"' in script
+    assert '["ArrowRight", "ArrowDown", "j", "J"].includes(event.key)' in script
+    assert '["ArrowLeft", "ArrowUp", "k", "K"].includes(event.key)' in script
     assert 'event.key === "Escape"' in script
     assert 'role", "menu"' in script
     assert 'role="menuitem"' in script
