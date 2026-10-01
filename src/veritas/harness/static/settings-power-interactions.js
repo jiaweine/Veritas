@@ -1,4 +1,5 @@
 const main = document.querySelector("#main-content");
+let activePowerCleanup = null;
 
 const escapeHtml = (value = "") => String(value)
   .replaceAll("&", "&amp;")
@@ -50,21 +51,39 @@ function positionFloating(node, anchor, preferred = "below") {
   node.style.top = `${Math.round(top)}px`;
 }
 
-async function copyText(value, statusNode) {
+async function copyText(value, statusNode, button, labels) {
+  const labelNode = button?.querySelector("span");
+  const idleLabel = labels.idle;
+  const setFeedback = (state, message, label = idleLabel) => {
+    if (button?.isConnected) {
+      button.dataset.actionState = state;
+      if (labelNode) labelNode.textContent = label;
+    }
+    if (statusNode?.isConnected) {
+      statusNode.dataset.state = state;
+      statusNode.textContent = message;
+    }
+  };
+
+  setFeedback("working", "Copying…", labels.working || idleLabel);
   try {
     await navigator.clipboard.writeText(value);
-    statusNode.textContent = "Copied";
+    setFeedback("success", labels.success, labels.successLabel);
   } catch {
-    statusNode.textContent = "Clipboard unavailable";
+    setFeedback("error", "Clipboard unavailable", idleLabel);
   }
-  window.setTimeout(() => { statusNode.textContent = ""; }, 1600);
+  window.setTimeout(() => setFeedback("idle", "", idleLabel), 1600);
 }
 
 function bindPowerInteractions(router) {
   if (!router || router.dataset.providerPower === "true") return;
   const cards = [...router.querySelectorAll("[data-model-provider]")];
   if (!cards.length) return;
+
+  activePowerCleanup?.();
   router.dataset.providerPower = "true";
+  const controller = new AbortController();
+  let lifecycleObserver = null;
 
   const quicklook = document.createElement("aside");
   quicklook.className = "provider-quicklook";
@@ -81,6 +100,20 @@ function bindPowerInteractions(router) {
   actions.setAttribute("role", "menu");
   actions.setAttribute("aria-label", "Provider actions");
   document.body.append(actions);
+
+  const cleanup = () => {
+    controller.abort();
+    lifecycleObserver?.disconnect();
+    cards.forEach((card) => { card.dataset.quicklook = "false"; });
+    quicklook.remove();
+    actions.remove();
+    if (activePowerCleanup === cleanup) activePowerCleanup = null;
+  };
+  activePowerCleanup = cleanup;
+  lifecycleObserver = new MutationObserver(() => {
+    if (!router.isConnected) cleanup();
+  });
+  lifecycleObserver.observe(main || document.body, { childList: true, subtree: true });
 
   let current = cards.find((card) => card.dataset.providerSelected === "true") || cards[0];
   let quicklookCard = null;
@@ -110,21 +143,21 @@ function bindPowerInteractions(router) {
         <span><b>MODEL</b>${escapeHtml(model)}</span>
         ${meta.slice(0, 3).map((item) => `<span><b>${escapeHtml(item.label)}</b>${escapeHtml(item.value)}</span>`).join("")}
       </div>
-      <div class="provider-quicklook-foot"><span>← → / J K navigate</span><span>Enter pin</span><span>Shift+F10 actions</span><span>Esc close</span></div>`;
+      <div class="provider-quicklook-foot"><span>← → / J K navigate</span><span>Enter pin</span><span>Shift+F10 actions</span><span>Esc closes one layer</span></div>`;
   };
 
   function showQuicklook(card, mode = "peek") {
+    cards.forEach((item) => { item.dataset.quicklook = String(item === card); });
     quicklookCard = card;
     quicklook.hidden = false;
     quicklook.dataset.mode = mode;
     quicklook.dataset.provider = card.dataset.modelProvider || "";
     quicklook.innerHTML = quicklookMarkup(card, mode);
     positionFloating(quicklook, card);
-    card.dataset.quicklook = "true";
   }
 
   const hideQuicklook = () => {
-    if (quicklookCard) quicklookCard.dataset.quicklook = "false";
+    cards.forEach((item) => { item.dataset.quicklook = "false"; });
     quicklookCard = null;
     quicklook.hidden = true;
     quicklook.dataset.mode = "idle";
@@ -139,6 +172,24 @@ function bindPowerInteractions(router) {
     if (restoreFocus && card) card.focus({ preventScroll: true });
   };
 
+  const closeQuicklookLayer = () => {
+    quicklookHeld = false;
+    quicklookSticky = false;
+    hideQuicklook();
+  };
+
+  const closeTopContextLayer = ({ restoreFocus = true } = {}) => {
+    if (!actions.hidden) {
+      closeActions({ restoreFocus });
+      return "actions";
+    }
+    if (!quicklook.hidden) {
+      closeQuicklookLayer();
+      return "quicklook";
+    }
+    return "";
+  };
+
   const openActions = (card, point = null) => {
     actionCard = card;
     setRovingCard(card);
@@ -151,11 +202,11 @@ function bindPowerInteractions(router) {
       <div class="provider-action-list">
         <button type="button" role="menuitem" data-provider-action="pin"><span>${pinned ? "Unpin details" : "Pin details"}</span><kbd>Enter</kbd></button>
         <button type="button" role="menuitem" data-provider-action="quicklook"><span>${quicklookSticky ? "Close Quick Look" : "Keep Quick Look open"}</span><kbd>Space</kbd></button>
-        <button type="button" role="menuitem" data-provider-action="copy-provider"><span>Copy provider ID</span><kbd>⌘C</kbd></button>
-        ${model ? `<button type="button" role="menuitem" data-provider-action="copy-model"><span>Copy model ID</span><kbd>⌥C</kbd></button>` : ""}
+        <button type="button" role="menuitem" data-provider-action="copy-provider" data-action-state="idle"><span>Copy provider ID</span><kbd>⌘C</kbd></button>
+        ${model ? `<button type="button" role="menuitem" data-provider-action="copy-model" data-action-state="idle"><span>Copy model ID</span><kbd>⌥C</kbd></button>` : ""}
         ${canProbe ? `<button type="button" role="menuitem" data-provider-action="probe"><span>Test active link</span><kbd>T</kbd></button>` : ""}
       </div>
-      <div class="provider-action-status" aria-live="polite"></div>`;
+      <div class="provider-action-status" data-state="idle" aria-live="polite"></div>`;
     actions.hidden = false;
     actions.dataset.provider = card.dataset.modelProvider || "";
     if (point) {
@@ -178,8 +229,22 @@ function bindPowerInteractions(router) {
           if (quicklookSticky) showQuicklook(card, "pinned");
           else hideQuicklook();
         }
-        if (action === "copy-provider") await copyText(card.dataset.modelProvider || "", statusNode);
-        if (action === "copy-model" && model) await copyText(model, statusNode);
+        if (action === "copy-provider") {
+          await copyText(card.dataset.modelProvider || "", statusNode, button, {
+            idle: "Copy provider ID",
+            working: "Copying provider ID…",
+            success: "Provider ID copied",
+            successLabel: "Copied provider ID ✓",
+          });
+        }
+        if (action === "copy-model" && model) {
+          await copyText(model, statusNode, button, {
+            idle: "Copy model ID",
+            working: "Copying model ID…",
+            success: "Model ID copied",
+            successLabel: "Copied model ID ✓",
+          });
+        }
         if (action === "probe" && canProbe) probeButton.click();
         if (!["copy-provider", "copy-model"].includes(action)) closeActions({ restoreFocus: true });
       });
@@ -197,6 +262,7 @@ function bindPowerInteractions(router) {
   setRovingCard(current);
 
   cards.forEach((card) => {
+    card.dataset.quicklook = "false";
     card.addEventListener("pointerdown", () => setRovingCard(card));
     card.addEventListener("contextmenu", (event) => {
       event.preventDefault();
@@ -248,10 +314,11 @@ function bindPowerInteractions(router) {
       return;
     }
     if (event.key === "Escape") {
-      closeActions();
-      quicklookHeld = false;
-      quicklookSticky = false;
-      hideQuicklook();
+      const closedLayer = closeTopContextLayer({ restoreFocus: true });
+      if (closedLayer) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     }
   }, true);
 
@@ -277,6 +344,7 @@ function bindPowerInteractions(router) {
     }
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       closeActions({ restoreFocus: true });
     }
   });
@@ -285,17 +353,18 @@ function bindPowerInteractions(router) {
     if (actions.hidden) return;
     if (actions.contains(event.target) || actionCard?.contains(event.target)) return;
     closeActions();
-  });
+  }, { signal: controller.signal });
 
   window.addEventListener("resize", () => {
     if (!quicklook.hidden && quicklookCard) positionFloating(quicklook, quicklookCard);
     if (!actions.hidden && actionCard) positionFloating(actions, actionCard);
-  });
+  }, { signal: controller.signal });
 }
 
 function enhance() {
   const router = main?.querySelector("[data-model-provider-matrix='true']");
   if (router) bindPowerInteractions(router);
+  else activePowerCleanup?.();
 }
 
 new MutationObserver(enhance).observe(main || document.body, { childList: true, subtree: true });
