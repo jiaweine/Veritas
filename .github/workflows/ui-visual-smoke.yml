@@ -10,6 +10,7 @@ on:
       - "scripts/smoke_replication_diff_browser.py"
       - "scripts/smoke_replication_review_browser.py"
       - "scripts/smoke_model_providers_browser.py"
+      - "scripts/smoke_provider_power_interactions_browser.py"
       - "scripts/smoke_evidence_lens_browser.py"
       - "scripts/browser_replication_diff_agent.py"
       - "pyproject.toml"
@@ -22,6 +23,7 @@ on:
       - "scripts/smoke_replication_diff_browser.py"
       - "scripts/smoke_replication_review_browser.py"
       - "scripts/smoke_model_providers_browser.py"
+      - "scripts/smoke_provider_power_interactions_browser.py"
       - "scripts/smoke_evidence_lens_browser.py"
       - "scripts/browser_replication_diff_agent.py"
       - "pyproject.toml"
@@ -77,6 +79,9 @@ jobs:
             --base-url http://127.0.0.1:8765 \
             --output-dir artifacts/ui
           python scripts/smoke_model_providers_browser.py \
+            --base-url http://127.0.0.1:8765 \
+            --output-dir artifacts/ui
+          python scripts/smoke_provider_power_interactions_browser.py \
             --base-url http://127.0.0.1:8765 \
             --output-dir artifacts/ui
           python scripts/smoke_finding_replication_browser.py \
