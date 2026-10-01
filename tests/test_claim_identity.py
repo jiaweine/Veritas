@@ -26,7 +26,12 @@ from veritas.claims import (
 from veritas.models import SourceLocation
 
 
-def _graph(*, estimate_confidence: float = 0.98) -> StatisticalClaimGraph:
+def _graph(
+    *,
+    estimate_confidence: float = 0.98,
+    estimate_identity_confidence: float = 1.0,
+    claim_identity_confidence: float = 0.97,
+) -> StatisticalClaimGraph:
     graph = StatisticalClaimGraph()
     graph.add_artifact(ArtifactRef("paper", "pdf", sha256="a" * 64))
     graph.add_artifact(ArtifactRef("data-artifact", "csv", sha256="b" * 64))
@@ -45,7 +50,7 @@ def _graph(*, estimate_confidence: float = 0.98) -> StatisticalClaimGraph:
                 text_quote="increased employment by 4 percentage points",
             ),
             extraction_confidence=0.98,
-            identity_confidence=0.97,
+            identity_confidence=claim_identity_confidence,
         )
     )
     graph.add_object(
@@ -64,6 +69,7 @@ def _graph(*, estimate_confidence: float = 0.98) -> StatisticalClaimGraph:
                         column="Employment",
                     ),
                     extraction_confidence=estimate_confidence,
+                    identity_confidence=estimate_identity_confidence,
                 )
             },
             source=SourceLocation(artifact_id="paper", page=8, table="Table 3"),
@@ -109,6 +115,14 @@ def _graph(*, estimate_confidence: float = 0.98) -> StatisticalClaimGraph:
         )
     )
     return graph
+
+
+def _employment_identity():
+    return normalize_estimand_identity(
+        outcome="employment",
+        treatment="program assignment",
+        transformation="percentage points",
+    )
 
 
 def test_scale_normalization_distinguishes_percent_and_percentage_points() -> None:
@@ -161,11 +175,7 @@ def test_scale_mismatch_blocks_cross_location_e3() -> None:
 
 def test_low_extraction_confidence_blocks_cross_location_e3() -> None:
     graph = _graph(estimate_confidence=0.72)
-    identity = normalize_estimand_identity(
-        outcome="employment",
-        treatment="program assignment",
-        transformation="percentage points",
-    )
+    identity = _employment_identity()
     alignment = build_claim_estimate_alignment(
         graph,
         claim_id="claim-main",
@@ -180,13 +190,44 @@ def test_low_extraction_confidence_blocks_cross_location_e3() -> None:
         require_cross_location_e3_identity(alignment)
 
 
+def test_low_field_identity_confidence_blocks_cross_location_e3() -> None:
+    graph = _graph(estimate_identity_confidence=0.72)
+    identity = _employment_identity()
+    alignment = build_claim_estimate_alignment(
+        graph,
+        claim_id="claim-main",
+        estimate_object_id="estimate-main",
+        claim_identity=identity,
+        estimate_identity=identity,
+    )
+
+    assert alignment.extraction_confidence == 0.98
+    assert alignment.source_identity_confidence == 0.72
+    assert alignment.effective_confidence == 0.72
+    with pytest.raises(ValueError, match="source identity"):
+        require_cross_location_e3_identity(alignment)
+
+
+def test_low_claim_identity_confidence_blocks_cross_location_e3() -> None:
+    graph = _graph(claim_identity_confidence=0.74)
+    identity = _employment_identity()
+    alignment = build_claim_estimate_alignment(
+        graph,
+        claim_id="claim-main",
+        estimate_object_id="estimate-main",
+        claim_identity=identity,
+        estimate_identity=identity,
+    )
+
+    assert alignment.source_identity_confidence == 0.74
+    assert alignment.effective_confidence == 0.74
+    with pytest.raises(ValueError, match="source identity"):
+        require_cross_location_e3_identity(alignment)
+
+
 def test_claim_candidate_edge_propagates_sources_and_uncertainty() -> None:
     graph = _graph()
-    identity = normalize_estimand_identity(
-        outcome="employment",
-        treatment="program assignment",
-        transformation="percentage points",
-    )
+    identity = _employment_identity()
     alignment = build_claim_estimate_alignment(
         graph,
         claim_id="claim-main",
@@ -201,7 +242,25 @@ def test_claim_candidate_edge_propagates_sources_and_uncertainty() -> None:
 
     assert edge.relation is RelationType.REPORTS
     assert edge.effective_confidence == 0.90
+    assert edge.identity_confidence == 0.90
     assert [source.page for source in edge.sources] == [2, 8]
+
+
+def test_claim_candidate_edge_propagates_low_source_identity_confidence() -> None:
+    graph = _graph(estimate_identity_confidence=0.72)
+    identity = _employment_identity()
+    alignment = build_claim_estimate_alignment(
+        graph,
+        claim_id="claim-main",
+        estimate_object_id="estimate-main",
+        claim_identity=identity,
+        estimate_identity=identity,
+    )
+
+    edge = add_claim_estimate_candidate(graph, alignment)
+
+    assert edge.identity_confidence == 0.72
+    assert edge.effective_confidence == 0.72
 
 
 def test_empirical_evidence_chain_round_trip_preserves_provenance() -> None:
@@ -224,6 +283,24 @@ def test_empirical_evidence_chain_round_trip_preserves_provenance() -> None:
     restored = StatisticalClaimGraph.from_json(graph.to_json())
     assert restored.evidence_nodes["sample-main"].attributes["n"] == 1200
     assert restored.edges[-1].sources[-1].section == "Identification"
+
+
+def test_empirical_evidence_chain_propagates_estimate_identity_uncertainty() -> None:
+    graph = _graph(estimate_identity_confidence=0.71)
+    links = link_empirical_evidence_chain(
+        graph,
+        estimate_object_id="estimate-main",
+        sample_id="sample-main",
+        data_id="data-main",
+        code_id="code-main",
+    )
+
+    estimate_to_sample = links[0]
+    assert estimate_to_sample.relation is RelationType.USES_SAMPLE
+    assert estimate_to_sample.extraction_confidence == 0.97
+    assert estimate_to_sample.identity_confidence == 0.71
+    assert estimate_to_sample.effective_confidence == 0.71
+    assert links[1].identity_confidence == 1.0
 
 
 def test_evidence_chain_rejects_wrong_node_kind() -> None:
