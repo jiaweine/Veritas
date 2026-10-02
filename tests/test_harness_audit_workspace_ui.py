@@ -88,6 +88,11 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert 'data-router-pointer-inspector' in settings_interactions.text
     assert 'data-router-network-field' in settings_interactions.text
     assert 'networkFocus' in settings_interactions.text
+    assert 'networkCadence' in settings_interactions.text
+    assert 'HOVER_PREVIEW_DELAY_MS = 150' in settings_interactions.text
+    assert 'HOVER_RELEASE_GRACE_MS = 90' in settings_interactions.text
+    assert 'previewMode' in settings_interactions.text
+    assert 'previewProvider' in settings_interactions.text
     assert 'aria-pressed' in settings_interactions.text
     assert 'aria-controls' in settings_interactions.text
 
@@ -102,6 +107,9 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
     assert '.router-pointer-inspector' in settings_interaction_stylesheet.text
     assert '.router-network-field' in settings_interaction_stylesheet.text
     assert '--tilt-x' in settings_interaction_stylesheet.text
+    assert 'data-network-cadence' in settings_interaction_stylesheet.text
+    assert 'data-hover-intent' in settings_interaction_stylesheet.text
+    assert 'router-context-in' in settings_interaction_stylesheet.text
     assert 'provider-pin-scan' in settings_interaction_stylesheet.text
     assert 'prefers-reduced-motion' in settings_interaction_stylesheet.text
 
@@ -142,7 +150,7 @@ def test_audit_harness_assets_are_part_of_product_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'veritas-shell-v28' in service_worker.text
+    assert 'veritas-shell-v29' in service_worker.text
     assert '/static/audit-harness.js' in service_worker.text
     assert '/static/audit-harness.css' in service_worker.text
     assert '/static/audit-harness-product.js' in service_worker.text
