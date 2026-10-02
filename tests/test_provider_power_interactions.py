@@ -50,7 +50,7 @@ def test_provider_power_interactions_are_wired_and_accessible() -> None:
     assert '/static/settings-power-interactions.js' in shell
     assert '/static/settings-power-interactions.css' in service_worker
     assert '/static/settings-power-interactions.js' in service_worker
-    assert 'const CACHE = "veritas-shell-v28"' in service_worker
+    assert 'const CACHE = "veritas-shell-v29"' in service_worker
     assert '"settings-provider-quicklook.png"' in browser
     assert '"settings-provider-actions.png"' in browser
     assert '"settings-provider-action-feedback.png"' in browser
