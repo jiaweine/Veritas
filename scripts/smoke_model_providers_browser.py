@@ -138,10 +138,6 @@ def main() -> None:
             """() => document.querySelector('[data-router-network-field="true"]')?.dataset.networkReady === 'true'""",
             timeout=10_000,
         )
-        page.wait_for_function(
-            """() => document.querySelector('[data-router-network-field="true"]')?.dataset.networkCadence === 'idle'""",
-            timeout=10_000,
-        )
 
         selected.hover(position={"x": 110, "y": 70})
         page.wait_for_function(
