@@ -37,7 +37,9 @@ def test_product_boot_bounds_legacy_run_fetch_before_app_executes() -> None:
     assert 'url.pathname === "/api/v1/runs"' in bootstrap
     assert 'new URL("/api/v1/run-pages"' in bootstrap
     assert "const RUN_BOOT_LIMIT = 50" in bootstrap
-    assert 'headers.set("X-Veritas-Run-Page", "1")' in bootstrap
+    assert '"Cache-Control": "no-store"' in bootstrap
+    assert '"X-Veritas-Run-Page": "1"' in bootstrap
+    assert "entity headers must be rebuilt" in bootstrap
     assert 'const CACHE = "veritas-shell-v29"' in service_worker
     assert 'const CACHE_REVISION = "runs-pagination-1"' in service_worker
     assert "ACTIVE_CACHE" in service_worker
