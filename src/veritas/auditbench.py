@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from .types import CheckStatus, EvidenceGrade, Materiality
 
@@ -43,6 +43,7 @@ class AuditBenchMetrics:
     true_alerts: int
     false_alerts: int
     missed_alerts: int
+    status_mismatches: int
     alert_precision: float
     alert_recall: float
     clean_papers: int
@@ -87,10 +88,16 @@ def evaluate_auditbench(
     if set(expected_by_case) != set(observed_by_case):
         missing = sorted(set(expected_by_case) - set(observed_by_case))
         extra = sorted(set(observed_by_case) - set(expected_by_case))
-        raise ValueError(f"AuditBench observations must exactly match cases; missing={missing!r}, extra={extra!r}")
+        raise ValueError(
+            "AuditBench observations must exactly match cases; "
+            f"missing={missing!r}, extra={extra!r}"
+        )
     for case_id, expectation in expected_by_case.items():
         observation = observed_by_case[case_id]
-        if observation.detector_id != expectation.detector_id or observation.check_id != expectation.check_id:
+        if (
+            observation.detector_id != expectation.detector_id
+            or observation.check_id != expectation.check_id
+        ):
             raise ValueError(f"AuditBench observation identity mismatch for {case_id!r}")
 
     overall = _metrics(expected, observed_by_case)
@@ -100,15 +107,22 @@ def evaluate_auditbench(
     by_reporting_style = _slices(expected, observed_by_case, lambda item: item.reporting_style)
 
     reasons: list[str] = []
+    if overall.status_mismatches:
+        reasons.append(f"{overall.status_mismatches} case(s) changed exact detector status")
     if overall.alert_precision < min_alert_precision:
         reasons.append(
-            f"alert precision below policy: {overall.alert_precision:.4f} < {min_alert_precision:.4f}"
+            f"alert precision below policy: {overall.alert_precision:.4f} < "
+            f"{min_alert_precision:.4f}"
         )
     if overall.alert_recall < min_alert_recall:
         reasons.append(
-            f"alert recall below policy: {overall.alert_recall:.4f} < {min_alert_recall:.4f}"
+            f"alert recall below policy: {overall.alert_recall:.4f} < "
+            f"{min_alert_recall:.4f}"
         )
-    if overall.false_hard_alert_rate_per_clean_paper > max_false_hard_alert_rate_per_clean_paper:
+    if (
+        overall.false_hard_alert_rate_per_clean_paper
+        > max_false_hard_alert_rate_per_clean_paper
+    ):
         reasons.append(
             "false hard-alert rate per clean paper exceeds policy: "
             f"{overall.false_hard_alert_rate_per_clean_paper:.4f} > "
@@ -136,7 +150,9 @@ def _metrics(
     observed_by_case: dict[str, AuditBenchObservation],
 ) -> AuditBenchMetrics:
     expected_alerts = sum(item.expected_status in _ALERT_STATUSES for item in expectations)
-    observed_alerts = sum(observed_by_case[item.case_id].status in _ALERT_STATUSES for item in expectations)
+    observed_alerts = sum(
+        observed_by_case[item.case_id].status in _ALERT_STATUSES for item in expectations
+    )
     true_alerts = sum(
         item.expected_status in _ALERT_STATUSES
         and observed_by_case[item.case_id].status in _ALERT_STATUSES
@@ -148,20 +164,25 @@ def _metrics(
         for item in expectations
     )
     missed_alerts = expected_alerts - true_alerts
+    status_mismatches = sum(
+        observed_by_case[item.case_id].status is not item.expected_status for item in expectations
+    )
     precision = true_alerts / observed_alerts if observed_alerts else (1.0 if not expected_alerts else 0.0)
     recall = true_alerts / expected_alerts if expected_alerts else 1.0
 
     expected_hard_by_paper: dict[str, bool] = {}
     observed_hard_by_paper: dict[str, bool] = {}
     for item in expectations:
-        expected_hard_by_paper[item.paper_id] = expected_hard_by_paper.get(item.paper_id, False) or (
-            item.expected_status is CheckStatus.FAIL
-        )
+        expected_hard_by_paper[item.paper_id] = expected_hard_by_paper.get(
+            item.paper_id, False
+        ) or (item.expected_status is CheckStatus.FAIL)
         observation = observed_by_case[item.case_id]
-        observed_hard_by_paper[item.paper_id] = observed_hard_by_paper.get(item.paper_id, False) or _is_hard(
-            observation
-        )
-    clean_papers = [paper_id for paper_id, expected_hard in expected_hard_by_paper.items() if not expected_hard]
+        observed_hard_by_paper[item.paper_id] = observed_hard_by_paper.get(
+            item.paper_id, False
+        ) or _is_hard(observation)
+    clean_papers = [
+        paper_id for paper_id, expected_hard in expected_hard_by_paper.items() if not expected_hard
+    ]
     false_hard_papers = sum(observed_hard_by_paper.get(paper_id, False) for paper_id in clean_papers)
     false_hard_rate = false_hard_papers / len(clean_papers) if clean_papers else 0.0
 
@@ -186,6 +207,7 @@ def _metrics(
         true_alerts=true_alerts,
         false_alerts=false_alerts,
         missed_alerts=missed_alerts,
+        status_mismatches=status_mismatches,
         alert_precision=precision,
         alert_recall=recall,
         clean_papers=len(clean_papers),
@@ -201,11 +223,11 @@ def _metrics(
 def _slices(
     expectations: tuple[AuditBenchExpectation, ...],
     observed_by_case: dict[str, AuditBenchObservation],
-    key,
+    key: Callable[[AuditBenchExpectation], str],
 ) -> dict[str, AuditBenchMetrics]:
     grouped: dict[str, list[AuditBenchExpectation]] = {}
     for item in expectations:
-        grouped.setdefault(str(key(item)), []).append(item)
+        grouped.setdefault(key(item), []).append(item)
     return {
         name: _metrics(tuple(items), observed_by_case)
         for name, items in sorted(grouped.items())
@@ -214,7 +236,8 @@ def _slices(
 
 def _is_hard(observation: AuditBenchObservation) -> bool:
     return observation.status is CheckStatus.FAIL or (
-        observation.grade is not None and observation.grade >= EvidenceGrade.INTERNAL_CONTRADICTION
+        observation.grade is not None
+        and observation.grade >= EvidenceGrade.INTERNAL_CONTRADICTION
     )
 
 
