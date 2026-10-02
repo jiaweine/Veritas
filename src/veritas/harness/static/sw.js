@@ -1,4 +1,6 @@
 const CACHE = "veritas-shell-v29";
+const CACHE_REVISION = "runs-pagination-1";
+const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`;
 const SHELL = [
   "/",
   "/static/styles.css",
@@ -22,6 +24,7 @@ const SHELL = [
   "/static/claim-graph.css",
   "/static/finding-navigation.css",
   "/static/mobile-polish.css",
+  "/static/run-page-bootstrap.js",
   "/static/app.js",
   "/static/audit-harness.js",
   "/static/audit-harness-product.js",
@@ -47,12 +50,12 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(ACTIVE_CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== ACTIVE_CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
@@ -64,7 +67,7 @@ self.addEventListener("fetch", (event) => {
     caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
       if (response.ok && url.origin === self.location.origin) {
         const copy = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        caches.open(ACTIVE_CACHE).then((cache) => cache.put(event.request, copy));
       }
       return response;
     }))

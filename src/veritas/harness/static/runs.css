@@ -12,6 +12,13 @@
 .run-row-copy small { display: block; color: var(--text-faint); font-size: 7.5px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .run-row-tail { display: grid; justify-items: end; gap: 5px; }
 .run-row-tail small { color: var(--text-faint); font-size: 7px; }
+.run-page-footer { display: grid; justify-items: center; gap: 7px; margin-top: 7px; padding: 12px 8px 8px; border-top: 1px solid #eceff4; background: linear-gradient(180deg, rgba(255,255,255,.72), #fff); }
+.run-page-footer > small { color: var(--text-faint); font-size: 7.5px; text-align: center; }
+.run-page-footer .secondary-button { min-width: 138px; }
+.run-page-error { width: min(100%, 360px); border: 1px solid #f0d4d6; border-radius: 8px; background: #fff7f7; padding: 8px 10px; color: #8d4349; }
+.run-page-error strong, .run-page-error small { display: block; }
+.run-page-error strong { font-size: 8.5px; }
+.run-page-error small { margin-top: 3px; font-size: 7.5px; line-height: 1.4; overflow-wrap: anywhere; }
 .run-detail-panel { min-width: 0; overflow: hidden; position: sticky; top: 0; }
 .run-detail-shell { padding: 14px; }
 .run-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -63,4 +70,5 @@
   .run-detail-wide { grid-column: auto; }
   .run-inspector-row { grid-template-columns: 28px minmax(0,1fr); }
   .run-row-tail { grid-column: 2; grid-row: 2; display: flex; justify-content: flex-start; align-items: center; }
+  .run-page-footer .secondary-button { width: 100%; }
 }

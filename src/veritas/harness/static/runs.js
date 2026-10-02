@@ -1,4 +1,14 @@
 const main = document.querySelector("#main-content");
+const RUN_PAGE_LIMIT = 50;
+
+const runFeed = {
+  items: [],
+  nextCursor: null,
+  hasMore: false,
+  loadingMore: false,
+  loadMoreError: null,
+  selectedRunId: null,
+};
 
 const escapeHtml = (value = "") => String(value)
   .replaceAll("&", "&amp;")
@@ -103,13 +113,78 @@ function detailView(detail) {
 }
 
 async function selectRun(runId, rows, detailNode) {
+  runFeed.selectedRunId = runId;
   rows.forEach((row) => row.classList.toggle("selected", row.dataset.runId === runId));
   detailNode.innerHTML = `<div class="run-detail-loading"><span class="status-icon running">⌁</span><strong>Loading correlated trace…</strong></div>`;
   try {
     const detail = await json(`/api/v1/runs/${encodeURIComponent(runId)}`);
-    detailNode.innerHTML = detailView(detail);
+    if (runFeed.selectedRunId === runId) detailNode.innerHTML = detailView(detail);
   } catch (error) {
-    detailNode.innerHTML = `<div class="run-empty"><strong>Unable to load run</strong><p>${escapeHtml(error.message)}</p></div>`;
+    if (runFeed.selectedRunId === runId) {
+      detailNode.innerHTML = `<div class="run-empty"><strong>Unable to load run</strong><p>${escapeHtml(error.message)}</p></div>`;
+    }
+  }
+}
+
+function pagePath(cursor = null) {
+  const params = new URLSearchParams({ limit: String(RUN_PAGE_LIMIT) });
+  if (cursor) params.set("cursor", cursor);
+  return `/api/v1/run-pages?${params.toString()}`;
+}
+
+function mergePageItems(items) {
+  const seen = new Set(runFeed.items.map((item) => item.run_id));
+  for (const item of items || []) {
+    if (!item?.run_id || seen.has(item.run_id)) continue;
+    seen.add(item.run_id);
+    runFeed.items.push(item);
+  }
+}
+
+function runListMarkup() {
+  const selected = runFeed.selectedRunId || runFeed.items[0]?.run_id || null;
+  const rows = runFeed.items.map((run) => runRow(run, run.run_id === selected)).join("");
+  const error = runFeed.loadMoreError
+    ? `<div class="run-page-error" role="alert"><strong>Unable to load the next page.</strong><small>${escapeHtml(runFeed.loadMoreError)}</small></div>`
+    : "";
+  const footer = runFeed.hasMore
+    ? `<div class="run-page-footer">${error}<button class="secondary-button" data-run-load-more aria-busy="${runFeed.loadingMore ? "true" : "false"}" ${runFeed.loadingMore ? "disabled" : ""}>${runFeed.loadingMore ? "Loading…" : "Load 50 more"}</button><small>${runFeed.items.length} runs loaded · newest first</small></div>`
+    : `<div class="run-page-footer">${error}<small>${runFeed.items.length} runs loaded · end of validated run history</small></div>`;
+  return `${rows}${footer}`;
+}
+
+function bindRunList(detailNode) {
+  const rows = [...document.querySelectorAll(".run-inspector-row")];
+  rows.forEach((row) => row.addEventListener("click", () => selectRun(row.dataset.runId, rows, detailNode)));
+  const loadMore = document.querySelector("[data-run-load-more]");
+  if (loadMore) loadMore.addEventListener("click", () => loadMoreRuns(detailNode));
+  return rows;
+}
+
+function updateRunList(detailNode) {
+  const list = document.querySelector(".run-inspector-list");
+  if (!list) return [];
+  const previousScrollTop = list.scrollTop;
+  list.innerHTML = runListMarkup();
+  list.scrollTop = previousScrollTop;
+  return bindRunList(detailNode);
+}
+
+async function loadMoreRuns(detailNode) {
+  if (runFeed.loadingMore || !runFeed.hasMore || !runFeed.nextCursor) return;
+  runFeed.loadingMore = true;
+  runFeed.loadMoreError = null;
+  updateRunList(detailNode);
+  try {
+    const page = await json(pagePath(runFeed.nextCursor));
+    mergePageItems(page.items);
+    runFeed.nextCursor = page.next_cursor || null;
+    runFeed.hasMore = Boolean(page.has_more && runFeed.nextCursor);
+  } catch (error) {
+    runFeed.loadMoreError = error.message || "Unknown run paging error";
+  } finally {
+    runFeed.loadingMore = false;
+    updateRunList(detailNode);
   }
 }
 
@@ -119,23 +194,30 @@ async function enhanceRuns() {
   main.dataset.runsEnhanced = "true";
 
   try {
-    const runs = await json("/api/v1/runs");
+    const page = await json(pagePath());
+    runFeed.items = [];
+    runFeed.nextCursor = page.next_cursor || null;
+    runFeed.hasMore = Boolean(page.has_more && runFeed.nextCursor);
+    runFeed.loadingMore = false;
+    runFeed.loadMoreError = null;
+    runFeed.selectedRunId = page.items?.[0]?.run_id || null;
+    mergePageItems(page.items);
+
     main.innerHTML = `<div class="page" data-runs-surface="true">
       <div class="page-head">
-        <div class="page-head-copy"><span class="eyebrow">Harness observability</span><h1 class="page-title">Agent runs</h1><p class="page-subtitle">Inspect deterministic detector and ACP replication runs as correlated start → update → finish traces.</p></div>
-        <div class="page-actions">${badge("success", `${runs.length} terminal runs`)}</div>
+        <div class="page-head-copy"><span class="eyebrow">Harness observability</span><h1 class="page-title">Agent runs</h1><p class="page-subtitle">Inspect deterministic detector and ACP replication runs as correlated start → update → finish traces. History is loaded in bounded validated pages.</p></div>
+        <div class="page-actions">${badge("success", `${runFeed.items.length}${runFeed.hasMore ? "+" : ""} terminal runs`)}</div>
       </div>
-      ${runs.length ? `<section class="run-inspector-grid">
-        <article class="panel run-list-panel"><div class="panel-head"><h2>Runs</h2><span class="panel-link">Newest first</span></div><div class="run-inspector-list">${runs.map((run, index) => runRow(run, index === 0)).join("")}</div></article>
+      ${runFeed.items.length ? `<section class="run-inspector-grid">
+        <article class="panel run-list-panel"><div class="panel-head"><h2>Runs</h2><span class="panel-link">Newest first · paged</span></div><div class="run-inspector-list" aria-live="polite">${runListMarkup()}</div></article>
         <article id="run-inspector-detail" class="panel run-detail-panel"></article>
       </section>` : `<section class="panel"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">⌁</div><h2>No runs yet</h2><p>Run a detector audit or configured reproduction job to create a correlated trace.</p></div></div></section>`}
     </div>`;
 
     const detailNode = document.querySelector("#run-inspector-detail");
-    const rows = [...document.querySelectorAll(".run-inspector-row")];
-    if (detailNode && rows.length) {
-      rows.forEach((row) => row.addEventListener("click", () => selectRun(row.dataset.runId, rows, detailNode)));
-      await selectRun(rows[0].dataset.runId, rows, detailNode);
+    if (detailNode && runFeed.items.length) {
+      const rows = bindRunList(detailNode);
+      await selectRun(runFeed.selectedRunId, rows, detailNode);
     }
   } catch (error) {
     main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Run inspector unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
@@ -145,7 +227,15 @@ async function enhanceRuns() {
 const observer = new MutationObserver(() => {
   if (!main) return;
   if (!main.textContent.includes("Agent runs")) {
-    if (!main.querySelector("[data-runs-surface]")) delete main.dataset.runsEnhanced;
+    if (!main.querySelector("[data-runs-surface]")) {
+      delete main.dataset.runsEnhanced;
+      runFeed.items = [];
+      runFeed.nextCursor = null;
+      runFeed.hasMore = false;
+      runFeed.loadingMore = false;
+      runFeed.loadMoreError = null;
+      runFeed.selectedRunId = null;
+    }
     return;
   }
   queueMicrotask(enhanceRuns);
