@@ -196,6 +196,7 @@ pytest -q
 
 ## Documentation
 
+- [`docs/REPOSITORY_COMPLETION.md`](docs/REPOSITORY_COMPLETION.md) — what is engineering-complete versus what still requires genuine human/external evidence
 - [`docs/PRODUCT_WORKBENCH.md`](docs/PRODUCT_WORKBENCH.md) — Web/PWA/mobile product architecture, `/api/v1`, parser, ACP, benchmark, and OTLP boundaries
 - [`docs/HARNESS.md`](docs/HARNESS.md) — Research Audit Harness architecture and local workflow
 - [`mobile/README.md`](mobile/README.md) — native mobile setup
