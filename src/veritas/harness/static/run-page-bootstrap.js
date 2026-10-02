@@ -20,9 +20,11 @@
       const response = await nativeFetch(pageUrl.href, init);
       if (!response.ok) return response;
       const payload = await response.json();
-      const headers = new Headers(response.headers);
-      headers.set("Content-Type", "application/json");
-      headers.set("X-Veritas-Run-Page", "1");
+      const headers = new Headers({
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json",
+        "X-Veritas-Run-Page": "1",
+      });
       return new Response(JSON.stringify(Array.isArray(payload.items) ? payload.items : []), {
         status: response.status,
         statusText: response.statusText,
