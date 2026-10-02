@@ -120,6 +120,11 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "data-router-pointer-inspector" in interaction_script.text
     assert "data-router-network-field" in interaction_script.text
     assert "networkFocus" in interaction_script.text
+    assert "networkCadence" in interaction_script.text
+    assert "HOVER_PREVIEW_DELAY_MS = 150" in interaction_script.text
+    assert "HOVER_RELEASE_GRACE_MS = 90" in interaction_script.text
+    assert "previewMode" in interaction_script.text
+    assert "previewProvider" in interaction_script.text
     assert "pointermove" in interaction_script.text
     assert "aria-pressed" in interaction_script.text
     assert "aria-controls" in interaction_script.text
@@ -131,6 +136,9 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "--tilt-x" in interaction_styles.text
     assert ".router-pointer-inspector" in interaction_styles.text
     assert ".router-network-field" in interaction_styles.text
+    assert "data-network-cadence" in interaction_styles.text
+    assert "data-hover-intent" in interaction_styles.text
+    assert "router-context-in" in interaction_styles.text
     assert "provider-pin-scan" in interaction_styles.text
     assert "prefers-reduced-motion" in interaction_styles.text
 
@@ -157,7 +165,7 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
 
     service_worker = client.get("/sw.js")
     assert service_worker.status_code == 200
-    assert 'const CACHE = "veritas-shell-v28"' in service_worker.text
+    assert 'const CACHE = "veritas-shell-v29"' in service_worker.text
     assert "/static/audit-harness-product.css" in service_worker.text
     assert "/static/audit-harness-product.js" in service_worker.text
     assert "/static/reference-workbench.css" in service_worker.text
