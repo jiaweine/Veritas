@@ -169,7 +169,13 @@ class DIDDesign:
     estimator: str | None = None
     event_study: bool | None = None
     heterogeneity_robust_estimator_reported: bool | None = None
+    treatment_timing: str | None = None
     comparison_group: str | None = None
+    event_time_window: tuple[int, int] | None = None
+    fixed_effects: tuple[str, ...] = ()
+    clustering: tuple[str, ...] = ()
+    pretrend_test: str | None = None  # pointwise | joint | graphical | none | unknown
+    parallel_trends_claimed: bool | None = None
     materiality: Materiality = Materiality.MAIN_EMPIRICAL_CLAIM
     source: SourceLocation = field(default_factory=SourceLocation)
 
@@ -180,6 +186,11 @@ class IVDesign:
     single_instrument: bool | None = None
     single_endogenous_regressor: bool | None = None
     just_identified: bool | None = None
+    instrument_count: int | None = None
+    endogenous_regressor_count: int | None = None
+    first_stage_reported: bool | None = None
+    reduced_form_reported: bool | None = None
+    two_stage_least_squares_reported: bool | None = None
     first_stage_f: ReportedNumber | None = None
     uses_f_gt_10_rule_as_validity_claim: bool = False
     weak_robust_methods: tuple[str, ...] = ()
@@ -193,12 +204,20 @@ class RDDDesign:
     framework: str = "unknown"  # continuity | local_randomization | unknown
     design_type: str = "sharp"  # sharp | fuzzy | unknown
     estimator: str | None = None
+    running_variable: str | None = None
+    cutoff: ReportedNumber | None = None
+    bandwidth: ReportedNumber | None = None
+    bandwidth_selection: str | None = None
+    kernel: str | None = None
+    inference_description: str | None = None
     global_polynomial_order: int | None = None
     robust_bias_corrected_inference: bool | None = None
     alternative_modern_inference_reported: bool | None = None
     randomization_inference_reported: bool | None = None
+    continuity_check_claimed: bool | None = None
+    continuity_check_reported: bool | None = None
+    manipulation_check_claimed: bool | None = None
     density_test_reported: bool | None = None
-    bandwidth_selection: str | None = None
     materiality: Materiality = Materiality.MAIN_EMPIRICAL_CLAIM
     source: SourceLocation = field(default_factory=SourceLocation)
 
