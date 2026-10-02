@@ -32,7 +32,7 @@ def _read_locked_json(path: Path) -> tuple[bytes, dict[str, Any]]:
     raw = path.read_bytes()
     payload = json.loads(raw)
     if not isinstance(payload, dict):
-        raise ValueError(f"{path} must contain a JSON object")
+        raise TypeError(f"{path} must contain a JSON object")
     return raw, payload
 
 
@@ -72,7 +72,7 @@ def _fixture(case: dict[str, Any]) -> object:
     if fixture["type"] == "sample_partition":
         groups = fixture.get("groups") or {}
         if not isinstance(groups, dict):
-            raise ValueError(f"case {object_id!r} groups must be an object")
+            raise TypeError(f"case {object_id!r} groups must be an object")
         return SamplePartition(
             object_id=object_id,
             total_n=int(fixture["total_n"]) if fixture.get("total_n") is not None else None,
@@ -160,7 +160,9 @@ def run(protocol_path: Path, cases_path: Path, lock_path: Path) -> dict[str, Any
         raise ValueError("AuditBench must preserve the external evidence gate for production E3+")
 
     raw_cases = corpus.get("cases")
-    if not isinstance(raw_cases, list) or not raw_cases:
+    if not isinstance(raw_cases, list):
+        raise TypeError("AuditBench locked case corpus cases must be an array")
+    if not raw_cases:
         raise ValueError("AuditBench locked case corpus must contain at least one case")
     expectations = tuple(_expectation(case) for case in raw_cases)
     observations = tuple(_observation(case) for case in raw_cases)
