@@ -9,8 +9,10 @@ from .base import Detector
 
 
 class RDDDesignDetector(Detector):
+    """Paper-only RD design linting with explicit continuity/manipulation semantics."""
+
     detector_id = "rdd_design_frontier"
-    version = "0.1.0"
+    version = "0.2.0"
 
     def supports(self, obj: object) -> bool:
         return isinstance(obj, RDDDesign)
@@ -26,16 +28,53 @@ class RDDDesignDetector(Detector):
                     "High-order global polynomials are not recommended for RD estimation/inference near the cutoff; "
                     "modern practice favors local-polynomial methods with explicit bandwidth and robust inference.",
                     {
+                        **self._design_evidence(obj),
                         "global_polynomial_order": obj.global_polynomial_order,
                         "method_anchor": get_method_anchor("rdd_extensions_2024").key,
                     },
                 )
             ]
 
+        if obj.continuity_check_claimed is True and obj.continuity_check_reported is False:
+            return [
+                self._review(
+                    obj,
+                    "continuity_check_not_reported",
+                    "The paper makes an explicit continuity/design-validity claim, but the encoded paper evidence does not contain the claimed continuity diagnostic. "
+                    "This is a paper-level reporting inconsistency risk, not evidence about author intent.",
+                    {
+                        **self._design_evidence(obj),
+                        "method_anchor": get_method_anchor("rdd_extensions_2024").key,
+                    },
+                )
+            ]
+
+        if obj.manipulation_check_claimed is True and obj.density_test_reported is False:
+            return [
+                self._review(
+                    obj,
+                    "manipulation_check_not_reported",
+                    "The paper claims a manipulation/density diagnostic was reported, but the encoded evidence does not contain that diagnostic. "
+                    "Density evidence is treated only as design evidence and is never interpreted as evidence of author intent.",
+                    {
+                        **self._design_evidence(obj),
+                        "method_anchor": get_method_anchor("rdd_density_2024").key,
+                    },
+                )
+            ]
+
         if obj.framework == "continuity":
             if obj.robust_bias_corrected_inference is True or obj.alternative_modern_inference_reported is True:
-                return [self._pass(obj, "Modern continuity-based RD inference is reported.")]
-            if obj.robust_bias_corrected_inference is False and obj.alternative_modern_inference_reported is False:
+                return [
+                    self._pass(
+                        obj,
+                        "Modern continuity-based RD inference is reported; available design metadata do not trigger a paper-only risk flag.",
+                    )
+                ]
+            if (
+                obj.robust_bias_corrected_inference is False
+                and obj.alternative_modern_inference_reported is False
+            ):
                 return [
                     self._review(
                         obj,
@@ -43,29 +82,67 @@ class RDDDesignDetector(Detector):
                         "Continuity-based RD is reported without robust bias-corrected or another explicitly modern "
                         "inference procedure. This is an inference-risk flag, not evidence of misconduct.",
                         {
+                            **self._design_evidence(obj),
                             "method_anchor": get_method_anchor("rdd_extensions_2024").key,
-                            "bandwidth_selection": obj.bandwidth_selection,
-                            "density_test_reported": obj.density_test_reported,
                         },
                     )
                 ]
-            return [self._unverifiable(obj, "The RD inference procedure could not be resolved from available material.")]
+            return [
+                self._unverifiable(
+                    obj,
+                    "The continuity-based RD inference procedure could not be resolved from available material.",
+                )
+            ]
 
         if obj.framework == "local_randomization":
             if obj.randomization_inference_reported is True:
-                return [self._pass(obj, "Local-randomization RD reports randomization-based inference.")]
+                return [
+                    self._pass(
+                        obj,
+                        "Local-randomization RD reports randomization-based inference.",
+                    )
+                ]
             if obj.randomization_inference_reported is False:
                 return [
                     self._review(
                         obj,
                         "local_randomization_inference",
                         "The paper frames the RD as local randomization but no randomization-based inference was identified.",
-                        {"method_anchor": get_method_anchor("rdd_extensions_2024").key},
+                        {
+                            **self._design_evidence(obj),
+                            "method_anchor": get_method_anchor("rdd_extensions_2024").key,
+                        },
                     )
                 ]
-            return [self._unverifiable(obj, "Local-randomization inference could not be resolved.")]
+            return [
+                self._unverifiable(
+                    obj,
+                    "Local-randomization inference could not be resolved.",
+                )
+            ]
 
-        return [self._unverifiable(obj, "RD framework could not be classified as continuity or local randomization.")]
+        return [
+            self._unverifiable(
+                obj,
+                "RD framework could not be classified as continuity or local randomization.",
+            )
+        ]
+
+    def _design_evidence(self, obj: RDDDesign) -> dict[str, object]:
+        return {
+            "framework": obj.framework,
+            "design_type": obj.design_type,
+            "running_variable": obj.running_variable,
+            "cutoff": obj.cutoff.value if obj.cutoff else None,
+            "bandwidth": obj.bandwidth.value if obj.bandwidth else None,
+            "bandwidth_selection": obj.bandwidth_selection,
+            "kernel": obj.kernel,
+            "inference_description": obj.inference_description,
+            "continuity_check_claimed": obj.continuity_check_claimed,
+            "continuity_check_reported": obj.continuity_check_reported,
+            "manipulation_check_claimed": obj.manipulation_check_claimed,
+            "density_test_reported": obj.density_test_reported,
+        }
 
     def _pass(self, obj: RDDDesign, message: str) -> CheckResult:
         return CheckResult(
@@ -87,7 +164,13 @@ class RDDDesignDetector(Detector):
             message=message,
         )
 
-    def _review(self, obj: RDDDesign, check_id: str, explanation: str, evidence: dict[str, object]) -> CheckResult:
+    def _review(
+        self,
+        obj: RDDDesign,
+        check_id: str,
+        explanation: str,
+        evidence: dict[str, object],
+    ) -> CheckResult:
         finding = Finding(
             finding_id=f"F-{uuid4().hex[:10]}",
             detector_id=f"{self.detector_id}@{self.version}",
