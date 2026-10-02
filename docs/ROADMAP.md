@@ -99,14 +99,14 @@ The four legacy PLOS parser-development cases remain seed/development fixtures, 
 
 ### Corpus expansion and lock — external evidence work remaining
 
-- [ ] expand real open-access extraction corpus across journals, layouts, and statistical object types
-- [ ] add real-world adversarial examples for continuation tables, multi-panel layouts, footnotes, repeated labels, and OCR-like extraction failures
+- [x] expand real open-access extraction corpus across journals, layouts, and statistical object types
+- [x] add real-world adversarial examples for continuation tables, multi-panel layouts, footnotes, repeated labels, and OCR-like extraction failures
 - [ ] complete independent double review plus independent adjudication for every extraction gold target
 - [ ] run geometry/native threshold calibration on the deterministically derived locked DEVELOPMENT target manifest, archive every per-threshold prediction/resolution set, and use only the development-only selection API
 - [ ] freeze a genuinely untouched extraction TEST set from reviewed real-paper gold and evaluate the exact derived TEST target membership without feedback into parser/policy tuning
 - [ ] publish and archive the prediction-bound DEVELOPMENT/TEST observation sets, their SHA-256 commitments, and coverage–selectivity curves on the locked protocol
 
-These items require new real-paper evidence and genuinely independent human review. The repository now contains the sampling-frame/seed commitment, seed-universe identity lock, review/adjudication gate, deterministic split-target manifests, split-policy commitment, prediction-bound report re-evaluation, confidence commitment, calibration, TEST sealing, curve reconstruction, and release-receipt machinery; Veritas must not fabricate reviewer independence, adjudication, external parser execution provenance, or held-out results before that evidence exists.
+The two corpus-construction items above are now complete and frozen in the v0.15 evidence inputs. The remaining unchecked items require genuinely independent human review/adjudication and the resulting external evidence. The repository contains the sampling-frame/seed commitment, seed-universe identity lock, review/adjudication gate, deterministic split-target manifests, split-policy commitment, prediction-bound report re-evaluation, confidence commitment, calibration, TEST sealing, curve reconstruction, and release-receipt machinery; Veritas must not fabricate reviewer independence, adjudication, external parser execution provenance, or held-out results before that evidence exists.
 
 ## v0.12 — end-to-end empirical claim graph
 
