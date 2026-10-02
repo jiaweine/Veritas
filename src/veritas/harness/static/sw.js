@@ -1,4 +1,4 @@
-const CACHE = "veritas-shell-v28";
+const CACHE = "veritas-shell-v29";
 const SHELL = [
   "/",
   "/static/styles.css",

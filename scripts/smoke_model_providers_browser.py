@@ -146,8 +146,12 @@ def main() -> None:
                 const router = document.querySelector('[data-model-provider-matrix="true"]');
                 const network = document.querySelector('[data-router-network-field="true"]');
                 return card?.dataset.pointerActive === 'true'
+                    && card?.dataset.hoverIntent === 'active'
                     && router?.dataset.cursorActive === 'true'
+                    && router?.dataset.previewMode === 'hover'
+                    && router?.dataset.previewProvider === 'deepseek'
                     && network?.dataset.networkPointer === 'active'
+                    && network?.dataset.networkCadence === 'active'
                     && network?.dataset.networkFocus === 'deepseek'
                     && Number(network?.dataset.networkLinks || 0) > 0;
             }""",
@@ -162,8 +166,10 @@ def main() -> None:
         page.wait_for_function(
             """() => {
                 const card = document.querySelector('[data-model-provider="deepseek"]');
+                const router = document.querySelector('[data-model-provider-matrix="true"]');
                 const network = document.querySelector('[data-router-network-field="true"]');
                 return card?.dataset.pinned === 'true'
+                    && router?.dataset.previewMode === 'pinned'
                     && network?.dataset.networkFocus === 'deepseek'
                     && network?.dataset.networkFocusMode === 'pinned';
             }""",
@@ -190,13 +196,35 @@ def main() -> None:
         page.wait_for_function(
             """() => {
                 const card = document.querySelector('[data-model-provider="deepseek"]');
+                const router = document.querySelector('[data-model-provider-matrix="true"]');
                 const network = document.querySelector('[data-router-network-field="true"]');
-                return card?.dataset.pinned === 'false' && (network?.dataset.networkFocus || '') === '';
+                return card?.dataset.pinned === 'false'
+                    && router?.dataset.previewMode === 'idle'
+                    && (network?.dataset.networkFocus || '') === '';
             }""",
             timeout=10_000,
         )
         if selected.get_attribute("aria-pressed") != "false":
             raise AssertionError("Escape did not release the pinned provider")
+
+        standby = page.locator("[data-model-provider='openai']")
+        standby.focus()
+        page.wait_for_function(
+            """() => {
+                const router = document.querySelector('[data-model-provider-matrix="true"]');
+                const inspector = document.querySelector('[data-router-pointer-inspector="true"]');
+                const network = document.querySelector('[data-router-network-field="true"]');
+                return router?.dataset.previewMode === 'focus'
+                    && router?.dataset.previewProvider === 'openai'
+                    && inspector?.dataset.mode === 'focus'
+                    && network?.dataset.networkFocus === 'openai';
+            }""",
+            timeout=10_000,
+        )
+        focus_text = inspector.inner_text()
+        if "OpenAI" not in focus_text or "FOCUS LINK" not in focus_text:
+            raise AssertionError(f"Keyboard focus did not get inspector parity: {focus_text!r}")
+        page.screenshot(path=output_dir / "settings-model-providers-focus.png", full_page=True)
 
         context.close()
         browser.close()
@@ -209,6 +237,7 @@ def main() -> None:
         "settings-model-providers-interactive.png",
         "settings-model-providers-probe.png",
         "settings-model-providers-network.png",
+        "settings-model-providers-focus.png",
     )
     for screenshot_name in screenshot_names:
         screenshot = output_dir / screenshot_name

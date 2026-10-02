@@ -13,6 +13,8 @@ const providerMeta = (card) => [...card.querySelectorAll(".provider-node-meta sp
 });
 const finePointer = window.matchMedia("(pointer: fine)");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+const HOVER_PREVIEW_DELAY_MS = 150;
+const HOVER_RELEASE_GRACE_MS = 90;
 const escapeHtml = (value = "") => String(value)
   .replaceAll("&", "&amp;")
   .replaceAll("<", "&lt;")
@@ -49,7 +51,8 @@ function renderInspector(inspector, card, mode = "hover") {
   const state = String(card.dataset.providerState || "available").replaceAll("_", " ").toUpperCase();
   const selected = card.dataset.providerSelected === "true";
   const meta = providerMeta(card);
-  inspector.innerHTML = `<div><span class="router-inspector-kicker">${mode === "pinned" ? "PINNED NODE" : "POINTER LINK"}</span><strong>${providerLabel(card)}</strong><small>${providerFamily(card)} · ${selected ? "active route" : "standby route"}</small></div><div class="router-inspector-meta"><span><b>STATE</b>${state}</span>${meta.slice(0, 3).map((item) => `<span><b>${escapeHtml(item.label)}</b>${escapeHtml(item.value)}</span>`).join("")}</div><div class="router-inspector-orbit" aria-hidden="true"><i></i><i></i><i></i></div>`;
+  const kicker = mode === "pinned" ? "PINNED NODE" : mode === "focus" ? "FOCUS LINK" : "POINTER LINK";
+  inspector.innerHTML = `<div><span class="router-inspector-kicker">${kicker}</span><strong>${providerLabel(card)}</strong><small>${providerFamily(card)} · ${selected ? "active route" : "standby route"}</small></div><div class="router-inspector-meta"><span><b>STATE</b>${state}</span>${meta.slice(0, 3).map((item) => `<span><b>${escapeHtml(item.label)}</b>${escapeHtml(item.value)}</span>`).join("")}</div><div class="router-inspector-orbit" aria-hidden="true"><i></i><i></i><i></i></div>`;
   inspector.dataset.provider = card.dataset.modelProvider || "";
   inspector.dataset.mode = mode;
 }
@@ -149,7 +152,10 @@ function createNetworkField(router) {
   const paint = (time = performance.now()) => {
     if (!canvas.isConnected) return;
     frame = requestAnimationFrame(paint);
-    if (time - lastPaint < 32) return;
+    const interactive = pointer.active || Boolean(focusCard);
+    const cadence = interactive ? 32 : 90;
+    canvas.dataset.networkCadence = interactive ? "active" : "idle";
+    if (time - lastPaint < cadence) return;
     lastPaint = time;
     if (!width || !height) return;
 
@@ -309,8 +315,80 @@ function bindRouter(router) {
 
   const network = createNetworkField(router);
   let pinned = null;
+  let hovered = null;
+  let focused = null;
   let frame = 0;
   let lastPointer = null;
+  let hoverTimer = 0;
+  let releaseTimer = 0;
+
+  const clearHoverTimer = () => {
+    if (!hoverTimer) return;
+    window.clearTimeout(hoverTimer);
+    hoverTimer = 0;
+  };
+  const clearReleaseTimer = () => {
+    if (!releaseTimer) return;
+    window.clearTimeout(releaseTimer);
+    releaseTimer = 0;
+  };
+  const clearPreview = () => {
+    renderInspector(inspector, null);
+    network.focus(null);
+    router.dataset.previewMode = "idle";
+    router.dataset.previewProvider = "";
+  };
+  const showPreview = (card, mode) => {
+    if (!card?.isConnected || pinned) return;
+    renderInspector(inspector, card, mode);
+    network.focus(card, mode);
+    router.dataset.previewMode = mode;
+    router.dataset.previewProvider = card.dataset.modelProvider || "";
+  };
+  const schedulePointerPreview = (card) => {
+    hovered = card;
+    card.dataset.hovered = "true";
+    card.dataset.hoverIntent = "pending";
+    clearHoverTimer();
+    clearReleaseTimer();
+    hoverTimer = window.setTimeout(() => {
+      hoverTimer = 0;
+      if (pinned || hovered !== card || !card.isConnected) return;
+      card.dataset.hoverIntent = "active";
+      showPreview(card, "hover");
+    }, HOVER_PREVIEW_DELAY_MS);
+  };
+  const releasePointerPreview = (card) => {
+    if (hovered === card) hovered = null;
+    card.dataset.hovered = "false";
+    card.dataset.hoverIntent = "idle";
+    resetCardPointer(card);
+    clearHoverTimer();
+    clearReleaseTimer();
+    releaseTimer = window.setTimeout(() => {
+      releaseTimer = 0;
+      if (pinned) return;
+      if (focused?.isConnected) showPreview(focused, "focus");
+      else clearPreview();
+    }, HOVER_RELEASE_GRACE_MS);
+  };
+  const focusPreview = (card) => {
+    focused = card;
+    card.dataset.focused = "true";
+    clearReleaseTimer();
+    showPreview(card, "focus");
+  };
+  const blurPreview = (card) => {
+    if (focused === card) focused = null;
+    card.dataset.focused = "false";
+    if (pinned) return;
+    clearReleaseTimer();
+    releaseTimer = window.setTimeout(() => {
+      releaseTimer = 0;
+      if (hovered?.isConnected && hovered.dataset.hoverIntent === "active") showPreview(hovered, "hover");
+      else clearPreview();
+    }, HOVER_RELEASE_GRACE_MS);
+  };
 
   const applyRouterPointer = () => {
     frame = 0;
@@ -326,7 +404,7 @@ function bindRouter(router) {
 
   router.addEventListener("pointermove", (event) => {
     if (event.pointerType === "touch") return;
-    lastPointer = event;
+    lastPointer = { clientX: event.clientX, clientY: event.clientY };
     if (!frame) frame = requestAnimationFrame(applyRouterPointer);
   });
   router.addEventListener("pointerleave", () => {
@@ -339,8 +417,7 @@ function bindRouter(router) {
     pinned.dataset.pinned = "false";
     pinned.setAttribute("aria-pressed", "false");
     pinned = null;
-    renderInspector(inspector, null);
-    network.focus(null);
+    clearPreview();
   });
 
   cards.forEach((card) => {
@@ -349,30 +426,16 @@ function bindRouter(router) {
     card.setAttribute("aria-pressed", "false");
     card.setAttribute("aria-controls", inspector.id);
     card.setAttribute("aria-label", `${providerLabel(card)} provider configuration`);
+    card.dataset.hoverIntent = "idle";
+    card.dataset.focused = "false";
 
-    const previewCard = () => {
-      card.dataset.hovered = "true";
-      if (!pinned) {
-        renderInspector(inspector, card, "hover");
-        network.focus(card, "hover");
-      }
-    };
-    const releaseCard = () => {
-      card.dataset.hovered = "false";
-      resetCardPointer(card);
-      if (!pinned) {
-        renderInspector(inspector, null);
-        network.focus(null);
-      }
-    };
-
-    card.addEventListener("pointerenter", previewCard);
-    card.addEventListener("focus", previewCard);
+    card.addEventListener("pointerenter", () => schedulePointerPreview(card));
+    card.addEventListener("focus", () => focusPreview(card));
     card.addEventListener("pointermove", (event) => {
       if (event.pointerType !== "touch") setCardPointer(card, event);
     });
-    card.addEventListener("pointerleave", releaseCard);
-    card.addEventListener("blur", releaseCard);
+    card.addEventListener("pointerleave", () => releasePointerPreview(card));
+    card.addEventListener("blur", () => blurPreview(card));
 
     const togglePin = () => {
       const next = pinned === card ? null : card;
@@ -382,8 +445,20 @@ function bindRouter(router) {
         item.setAttribute("aria-pressed", String(active));
       });
       pinned = next;
-      renderInspector(inspector, pinned, pinned ? "pinned" : "idle");
-      network.focus(pinned, pinned ? "pinned" : "idle");
+      clearHoverTimer();
+      clearReleaseTimer();
+      if (pinned) {
+        renderInspector(inspector, pinned, "pinned");
+        network.focus(pinned, "pinned");
+        router.dataset.previewMode = "pinned";
+        router.dataset.previewProvider = pinned.dataset.modelProvider || "";
+      } else if (focused?.isConnected) {
+        showPreview(focused, "focus");
+      } else if (hovered?.isConnected && hovered.dataset.hoverIntent === "active") {
+        showPreview(hovered, "hover");
+      } else {
+        clearPreview();
+      }
     };
 
     card.addEventListener("click", togglePin);

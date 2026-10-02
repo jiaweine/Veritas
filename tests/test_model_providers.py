@@ -324,6 +324,11 @@ def test_cyber_provider_settings_and_browser_acceptance_are_locked() -> None:
     assert 'data-router-network-field' in interactions
     assert "ResizeObserver" in interactions
     assert "networkFocus" in interactions
+    assert "networkCadence" in interactions
+    assert "HOVER_PREVIEW_DELAY_MS = 150" in interactions
+    assert "HOVER_RELEASE_GRACE_MS = 90" in interactions
+    assert "previewMode" in interactions
+    assert "previewProvider" in interactions
     assert "pointermove" in interactions
     assert "aria-pressed" in interactions
     assert "aria-controls" in interactions
@@ -335,6 +340,9 @@ def test_cyber_provider_settings_and_browser_acceptance_are_locked() -> None:
     assert ".router-probe-strip" in interaction_styles
     assert ".router-probe-button" in interaction_styles
     assert "--tilt-x" in interaction_styles
+    assert "data-network-cadence" in interaction_styles
+    assert "data-hover-intent" in interaction_styles
+    assert "router-context-in" in interaction_styles
     assert "provider-pin-scan" in interaction_styles
     assert "prefers-reduced-motion" in interaction_styles
     assert '/static/settings-shell.css' in shell
@@ -343,14 +351,17 @@ def test_cyber_provider_settings_and_browser_acceptance_are_locked() -> None:
     assert '/static/settings-shell.css' in service_worker
     assert '/static/settings-interactions.css' in service_worker
     assert '/static/settings-interactions.js' in service_worker
-    assert 'const CACHE = "veritas-shell-v28"' in service_worker
+    assert 'const CACHE = "veritas-shell-v29"' in service_worker
     assert '"settings-model-providers.png"' in browser
     assert '"settings-model-providers-interactive.png"' in browser
     assert '"settings-model-providers-probe.png"' in browser
     assert '"settings-model-providers-network.png"' in browser
+    assert '"settings-model-providers-focus.png"' in browser
     assert "SMOKE_SECRET in page.locator" in browser
     assert "replication_bridge_required" in browser
     assert "networkFocusMode" in browser
+    assert "previewMode" in browser
+    assert "FOCUS LINK" in browser
     assert "aria-pressed" in browser
     assert "aria-controls" in browser
     assert "python scripts/smoke_model_providers_browser.py" in workflow
