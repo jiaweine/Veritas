@@ -20,6 +20,7 @@
       const response = await nativeFetch(pageUrl.href, init);
       if (!response.ok) return response;
       const payload = await response.json();
+      // The body is rewritten from a page envelope to an array, so entity headers must be rebuilt.
       const headers = new Headers({
         "Cache-Control": "no-store",
         "Content-Type": "application/json",
