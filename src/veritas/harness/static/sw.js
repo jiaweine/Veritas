@@ -1,5 +1,5 @@
 const CACHE = "veritas-shell-v29";
-const CACHE_REVISION = "runs-pagination-1";
+const CACHE_REVISION = "claim-graph-authority-1";
 const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`;
 const SHELL = [
   "/",
