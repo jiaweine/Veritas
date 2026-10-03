@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROTOCOL = ROOT / "benchmark/auditbench/v1_protocol.json"
 DEFAULT_CASES = ROOT / "benchmark/auditbench/v1_cases.json"
 DEFAULT_LOCK = ROOT / "benchmark/auditbench/v1_lock.json"
-DEFAULT_OUTPUT = ROOT / "benchmark-result-envelopes/auditbench-v1.json"
+DEFAULT_OUTPUT = ROOT / "auditbench-raw-reports/auditbench-v1.json"
 
 
 def _sha256(raw: bytes) -> str:

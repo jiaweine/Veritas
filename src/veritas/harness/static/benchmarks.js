@@ -1,4 +1,5 @@
 const main = document.querySelector("#main-content");
+let enhancementGeneration = 0;
 
 const escapeHtml = (value = "") => String(value)
   .replaceAll("&", "&amp;")
@@ -6,6 +7,16 @@ const escapeHtml = (value = "") => String(value)
   .replaceAll(">", "&gt;")
   .replaceAll('"', "&quot;")
   .replaceAll("'", "&#039;");
+
+const METRIC_PRIORITY = [
+  "cases",
+  "detector_families",
+  "alert_precision",
+  "alert_recall",
+  "false_hard_alert_rate_per_clean_paper",
+  "grade_violations",
+  "production_certificate",
+];
 
 function badge(tone, label) {
   return `<span class="badge ${escapeHtml(tone)}">${escapeHtml(label)}</span>`;
@@ -22,33 +33,47 @@ async function fetchCatalog() {
 }
 
 function resultBadge(result) {
-  if (!result) return badge("review", "no persisted run");
+  if (!result) return badge("review", "no local result");
   const tones = { passed: "success", failed: "danger", error: "danger", skipped: "review" };
   return badge(tones[result.status] || "review", result.status || "unknown");
 }
 
+function orderedMetrics(metrics) {
+  if (!metrics || typeof metrics !== "object") return [];
+  const entries = Object.entries(metrics);
+  const byKey = new Map(entries);
+  const prioritized = METRIC_PRIORITY
+    .filter((key) => byKey.has(key))
+    .map((key) => [key, byKey.get(key)]);
+  const remaining = entries.filter(([key]) => !METRIC_PRIORITY.includes(key));
+  return [...prioritized, ...remaining].slice(0, 6);
+}
+
 function resultMeta(result) {
   if (!result) {
-    return `<div class="benchmark-result-empty">No Benchmark Result Envelope v1 has been ingested for this suite.</div>`;
+    return `<div class="benchmark-result-empty">No Benchmark Result Envelope v1 has been ingested locally for this suite.</div>`;
   }
   const commit = result.commit_sha ? String(result.commit_sha).slice(0, 10) : "uncommitted/operator";
-  const metrics = result.metrics && typeof result.metrics === "object"
-    ? Object.entries(result.metrics).slice(0, 4)
-    : [];
-  const metricRows = metrics.length
-    ? `<div class="benchmark-metrics">${metrics.map(([key, value]) => `<span><strong>${escapeHtml(key)}</strong>${escapeHtml(value)}</span>`).join("")}</div>`
+  const metrics = result.metrics && typeof result.metrics === "object" ? result.metrics : {};
+  const metricEntries = orderedMetrics(metrics);
+  const metricRows = metricEntries.length
+    ? `<div class="benchmark-metrics">${metricEntries.map(([key, value]) => `<span><strong>${escapeHtml(key)}</strong>${escapeHtml(value)}</span>`).join("")}</div>`
     : `<div class="benchmark-result-empty">No scalar metrics were recorded.</div>`;
+  const authorityBoundary = metrics.production_certificate === false
+    ? `<div class="benchmark-authority-note">Synthetic CI result — not a production certificate.</div>`
+    : "";
   return `<div class="benchmark-result">
     <div class="benchmark-result-row"><span>finished</span><strong>${escapeHtml(result.finished_at || "")}</strong></div>
     <div class="benchmark-result-row"><span>commit</span><strong class="mono">${escapeHtml(commit)}</strong></div>
     <div class="benchmark-result-row"><span>source</span><strong>${escapeHtml(result.source || "")}</strong></div>
     ${metricRows}
+    ${authorityBoundary}
   </div>`;
 }
 
 function suiteCard(suite, latest) {
   const gating = Boolean(suite.gating);
-  return `<article class="benchmark-card">
+  return `<article class="benchmark-card" data-benchmark-id="${escapeHtml(suite.benchmark_id || "")}">
     <div class="benchmark-card-head"><div><span class="benchmark-kind">${escapeHtml(suite.kind || "benchmark")}</span><h3>${escapeHtml(suite.title || suite.benchmark_id)}</h3></div>${gating ? badge("success", "release gate") : badge("review", "non-gating")}</div>
     <p>${escapeHtml(suite.scope || "")}</p>
     <div class="benchmark-command"><span>command</span><code>${escapeHtml(suite.command || "")}</code></div>
@@ -70,7 +95,7 @@ function renderCatalog(catalog) {
     <section class="benchmark-summary-grid">
       <article class="panel benchmark-summary"><span>Release gates</span><strong>${gating.length}</strong><small>Failures stop CI.</small></article>
       <article class="panel benchmark-summary"><span>Non-gating probes</span><strong>${probes.length}</strong><small>Diagnostics do not define release success.</small></article>
-      <article class="panel benchmark-summary"><span>Persisted runs</span><strong>${resultCount}</strong><small>${resultCount ? "Versioned execution envelopes available." : "No result envelope has been ingested yet."}</small></article>
+      <article class="panel benchmark-summary"><span>Persisted runs</span><strong>${resultCount}</strong><small>${resultCount ? "Versioned execution envelopes available." : "No result envelope has been ingested locally yet."}</small></article>
       <article class="panel benchmark-summary"><span>Source of truth</span><strong class="benchmark-source-short">CI</strong><small class="mono">${escapeHtml(catalog.source_of_truth || ".github/workflows/ci.yml")}</small></article>
     </section>
 
@@ -88,24 +113,36 @@ function renderCatalog(catalog) {
   </div>`;
 }
 
+function benchmarkTitleIsActive() {
+  return main?.querySelector(".page-title")?.textContent?.trim() === "Benchmarks";
+}
+
 async function enhanceBenchmarks() {
-  if (!main || main.dataset.benchmarksEnhanced === "true") return;
-  const title = main.querySelector(".page-title")?.textContent?.trim();
-  if (title !== "Benchmarks") return;
-  main.dataset.benchmarksEnhanced = "true";
-  main.innerHTML = `<div class="page"><div class="benchmark-loading"><span class="status-icon running">⌗</span><strong>Loading repository benchmark inventory…</strong></div></div>`;
+  if (!main) return;
+  const phase = main.dataset.benchmarksEnhanced;
+  if (phase === "loading" || phase === "true") return;
+  if (!benchmarkTitleIsActive()) return;
+
+  const generation = ++enhancementGeneration;
+  main.dataset.benchmarksEnhanced = "loading";
   try {
     const catalog = await fetchCatalog();
+    if (generation !== enhancementGeneration || !benchmarkTitleIsActive()) return;
     main.innerHTML = renderCatalog(catalog);
+    main.dataset.benchmarksEnhanced = "true";
   } catch (error) {
+    if (generation !== enhancementGeneration || !benchmarkTitleIsActive()) return;
     main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Benchmark inventory unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
+    main.dataset.benchmarksEnhanced = "true";
   }
 }
 
 const observer = new MutationObserver(() => {
   if (!main) return;
   const title = main.querySelector(".page-title")?.textContent?.trim();
-  if (title !== "Benchmarks" && !main.querySelector("[data-benchmark-surface]")) {
+  const hasSurface = Boolean(main.querySelector("[data-benchmark-surface]"));
+  if (title !== "Benchmarks" && !hasSurface) {
+    enhancementGeneration += 1;
     delete main.dataset.benchmarksEnhanced;
     return;
   }

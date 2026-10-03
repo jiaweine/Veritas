@@ -5,6 +5,31 @@ from typing import Final
 
 _BENCHMARKS: Final[tuple[dict[str, object], ...]] = (
     {
+        "benchmark_id": "auditbench-v1",
+        "title": "Locked AuditBench detector gate",
+        "kind": "benchmark",
+        "gating": True,
+        "command": "python scripts/run_auditbench_v1.py",
+        "scope": "locked synthetic detector-status and evidence-grade regression coverage",
+        "source": "scripts/run_auditbench_v1.py",
+        "report_path": "auditbench-raw-reports/auditbench-v1.json",
+        "report_benchmark_id": "auditbench-v1-ci",
+        "result_adapter": "auditbench",
+    },
+    {
+        "benchmark_id": "auditbench-v02-pack",
+        "title": "Locked AuditBench v0.2 detector pack",
+        "kind": "benchmark",
+        "gating": True,
+        "command": "python scripts/run_auditbench_v02_pack.py",
+        "scope": "locked synthetic paper-only detector coverage for discrete, algebra, and SEM checks",
+        "source": "scripts/run_auditbench_v02_pack.py",
+        "report_path": "auditbench-raw-reports/auditbench-v02-pack.json",
+        "report_benchmark_id": "auditbench-v1-ci",
+        "report_pack_id": "v02-paper-only-detectors",
+        "result_adapter": "auditbench",
+    },
+    {
         "benchmark_id": "pdf-regression",
         "title": "PDF regression benchmark",
         "kind": "benchmark",
