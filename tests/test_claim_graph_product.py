@@ -7,7 +7,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from veritas.claim_reconstruction import ClaimObjectReconstructionError, reconstruct_statistical_object
+from veritas.claim_reconstruction import (
+    ClaimObjectReconstructionError,
+    reconstruct_statistical_object,
+)
 from veritas.claims import StatisticalClaimGraph
 from veritas.extraction import ExtractionCandidate
 from veritas.harness.claim_graph_product import project_claim_graph, register_claim_graph_routes
@@ -47,26 +50,88 @@ def _candidate(
 def _persisted_graph() -> dict[str, object]:
     field_candidates = {
         "beta": (
-            _candidate(family="mupdf_native", parser_id="mupdf", raw="-0.021", normalized="-0.021", field="beta", score=0.08),
-            _candidate(family="pdfminer_native", parser_id="pdfminer", raw="-0.021", normalized="-0.021", field="beta", score=0.12),
+            _candidate(
+                family="mupdf_native",
+                parser_id="mupdf",
+                raw="-0.021",
+                normalized="-0.021",
+                field="beta",
+                score=0.08,
+            ),
+            _candidate(
+                family="pdfminer_native",
+                parser_id="pdfminer",
+                raw="-0.021",
+                normalized="-0.021",
+                field="beta",
+                score=0.12,
+            ),
         ),
         "se": (
-            _candidate(family="mupdf_native", parser_id="mupdf", raw="0.026", normalized="0.026", field="se"),
-            _candidate(family="pdfminer_native", parser_id="pdfminer", raw="0.026", normalized="0.026", field="se"),
+            _candidate(
+                family="mupdf_native",
+                parser_id="mupdf",
+                raw="0.026",
+                normalized="0.026",
+                field="se",
+            ),
+            _candidate(
+                family="pdfminer_native",
+                parser_id="pdfminer",
+                raw="0.026",
+                normalized="0.026",
+                field="se",
+            ),
         ),
         "t_stat": (
-            _candidate(family="mupdf_native", parser_id="mupdf", raw="-0.808", normalized="-0.808", field="t_stat"),
-            _candidate(family="pdfminer_native", parser_id="pdfminer", raw="-0.808", normalized="-0.808", field="t_stat"),
+            _candidate(
+                family="mupdf_native",
+                parser_id="mupdf",
+                raw="-0.808",
+                normalized="-0.808",
+                field="t_stat",
+            ),
+            _candidate(
+                family="pdfminer_native",
+                parser_id="pdfminer",
+                raw="-0.808",
+                normalized="-0.808",
+                field="t_stat",
+            ),
         ),
         "p_value": (
-            _candidate(family="mupdf_native", parser_id="mupdf", raw="0.419", normalized="0.419", field="p_value"),
-            _candidate(family="pdfminer_native", parser_id="pdfminer", raw="0.419", normalized="0.419", field="p_value"),
+            _candidate(
+                family="mupdf_native",
+                parser_id="mupdf",
+                raw="0.419",
+                normalized="0.419",
+                field="p_value",
+            ),
+            _candidate(
+                family="pdfminer_native",
+                parser_id="pdfminer",
+                raw="0.419",
+                normalized="0.419",
+                field="p_value",
+            ),
         ),
     }
     semantic_candidates = {
         "inference_distribution": (
-            _candidate(family="mupdf_native", parser_id="mupdf", raw="normal", normalized="normal", field="distribution"),
-            _candidate(family="pdfminer_native", parser_id="pdfminer", raw="normal", normalized="normal", field="distribution"),
+            _candidate(
+                family="mupdf_native",
+                parser_id="mupdf",
+                raw="normal",
+                normalized="normal",
+                field="distribution",
+            ),
+            _candidate(
+                family="pdfminer_native",
+                parser_id="pdfminer",
+                raw="normal",
+                normalized="normal",
+                field="distribution",
+            ),
         )
     }
     bundle = SimpleNamespace(
@@ -92,6 +157,30 @@ def _persisted_graph() -> dict[str, object]:
         },
         distribution_consensus="normal",
     )
+
+
+def _annotated_result() -> dict[str, object]:
+    return {
+        "claim_graph": _persisted_graph(),
+        "checks": [
+            {
+                "check_id": "p_value",
+                "status": "fail",
+                "finding": {
+                    "finding_id": "finding-1",
+                    "title": "Regression reporting contradiction",
+                    "explanation": "Reported p-value is incompatible with the displayed statistic.",
+                    "severity": "contradiction",
+                    "source": {
+                        "artifact_id": "paper-abc",
+                        "page": 3,
+                        "table": "Table 4",
+                        "row": "Minimum wage",
+                    },
+                },
+            }
+        ],
+    }
 
 
 def test_interactive_graph_persists_object_provenance_without_inventing_claims():
@@ -126,6 +215,7 @@ def test_product_projection_validates_graph_and_exposes_authority_boundary():
         "client_inferred_edges": False,
         "publication_claim_bound": False,
         "claim_edges_persisted": 0,
+        "detector_annotations_are_graph_edges": False,
     }
     assert payload["counts"] == {
         "artifacts": 1,
@@ -133,8 +223,28 @@ def test_product_projection_validates_graph_and_exposes_authority_boundary():
         "objects": 1,
         "evidence_nodes": 0,
         "edges": 0,
+        "detector_annotations": 0,
     }
     assert payload["reconstruction"]["paper-abc:Minimum wage"]["available"] is False
+
+
+def test_detector_findings_remain_navigation_annotations_not_graph_edges():
+    payload = project_claim_graph(
+        {
+            "audit_id": "audit-1",
+            "latest_result": _annotated_result(),
+        }
+    )
+
+    graph = StatisticalClaimGraph.from_dict(payload["graph"])
+    assert graph.edges == []
+    assert graph.claims == {}
+    assert payload["authority"]["detector_annotations_are_graph_edges"] is False
+    assert payload["counts"]["detector_annotations"] == 1
+    annotation = payload["annotations"][0]
+    assert annotation["finding_id"] == "finding-1"
+    assert annotation["field"] == "p_value"
+    assert annotation["graph_edge"] is False
 
 
 def test_product_projection_refuses_missing_or_invalid_graphs():
@@ -152,7 +262,13 @@ def test_product_projection_refuses_missing_or_invalid_graphs():
                     "claims": {},
                     "objects": {},
                     "evidence_nodes": {},
-                    "edges": [{"source_id": "missing", "target_id": "other", "relation": "supports"}],
+                    "edges": [
+                        {
+                            "source_id": "missing",
+                            "target_id": "other",
+                            "relation": "supports",
+                        }
+                    ],
                 }
             },
         }
@@ -167,7 +283,10 @@ def test_claim_graph_route_uses_server_projection_and_404s_unknown_audit():
         def get_audit(self, audit_id: str):
             if audit_id == "missing":
                 raise FileNotFoundError("audit not found")
-            return {"audit_id": audit_id, "latest_result": {"claim_graph": _persisted_graph()}}
+            return {
+                "audit_id": audit_id,
+                "latest_result": {"claim_graph": _persisted_graph()},
+            }
 
     app = FastAPI()
     register_claim_graph_routes(app, Harness())
@@ -182,11 +301,27 @@ def test_claim_graph_route_uses_server_projection_and_404s_unknown_audit():
 
 def test_claim_graph_frontend_consumes_validated_endpoint_instead_of_latest_result_projection():
     source = (ROOT / "src/veritas/harness/static/claim-graph.js").read_text(encoding="utf-8")
+    annotations = (ROOT / "src/veritas/harness/static/claim-graph-annotations.js").read_text(
+        encoding="utf-8"
+    )
+    index = (ROOT / "src/veritas/harness/static/index.html").read_text(encoding="utf-8")
+    sw = (ROOT / "src/veritas/harness/static/sw.js").read_text(encoding="utf-8")
     web = (ROOT / "src/veritas/harness/web.py").read_text(encoding="utf-8")
 
-    assert "/api/v1/audits/${encodeURIComponent(auditId)}/claim-graph" in source
+    endpoint = "/api/v1/audits/${encodeURIComponent(auditId)}/claim-graph"
+    assert endpoint in source
+    assert endpoint in annotations
     assert "latest_result" not in source
     assert "consensus" not in source
     assert "checkItems" not in source
-    assert "client_inferred_edges" in source or "No publication claim identity bound" in source
+    assert "No publication claim identity bound" in source
+    assert "detector_annotations_are_graph_edges !== false" in annotations
+    assert "annotation.graph_edge !== false" in annotations
+    assert "Detector annotations never become ClaimEdges" in annotations
+    assert index.index("/static/claim-graph.js") < index.index("/static/claim-graph-annotations.js")
+    assert index.index("/static/claim-graph-annotations.js") < index.index(
+        "/static/finding-navigation.js"
+    )
+    assert 'const CACHE_REVISION = "claim-graph-authority-2";' in sw
+    assert '"/static/claim-graph-annotations.js"' in sw
     assert "register_claim_graph_routes(app, app.state.harness)" in web
