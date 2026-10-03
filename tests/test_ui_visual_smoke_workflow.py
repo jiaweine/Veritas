@@ -205,6 +205,7 @@ def test_mobile_workflow_syntax_checks_all_workbench_modules() -> None:
         "reference-workbench.js",
         "reference-evidence-preview.js",
         "claim-graph.js",
+        "claim-graph-annotations.js",
         "finding-navigation.js",
     }
 
