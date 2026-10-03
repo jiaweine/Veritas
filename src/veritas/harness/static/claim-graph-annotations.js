@@ -50,10 +50,12 @@ function openFinding(root, findingId) {
 function decorateFinding(root, annotation) {
   const graph = root.querySelector("[data-reference-claim-graph='true'][data-cg-state='available']");
   if (!graph || !annotation?.field || !annotation?.finding_id) return false;
+  if (graph.dataset.cgAnnotationFindingId === annotation.finding_id) return true;
   const nodeElement = graph.querySelector(`[data-cg-field="${CSS.escape(annotation.field)}"]`);
   const panel = graph.querySelector("[data-cg-detail-panel='true']");
   if (!nodeElement || !panel) return false;
 
+  graph.dataset.cgAnnotationFindingId = annotation.finding_id;
   graph.querySelectorAll("[data-cg-node]").forEach((candidate) => {
     const selected = candidate === nodeElement;
     candidate.classList.toggle("is-selected", selected);
@@ -79,8 +81,14 @@ function decorateFinding(root, annotation) {
     </div>
     <span>Detector annotations never become ClaimEdges</span>
   </div>`;
-  panel.querySelector("[data-cg-detail-source]")?.addEventListener("click", () => openEvidence(root, nodeElement));
-  panel.querySelector("[data-cg-detail-action='findings']")?.addEventListener("click", () => openFinding(root, annotation.finding_id));
+  panel.querySelector("[data-cg-detail-source]")?.addEventListener(
+    "click",
+    () => openEvidence(root, nodeElement)
+  );
+  panel.querySelector("[data-cg-detail-action='findings']")?.addEventListener(
+    "click",
+    () => openFinding(root, annotation.finding_id)
+  );
   return true;
 }
 
@@ -90,7 +98,9 @@ async function applyPendingAnnotation() {
   if (!root || !annotationState.findingId) return;
   const auditId = String(root.dataset.auditId || "");
   if (!auditId || (annotationState.auditId && annotationState.auditId !== auditId)) return;
-  if (!root.querySelector("[data-reference-claim-graph='true'][data-cg-state='available']")) return;
+  const graph = root.querySelector("[data-reference-claim-graph='true'][data-cg-state='available']");
+  if (!graph) return;
+  if (graph.dataset.cgAnnotationFindingId === annotationState.findingId) return;
 
   const token = ++annotationState.requestToken;
   try {
