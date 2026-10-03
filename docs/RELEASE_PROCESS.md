@@ -13,7 +13,7 @@ Before creating a release tag:
 5. Re-check `docs/REPOSITORY_COMPLETION.md` and the open evidence milestones. Release notes must not turn synthetic, benchmark-only, pilot, or unadjudicated evidence into a production-certification claim.
 6. Create an immutable tag named exactly `vX.Y.Z`, where `X.Y.Z` exactly matches `[project].version` in `pyproject.toml`.
 
-The tag workflow independently enforces three identity conditions before publication: the tag must match the package version, the changelog must contain the same version, and the tagged commit must already be contained in `main` history.
+The tag workflow independently enforces the release candidate again. Before GitHub Release publication it requires both the package artifact smoke and a reusable invocation of the full repository CI on the exact tagged commit. It also enforces three identity conditions: the tag must match the package version, the changelog must contain the same version, and the tagged commit must already be contained in `main` history.
 
 ## Automated GitHub Release
 
@@ -22,6 +22,8 @@ Pushing a `v*` tag triggers `.github/workflows/package-release.yml`.
 The workflow:
 
 - runs the same wheel/sdist artifact smoke used on pull requests;
+- invokes `.github/workflows/ci.yml` as a reusable `release-ci` gate on the exact tag commit, including Ruff, pytest, locked AuditBench, PDF regression/geometry, adversarial fail-closed, and the existing real-PDF probes;
+- does not allow the GitHub Release job to start until both artifact smoke and exact-tag CI have succeeded;
 - binds the artifact-smoke report and artifact name to the actual source commit SHA rather than a pull-request merge-ref SHA;
 - rejects a tag whose version differs from `pyproject.toml`;
 - rejects a tag without a matching versioned `CHANGELOG.md` section;
@@ -31,6 +33,8 @@ The workflow:
 - generates `SHA256SUMS.txt` for the wheel and source distribution;
 - creates one GitHub Release containing the validated wheel, source distribution, and SHA-256 manifest.
 
+`ci.yml` continues to run on pull requests and branch pushes. Direct tag-triggered CI is intentionally routed through `package-release` instead, so publication has an explicit dependency on that exact CI result rather than racing an independent workflow run.
+
 Published GitHub Release assets are treated as immutable. If a release for the tag already exists, the workflow fails instead of overwriting or clobbering its assets.
 
 Release notes explicitly preserve the authority boundary: a software package release is not a production scientific-validation certificate.
@@ -39,7 +43,7 @@ Release notes explicitly preserve the authority boundary: a software package rel
 
 The repository currently automates **GitHub Release artifacts only**. It does not publish to PyPI and does not assume package-index credentials or trusted-publishing configuration that are not present in the repository.
 
-If PyPI publication is added later, it should be a separate job with environment protection / trusted publishing, should consume the already validated release artifacts, and must not weaken the tag/version/main-history/changelog or evidence-authority gates above.
+If PyPI publication is added later, it should be a separate job with environment protection / trusted publishing, should consume the already validated release artifacts, and must not weaken the tag/version/main-history/changelog, exact-tag CI, or evidence-authority gates above.
 
 ## Versioning and v0.15 evidence artifacts
 
