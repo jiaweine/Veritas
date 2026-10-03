@@ -17,10 +17,12 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
       - run: pip install -e '.[dev,pdf,attestation,web,replication]'
-      - run: ruff check src tests scripts/run_auditbench_v1.py
+      - run: ruff check src tests scripts/run_auditbench_v1.py scripts/run_auditbench_v02_pack.py
       - run: pytest -q
       - name: Locked AuditBench detector gate
         run: python scripts/run_auditbench_v1.py
+      - name: Locked AuditBench v0.2 detector pack
+        run: python scripts/run_auditbench_v02_pack.py
       - run: python scripts/run_benchmark_enveloped.py pdf-regression
       - run: python scripts/run_benchmark_enveloped.py pdf-geometry-holdout
       - name: Adversarial extraction fail-closed benchmark
