@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import pytest
 
 from veritas.claim_reconstruction import (
     ClaimObjectReconstructionError,
@@ -324,6 +324,8 @@ def test_claim_graph_frontend_consumes_validated_endpoint_instead_of_latest_resu
     assert "detector_annotations_are_graph_edges !== false" in annotations
     assert "annotation.graph_edge !== false" in annotations
     assert "Detector annotations never become ClaimEdges" in annotations
+    assert "graph.dataset.cgAnnotationFindingId === annotationState.findingId" in annotations
+    assert "graph.dataset.cgAnnotationFindingId = annotation.finding_id" in annotations
     assert index.index("/static/claim-graph.js") < index.index("/static/claim-graph-annotations.js")
     assert index.index("/static/claim-graph-annotations.js") < index.index(
         "/static/finding-navigation.js"
