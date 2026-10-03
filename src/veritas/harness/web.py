@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from . import web_core as _core
 from .audit_pagination import register_audit_pagination_routes
+from .benchmark_pagination import register_benchmark_pagination_routes
 from .claim_graph_product import register_claim_graph_routes
 from .finding_pagination import register_finding_pagination_routes
 from .model_providers import register_model_provider_routes
@@ -53,6 +54,7 @@ def create_app(
     register_run_pagination_routes(app, app.state.harness)
     register_audit_pagination_routes(app, app.state.harness)
     register_finding_pagination_routes(app, app.state.harness)
+    register_benchmark_pagination_routes(app)
     register_claim_graph_routes(app, app.state.harness)
     app.add_middleware(_CompatRequestBodyLimitMiddleware)
     return app
