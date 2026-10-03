@@ -12,9 +12,22 @@ from veritas.auditbench import (
     AuditBenchObservation,
     evaluate_auditbench,
 )
+from veritas.detectors.correlation import CorrelationPSDDetector
+from veritas.detectors.designs import DIDDesignDetector, WeakIVDesignDetector
+from veritas.detectors.rdd import RDDDesignDetector
 from veritas.detectors.regression import RegressionConsistencyDetector
 from veritas.detectors.sample import SampleAccountingDetector
-from veritas.models import RegressionResult, ReportedNumber, SamplePartition
+from veritas.detectors.standardized_regression import StandardizedRegressionReconstructionDetector
+from veritas.models import (
+    CorrelationMatrix,
+    DIDDesign,
+    IVDesign,
+    RDDDesign,
+    RegressionResult,
+    ReportedNumber,
+    SamplePartition,
+    StandardizedRegressionReconstruction,
+)
 from veritas.types import CheckStatus, ComparisonOperator, EvidenceGrade, Materiality
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,11 +59,38 @@ def _reported(payload: dict[str, Any] | None) -> ReportedNumber | None:
     )
 
 
+def _required_reported(fixture: dict[str, Any], key: str) -> ReportedNumber:
+    value = _reported(fixture.get(key))
+    if value is None:
+        raise ValueError(f"fixture requires {key!r}")
+    return value
+
+
+def _correlation_matrix(
+    fixture: dict[str, Any],
+    *,
+    object_id: str,
+    materiality: Materiality,
+) -> CorrelationMatrix:
+    labels = fixture.get("labels")
+    cells = fixture.get("cells")
+    if not isinstance(labels, list) or not isinstance(cells, list):
+        raise TypeError(f"case {object_id!r} correlation matrix requires labels/cells arrays")
+    return CorrelationMatrix(
+        object_id=object_id,
+        labels=tuple(str(value) for value in labels),
+        cells=tuple(tuple(_reported(value) for value in row) for row in cells),
+        materiality=materiality,
+    )
+
+
 def _fixture(case: dict[str, Any]) -> object:
     fixture = case["fixture"]
     materiality = Materiality[case["materiality"]]
-    object_id = case["case_id"]
-    if fixture["type"] == "regression":
+    object_id = str(case["case_id"])
+    fixture_type = fixture["type"]
+
+    if fixture_type == "regression":
         return RegressionResult(
             object_id=object_id,
             beta=_required_reported(fixture, "beta"),
@@ -69,7 +109,8 @@ def _fixture(case: dict[str, Any]) -> object:
             p_value_adjusted=bool(fixture.get("p_value_adjusted", False)),
             materiality=materiality,
         )
-    if fixture["type"] == "sample_partition":
+
+    if fixture_type == "sample_partition":
         groups = fixture.get("groups") or {}
         if not isinstance(groups, dict):
             raise TypeError(f"case {object_id!r} groups must be an object")
@@ -82,14 +123,124 @@ def _fixture(case: dict[str, Any]) -> object:
             explanation_present=fixture.get("explanation_present"),
             materiality=materiality,
         )
-    raise ValueError(f"unsupported AuditBench fixture type: {fixture['type']!r}")
 
+    if fixture_type == "correlation_matrix":
+        return _correlation_matrix(fixture, object_id=object_id, materiality=materiality)
 
-def _required_reported(fixture: dict[str, Any], key: str) -> ReportedNumber:
-    value = _reported(fixture.get(key))
-    if value is None:
-        raise ValueError(f"fixture requires {key!r}")
-    return value
+    if fixture_type == "standardized_regression":
+        matrix = _correlation_matrix(
+            fixture,
+            object_id=f"{object_id}:correlations",
+            materiality=materiality,
+        )
+        beta_payloads = fixture.get("standardized_betas")
+        predictors = fixture.get("predictors")
+        if not isinstance(beta_payloads, list) or not isinstance(predictors, list):
+            raise TypeError(
+                f"case {object_id!r} standardized regression requires predictors/betas arrays"
+            )
+        betas = tuple(_reported(value) for value in beta_payloads)
+        if any(value is None for value in betas):
+            raise ValueError(f"case {object_id!r} standardized betas may not be null")
+        return StandardizedRegressionReconstruction(
+            object_id=object_id,
+            correlation_matrix=matrix,
+            outcome=str(fixture["outcome"]),
+            predictors=tuple(str(value) for value in predictors),
+            standardized_betas=tuple(value for value in betas if value is not None),
+            ols_identity_verified=bool(fixture.get("ols_identity_verified", False)),
+            same_sample_verified=bool(fixture.get("same_sample_verified", False)),
+            complete_predictor_set_verified=bool(
+                fixture.get("complete_predictor_set_verified", False)
+            ),
+            materiality=materiality,
+        )
+
+    if fixture_type == "did_design":
+        event_time_window = fixture.get("event_time_window")
+        if event_time_window is not None:
+            if not isinstance(event_time_window, list) or len(event_time_window) != 2:
+                raise TypeError(f"case {object_id!r} event_time_window must contain two values")
+            event_time_window = (int(event_time_window[0]), int(event_time_window[1]))
+        return DIDDesign(
+            object_id=object_id,
+            periods=int(fixture["periods"]) if fixture.get("periods") is not None else None,
+            staggered_adoption=fixture.get("staggered_adoption"),
+            treatment_type=str(fixture.get("treatment_type", "binary")),
+            estimator=fixture.get("estimator"),
+            event_study=fixture.get("event_study"),
+            heterogeneity_robust_estimator_reported=fixture.get(
+                "heterogeneity_robust_estimator_reported"
+            ),
+            treatment_timing=fixture.get("treatment_timing"),
+            comparison_group=fixture.get("comparison_group"),
+            event_time_window=event_time_window,
+            fixed_effects=tuple(str(value) for value in fixture.get("fixed_effects") or []),
+            clustering=tuple(str(value) for value in fixture.get("clustering") or []),
+            pretrend_test=fixture.get("pretrend_test"),
+            parallel_trends_claimed=fixture.get("parallel_trends_claimed"),
+            materiality=materiality,
+        )
+
+    if fixture_type == "iv_design":
+        return IVDesign(
+            object_id=object_id,
+            single_instrument=fixture.get("single_instrument"),
+            single_endogenous_regressor=fixture.get("single_endogenous_regressor"),
+            just_identified=fixture.get("just_identified"),
+            instrument_count=(
+                int(fixture["instrument_count"])
+                if fixture.get("instrument_count") is not None
+                else None
+            ),
+            endogenous_regressor_count=(
+                int(fixture["endogenous_regressor_count"])
+                if fixture.get("endogenous_regressor_count") is not None
+                else None
+            ),
+            first_stage_reported=fixture.get("first_stage_reported"),
+            reduced_form_reported=fixture.get("reduced_form_reported"),
+            two_stage_least_squares_reported=fixture.get("two_stage_least_squares_reported"),
+            first_stage_f=_reported(fixture.get("first_stage_f")),
+            uses_f_gt_10_rule_as_validity_claim=bool(
+                fixture.get("uses_f_gt_10_rule_as_validity_claim", False)
+            ),
+            weak_robust_methods=tuple(
+                str(value) for value in fixture.get("weak_robust_methods") or []
+            ),
+            materiality=materiality,
+        )
+
+    if fixture_type == "rdd_design":
+        return RDDDesign(
+            object_id=object_id,
+            framework=str(fixture.get("framework", "unknown")),
+            design_type=str(fixture.get("design_type", "sharp")),
+            estimator=fixture.get("estimator"),
+            running_variable=fixture.get("running_variable"),
+            cutoff=_reported(fixture.get("cutoff")),
+            bandwidth=_reported(fixture.get("bandwidth")),
+            bandwidth_selection=fixture.get("bandwidth_selection"),
+            kernel=fixture.get("kernel"),
+            inference_description=fixture.get("inference_description"),
+            global_polynomial_order=(
+                int(fixture["global_polynomial_order"])
+                if fixture.get("global_polynomial_order") is not None
+                else None
+            ),
+            robust_bias_corrected_inference=fixture.get("robust_bias_corrected_inference"),
+            alternative_modern_inference_reported=fixture.get(
+                "alternative_modern_inference_reported"
+            ),
+            randomization_inference_reported=fixture.get("randomization_inference_reported"),
+            continuity_check_claimed=fixture.get("continuity_check_claimed"),
+            continuity_check_reported=fixture.get("continuity_check_reported"),
+            manipulation_check_claimed=fixture.get("manipulation_check_claimed"),
+            density_test_reported=fixture.get("density_test_reported"),
+            materiality=materiality,
+        )
+
+    raise ValueError(f"unsupported AuditBench fixture type: {fixture_type!r}")
 
 
 def _expectation(case: dict[str, Any]) -> AuditBenchExpectation:
@@ -110,14 +261,22 @@ def _expectation(case: dict[str, Any]) -> AuditBenchExpectation:
     )
 
 
-def _observation(case: dict[str, Any]) -> AuditBenchObservation:
-    detectors = {
+def _detectors() -> dict[str, object]:
+    return {
+        "correlation_psd_sdp": CorrelationPSDDetector(),
+        "did_design_frontier": DIDDesignDetector(),
+        "rdd_design_frontier": RDDDesignDetector(),
         "regression_consistency": RegressionConsistencyDetector(),
         "sample_accounting": SampleAccountingDetector(),
+        "standardized_regression_mccormick_sdp": StandardizedRegressionReconstructionDetector(),
+        "weak_iv_frontier": WeakIVDesignDetector(),
     }
+
+
+def _observation(case: dict[str, Any]) -> AuditBenchObservation:
     detector_id = str(case["detector_id"])
     try:
-        detector = detectors[detector_id]
+        detector = _detectors()[detector_id]
     except KeyError as exc:
         raise ValueError(f"unregistered AuditBench detector: {detector_id!r}") from exc
     checks = detector.run(_fixture(case))
