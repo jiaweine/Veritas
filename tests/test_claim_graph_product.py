@@ -331,6 +331,7 @@ def test_claim_graph_frontend_consumes_validated_endpoint_instead_of_latest_resu
     assert index.index("/static/claim-graph-annotations.js") < index.index(
         "/static/finding-navigation.js"
     )
-    assert 'const CACHE_REVISION = "claim-graph-authority-2";' in sw
+    assert 'const CACHE_REVISION = "' in sw
+    assert 'const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`;' in sw
     assert '"/static/claim-graph-annotations.js"' in sw
     assert "register_claim_graph_routes(app, app.state.harness)" in web

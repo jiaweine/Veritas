@@ -1,5 +1,5 @@
 const CACHE = "veritas-shell-v29";
-const CACHE_REVISION = "claim-graph-authority-2";
+const CACHE_REVISION = "audit-pagination-1";
 const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`;
 const SHELL = [
   "/",
@@ -13,6 +13,7 @@ const SHELL = [
   "/static/reproduction-review.css",
   "/static/finding-replication-review.css",
   "/static/runs.css",
+  "/static/audit-pagination.css",
   "/static/settings.css",
   "/static/settings-shell.css",
   "/static/settings-interactions.css",
@@ -24,8 +25,10 @@ const SHELL = [
   "/static/claim-graph.css",
   "/static/finding-navigation.css",
   "/static/mobile-polish.css",
+  "/static/audit-page-bootstrap.js",
   "/static/run-page-bootstrap.js",
   "/static/app.js",
+  "/static/audit-pagination.js",
   "/static/audit-harness.js",
   "/static/audit-harness-product.js",
   "/static/audit-notes.js",

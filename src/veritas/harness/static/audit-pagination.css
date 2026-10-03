@@ -1,0 +1,35 @@
+.audit-page-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.09));
+  color: var(--text-muted, #8fa3ad);
+  font-size: 12px;
+}
+
+.audit-page-footer .secondary-button {
+  min-height: 34px;
+  white-space: nowrap;
+}
+
+.audit-page-error {
+  margin-left: auto;
+  color: var(--danger, #ff6b7d);
+}
+
+@media (max-width: 620px) {
+  .audit-page-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .audit-page-footer .secondary-button {
+    width: 100%;
+  }
+
+  .audit-page-error {
+    margin-left: 0;
+  }
+}
