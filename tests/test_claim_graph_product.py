@@ -325,6 +325,8 @@ def test_claim_graph_frontend_consumes_validated_endpoint_instead_of_latest_resu
     assert "Detector annotations never become ClaimEdges" in annotations
     assert "graph.dataset.cgAnnotationFindingId === annotationState.findingId" in annotations
     assert "graph.dataset.cgAnnotationFindingId = annotation.finding_id" in annotations
+    assert "root.querySelector(\".ah-tabs [data-ah-tab='source']\")?.click();" in annotations
+    assert "const freshRoot = auditRoot() || root;" in annotations
     assert index.index("/static/claim-graph.js") < index.index("/static/claim-graph-annotations.js")
     assert index.index("/static/claim-graph-annotations.js") < index.index(
         "/static/finding-navigation.js"
