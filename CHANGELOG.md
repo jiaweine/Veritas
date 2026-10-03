@@ -10,11 +10,13 @@ Veritas deliberately separates software release state from scientific-validation
 
 - governed wheel/source-distribution release artifact smoke, including package metadata, console-entry-point, Web/PWA asset, clean-install, and CLI-version checks;
 - tag/version equality enforcement and automated GitHub Release artifact publication with SHA-256 manifests;
+- an exact-tag reusable full-CI gate that must succeed before GitHub Release publication;
 - an explicit release process documenting software/evidence authority boundaries.
 
 ### Fixed
 
-- the `web` optional dependency set now declares `httpx`, which the Harness model-provider routes import at runtime; clean wheel installs no longer rely on the `dev` extra to make `veritas-harness` importable.
+- the `web` optional dependency set now declares `httpx`, which the Harness model-provider routes import at runtime; clean wheel installs no longer rely on the `dev` extra to make `veritas-harness` importable;
+- tag publication can no longer race an independent full-CI workflow: release creation now has an explicit dependency on the full detector/PDF CI result for the tagged commit.
 
 ### Product and reliability state carried by current `main`
 
