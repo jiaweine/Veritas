@@ -20,9 +20,9 @@ jobs:
       - run: ruff check src tests scripts/run_auditbench_v1.py scripts/run_auditbench_v02_pack.py
       - run: pytest -q
       - name: Locked AuditBench detector gate
-        run: python scripts/run_auditbench_v1.py
+        run: python scripts/run_benchmark_enveloped.py auditbench-v1
       - name: Locked AuditBench v0.2 detector pack
-        run: python scripts/run_auditbench_v02_pack.py
+        run: python scripts/run_benchmark_enveloped.py auditbench-v02-pack
       - run: python scripts/run_benchmark_enveloped.py pdf-regression
       - run: python scripts/run_benchmark_enveloped.py pdf-geometry-holdout
       - name: Adversarial extraction fail-closed benchmark
@@ -45,5 +45,13 @@ jobs:
         with:
           name: veritas-benchmark-results-${{ github.run_id }}-${{ github.run_attempt }}
           path: benchmark-result-envelopes/*.json
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload raw AuditBench reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: veritas-auditbench-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: auditbench-raw-reports/*.json
           if-no-files-found: warn
           retention-days: 30
