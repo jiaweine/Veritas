@@ -12,12 +12,16 @@ from .tools import PaperToolbox
 
 _INTEGRITY_ERRORS = (OSError, ValueError, TypeError, json.JSONDecodeError)
 _RUN_CURSOR_VERSION = 1
+_AUDIT_CURSOR_VERSION = 1
 _MAX_RUN_PAGE_SIZE = 200
+_MAX_AUDIT_PAGE_SIZE = 200
 _MAX_RUN_CURSOR_CHARS = 1024
+_MAX_AUDIT_CURSOR_CHARS = 1024
+AuditSortKey = tuple[str, str]
 
 
 class ProductAuditHarness(_BaseProductAuditHarness):
-    """Product harness with validated terminal-run indexing and keyset pages."""
+    """Product harness with validated keyset pages for Runs and Audits."""
 
     def __init__(
         self,
@@ -27,6 +31,53 @@ class ProductAuditHarness(_BaseProductAuditHarness):
     ) -> None:
         super().__init__(data_dir, toolbox=toolbox)
         self.store = ProductHarnessStore(self.store.root)
+
+    def audits_page(
+        self,
+        *,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        if not isinstance(limit, int) or isinstance(limit, bool):
+            raise TypeError("audit page limit must be an integer")
+        if limit < 1 or limit > _MAX_AUDIT_PAGE_SIZE:
+            raise ValueError(f"audit page limit must be between 1 and {_MAX_AUDIT_PAGE_SIZE}")
+
+        after = self._decode_audit_cursor(cursor)
+        audits = self._metadata_audits()
+        audits.sort(key=self._audit_sort_key, reverse=True)
+        status_counts: dict[str, int] = {}
+        page: list[tuple[AuditSortKey, dict[str, Any]]] = []
+        total = 0
+
+        for audit in audits:
+            audit_id = str(audit.get("audit_id") or "")
+            if not audit_id:
+                continue
+            try:
+                self.store.validate_events(audit_id)
+            except _INTEGRITY_ERRORS:
+                continue
+
+            total += 1
+            status = str(audit.get("status") or "unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+            key = self._audit_sort_key(audit)
+            if after is not None and key >= after:
+                continue
+            if len(page) <= limit:
+                page.append((key, audit))
+
+        has_more = len(page) > limit
+        page = page[:limit]
+        next_key = page[-1][0] if has_more and page else None
+        return {
+            "items": [audit for _key, audit in page],
+            "next_cursor": self._encode_audit_cursor(next_key) if next_key is not None else None,
+            "has_more": has_more,
+            "total": total,
+            "status_counts": status_counts,
+        }
 
     def runs(self) -> list[dict[str, Any]]:
         """Preserve the historical full-list API without rescanning warm journals."""
@@ -72,6 +123,10 @@ class ProductAuditHarness(_BaseProductAuditHarness):
         return audits
 
     @staticmethod
+    def _audit_sort_key(audit: dict[str, Any]) -> AuditSortKey:
+        return str(audit.get("updated_at") or ""), str(audit.get("audit_id") or "")
+
+    @staticmethod
     def _decorate_run(
         item: dict[str, Any],
         audits: dict[str, dict[str, Any]],
@@ -80,6 +135,49 @@ class ProductAuditHarness(_BaseProductAuditHarness):
         audit = audits.get(str(value.get("audit_id") or "")) or {}
         value["audit_title"] = audit.get("title")
         return value
+
+    @staticmethod
+    def _encode_audit_cursor(key: AuditSortKey) -> str:
+        payload = json.dumps(
+            {
+                "v": _AUDIT_CURSOR_VERSION,
+                "updated_at": key[0],
+                "audit_id": key[1],
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+    @staticmethod
+    def _decode_audit_cursor(cursor: str | None) -> AuditSortKey | None:
+        if cursor is None:
+            return None
+        clean = str(cursor).strip()
+        if not clean:
+            return None
+        if len(clean) > _MAX_AUDIT_CURSOR_CHARS:
+            raise ValueError("audit cursor is too long")
+        padding = "=" * (-len(clean) % 4)
+        try:
+            raw = base64.b64decode(
+                clean + padding,
+                altchars=b"-_",
+                validate=True,
+            )
+            value = json.loads(raw.decode("utf-8"))
+        except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("audit cursor is invalid") from exc
+        if not isinstance(value, dict) or value.get("v") != _AUDIT_CURSOR_VERSION:
+            raise ValueError("audit cursor version is unsupported")
+        updated_at = value.get("updated_at")
+        audit_id = value.get("audit_id")
+        if not isinstance(updated_at, str) or not isinstance(audit_id, str):
+            raise TypeError("audit cursor payload is invalid")
+        if not audit_id or len(audit_id) > 256 or len(updated_at) > 128:
+            raise ValueError("audit cursor payload is invalid")
+        return updated_at, audit_id
 
     @staticmethod
     def _encode_run_cursor(key: RunSortKey) -> str:

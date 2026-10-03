@@ -29,7 +29,9 @@ jobs:
           node-version: "24"
       - name: Check workbench JavaScript syntax
         run: |
+          node --check ../src/veritas/harness/static/audit-page-bootstrap.js
           node --check ../src/veritas/harness/static/app.js
+          node --check ../src/veritas/harness/static/audit-pagination.js
           node --check ../src/veritas/harness/static/audit-harness.js
           node --check ../src/veritas/harness/static/audit-harness-product.js
           node --check ../src/veritas/harness/static/audit-notes.js
