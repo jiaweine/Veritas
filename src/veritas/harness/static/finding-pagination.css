@@ -1,0 +1,40 @@
+.finding-page-card {
+  cursor: pointer;
+}
+
+.finding-page-card:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.finding-page-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgba(255,255,255,.12));
+  border-radius: 12px;
+  color: var(--muted, #96a3ad);
+  background: var(--panel, rgba(255,255,255,.025));
+}
+
+.finding-page-error {
+  align-items: flex-start;
+}
+
+.finding-page-terminal {
+  justify-content: center;
+}
+
+@media (max-width: 720px) {
+  .finding-page-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .finding-page-footer .secondary-button {
+    width: 100%;
+  }
+}

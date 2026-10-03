@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from . import web_core as _core
 from .audit_pagination import register_audit_pagination_routes
 from .claim_graph_product import register_claim_graph_routes
+from .finding_pagination import register_finding_pagination_routes
 from .model_providers import register_model_provider_routes
 from .product_service_runs import ProductAuditHarness
 from .replication_review import register_replication_review_routes
@@ -51,6 +52,7 @@ def create_app(
     register_replication_review_routes(app, app.state.harness)
     register_run_pagination_routes(app, app.state.harness)
     register_audit_pagination_routes(app, app.state.harness)
+    register_finding_pagination_routes(app, app.state.harness)
     register_claim_graph_routes(app, app.state.harness)
     app.add_middleware(_CompatRequestBodyLimitMiddleware)
     return app
