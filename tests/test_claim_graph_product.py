@@ -13,7 +13,10 @@ from veritas.claim_reconstruction import (
 )
 from veritas.claims import StatisticalClaimGraph
 from veritas.extraction import ExtractionCandidate
-from veritas.harness.claim_graph_product import project_claim_graph, register_claim_graph_routes
+from veritas.harness.claim_graph_product import (
+    project_claim_graph,
+    register_claim_graph_routes,
+)
 from veritas.harness.tools import PaperToolbox
 from veritas.models import SourceLocation
 
@@ -315,6 +318,9 @@ def test_claim_graph_frontend_consumes_validated_endpoint_instead_of_latest_resu
     assert "consensus" not in source
     assert "checkItems" not in source
     assert "No publication claim identity bound" in source
+    assert "data-cg-persisted-edge" in source
+    assert '"source address"' not in source
+    assert '"field"));' not in source
     assert "detector_annotations_are_graph_edges !== false" in annotations
     assert "annotation.graph_edge !== false" in annotations
     assert "Detector annotations never become ClaimEdges" in annotations
