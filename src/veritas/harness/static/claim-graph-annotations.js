@@ -28,11 +28,17 @@ async function requestClaimGraph(auditId) {
 
 function openEvidence(root, nodeElement) {
   const page = String(nodeElement.dataset.cgPage || "");
-  const pageButton = [...root.querySelectorAll("[data-ah-page]")]
+  const field = nodeElement.dataset.cgField || "";
+
+  // Leave Claim Graph through the native Source tab first. That path owns the
+  // graph active-state transition; page navigation alone would let the graph
+  // MutationObserver reclaim the inspector before the evidence selection lands.
+  root.querySelector(".ah-tabs [data-ah-tab='source']")?.click();
+  const freshRoot = auditRoot() || root;
+  const pageButton = [...freshRoot.querySelectorAll("[data-ah-page]")]
     .find((candidate) => String(candidate.dataset.ahPage) === page);
   if (pageButton) pageButton.click();
-  else root.querySelector(".ah-tabs [data-ah-tab='source']")?.click();
-  const field = nodeElement.dataset.cgField || "";
+
   if (field) {
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent("veritas:evidence-field", { detail: { field } }));
