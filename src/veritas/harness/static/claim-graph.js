@@ -34,7 +34,10 @@ function truncate(value, length = 24) {
 }
 
 function sourceLabel(source = {}) {
-  const table = String(source.table || "").replace(/\s*\[[^\]]+\]\s*/g, " ").replace(/\s+/g, " ").trim();
+  const table = String(source.table || "")
+    .replace(/\s*\[[^\]]+\]\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   const page = Number(source.page || 0);
   if (table && page) return `${truncate(table, 20)} · p.${page}`;
   if (table) return truncate(table, 26);
@@ -61,7 +64,18 @@ async function requestClaimGraph(auditId) {
   return response.json();
 }
 
-function node({ id, x, y, title, value = "", kind = "neutral", field = "", page = "", detail = "", meta = "" }) {
+function node({
+  id,
+  x,
+  y,
+  title,
+  value = "",
+  kind = "neutral",
+  field = "",
+  page = "",
+  detail = "",
+  meta = "",
+}) {
   const attrs = [
     `data-cg-node="${esc(id)}"`,
     `data-cg-title="${esc(title)}"`,
@@ -82,13 +96,21 @@ function node({ id, x, y, title, value = "", kind = "neutral", field = "", page 
   </g>`;
 }
 
-function edge(x1, y1, x2, y2, label = "") {
+function persistedEdge(sourcePosition, targetPosition, relation) {
+  const x1 = sourcePosition.x + NODE_WIDTH / 2;
+  const y1 = sourcePosition.y + NODE_HEIGHT;
+  const x2 = targetPosition.x + NODE_WIDTH / 2;
+  const y2 = targetPosition.y;
   const midY = (y1 + y2) / 2;
-  return `<g class="cg-edge"><path d="M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" marker-end="url(#cg-arrow)"></path>${label ? `<text x="${(x1 + x2) / 2}" y="${midY - 7}">${esc(label)}</text>` : ""}</g>`;
+  return `<g class="cg-edge" data-cg-persisted-edge="true">
+    <path d="M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" marker-end="url(#cg-arrow)"></path>
+    <text x="${(x1 + x2) / 2}" y="${midY - 7}">${esc(relation)}</text>
+  </g>`;
 }
 
 function unavailableMarkup(payload) {
-  const reason = payload?.reason || "No validated persisted StatisticalClaimGraph is available for this audit.";
+  const reason = payload?.reason
+    || "No validated persisted StatisticalClaimGraph is available for this audit.";
   return `<div class="cg-empty" data-reference-claim-graph="true" data-cg-state="${esc(payload?.state || "unavailable")}">
     <span>◇</span>
     <strong>Claim graph unavailable</strong>
@@ -111,23 +133,30 @@ function graphMarkup(payload) {
     </div>`;
   }
 
+  const claim = claims[0] || null;
   const source = object.source || {};
   const row = source.row || object.object_id || "Statistical object";
   const fields = Object.entries(object.fields || {})
     .filter(([name]) => ["beta", "se", "t_stat", "p_value", "ci_lower", "ci_upper"].includes(name))
     .slice(0, 4);
   const sourcePosition = { x: 225, y: 24 };
-  const objectPosition = { x: 225, y: 132 };
-  const fieldPositions = [
-    { x: 38, y: 278 },
-    { x: 412, y: 278 },
-    { x: 38, y: 386 },
-    { x: 412, y: 386 },
-  ];
+  const claimPosition = claim ? { x: 225, y: 126 } : null;
+  const objectPosition = { x: 225, y: claim ? 228 : 132 };
+  const fieldPositions = claim
+    ? [
+        { x: 38, y: 370 },
+        { x: 412, y: 370 },
+        { x: 38, y: 468 },
+        { x: 412, y: 468 },
+      ]
+    : [
+        { x: 38, y: 278 },
+        { x: 412, y: 278 },
+        { x: 38, y: 386 },
+        { x: 412, y: 386 },
+      ];
   const nodes = [];
-  const edges = [];
-  const sourceCenter = sourcePosition.x + NODE_WIDTH / 2;
-  const objectCenter = objectPosition.x + NODE_WIDTH / 2;
+  const graphPositions = new Map([[object.object_id, objectPosition]]);
 
   nodes.push(node({
     id: `artifact:${source.artifact_id || "paper"}`,
@@ -136,9 +165,24 @@ function graphMarkup(payload) {
     value: sourceLabel(source),
     kind: "source",
     page: source.page || "",
-    detail: "Persisted source address referenced by the StatisticalObjectNode. This is provenance, not a publication-claim edge.",
+    detail: "Persisted source address referenced by the StatisticalObjectNode. It is shown as provenance and is not rendered as a ClaimEdge.",
     meta: source.artifact_id || "paper artifact",
   }));
+
+  if (claim && claimPosition) {
+    graphPositions.set(claim.claim_id, claimPosition);
+    nodes.push(node({
+      id: claim.claim_id,
+      ...claimPosition,
+      title: claim.text || claim.claim_id,
+      value: claim.role || "Publication claim",
+      kind: "neutral",
+      page: claim.source?.page || "",
+      detail: "Persisted ClaimNode. Any semantic line attached to this node must come from graph.edges.",
+      meta: claim.estimand || sourceLabel(claim.source || {}),
+    }));
+  }
+
   nodes.push(node({
     id: object.object_id,
     ...objectPosition,
@@ -149,7 +193,6 @@ function graphMarkup(payload) {
     detail: "Validated StatisticalObjectNode from the persisted StatisticalClaimGraph.",
     meta: `${Object.keys(object.fields || {}).length} persisted fields`,
   }));
-  edges.push(edge(sourceCenter, sourcePosition.y + NODE_HEIGHT, objectCenter, objectPosition.y, "source address"));
 
   fields.forEach(([name, field], index) => {
     const position = fieldPositions[index];
@@ -163,12 +206,17 @@ function graphMarkup(payload) {
       kind: "metric",
       field: name,
       page: fieldSource.page || source.page || "",
-      detail: "Source-addressable ExtractedField persisted inside the StatisticalClaimGraph. No detector check has been converted into a graph edge.",
+      detail: "Source-addressable ExtractedField persisted inside the StatisticalClaimGraph. Fields are nested object provenance, not standalone ClaimEdges.",
       meta: sourceLabel(fieldSource),
     }));
-    edges.push(edge(objectCenter, objectPosition.y + NODE_HEIGHT, position.x + NODE_WIDTH / 2, position.y, "field"));
   });
 
+  const semanticEdges = persistedEdges.flatMap((item) => {
+    const sourcePositionForEdge = graphPositions.get(item.source_id);
+    const targetPositionForEdge = graphPositions.get(item.target_id);
+    if (!sourcePositionForEdge || !targetPositionForEdge) return [];
+    return [persistedEdge(sourcePositionForEdge, targetPositionForEdge, item.relation || "related")];
+  });
   const claimBound = payload.authority?.publication_claim_bound === true;
   const claimSummary = claimBound
     ? `${claims.length} persisted publication claim${claims.length === 1 ? "" : "s"} · ${persistedEdges.length} persisted claim edge${persistedEdges.length === 1 ? "" : "s"}`
@@ -177,7 +225,7 @@ function graphMarkup(payload) {
   const reconstructionSummary = reconstruction?.available
     ? "parser-independent reconstruction available"
     : `reconstruction withheld${reconstruction?.reason ? ` · ${reconstruction.reason}` : ""}`;
-  const height = 500;
+  const height = claim ? 580 : 500;
 
   return `<section class="claim-graph" data-reference-claim-graph="true" data-cg-state="available">
     <div class="cg-toolbar">
@@ -188,7 +236,7 @@ function graphMarkup(payload) {
     <div class="cg-canvas" role="region" aria-label="Persisted statistical claim graph">
       <svg viewBox="0 0 ${GRAPH_WIDTH} ${height}" role="img" aria-label="Statistical graph for ${esc(row)}">
         <defs><marker id="cg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z"></path></marker></defs>
-        ${edges.join("")}
+        ${semanticEdges.join("")}
         ${nodes.join("")}
       </svg>
     </div>
@@ -241,7 +289,10 @@ function selectGraphNode(root, nodeElement) {
     <div><button type="button" class="primary" data-cg-detail-action="source">${esc(actionLabel)} <span>→</span></button></div>
     <span>Enter selects · double-click follows</span>
   </div>`;
-  panel.querySelector("[data-cg-detail-action='source']")?.addEventListener("click", () => openSource(root, nodeElement));
+  panel.querySelector("[data-cg-detail-action='source']")?.addEventListener(
+    "click",
+    () => openSource(root, nodeElement)
+  );
 }
 
 function bindGraph(root) {
@@ -332,7 +383,11 @@ function ensureTab(root) {
       graphState.requestToken += 1;
     });
   });
-  if (graphState.active && !graphState.rendering && !root.querySelector("[data-reference-claim-graph='true']")) {
+  if (
+    graphState.active
+    && !graphState.rendering
+    && !root.querySelector("[data-reference-claim-graph='true']")
+  ) {
     renderGraph(root);
   }
 }
