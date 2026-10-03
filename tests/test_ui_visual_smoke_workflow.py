@@ -82,6 +82,9 @@ def test_reference_workbench_uses_live_backend_contracts() -> None:
         encoding="utf-8"
     )
     graph = (ROOT / "src/veritas/harness/static/claim-graph.js").read_text(encoding="utf-8")
+    annotations = (ROOT / "src/veritas/harness/static/claim-graph-annotations.js").read_text(
+        encoding="utf-8"
+    )
     finding_navigation = (ROOT / "src/veritas/harness/static/finding-navigation.js").read_text(
         encoding="utf-8"
     )
@@ -104,15 +107,24 @@ def test_reference_workbench_uses_live_backend_contracts() -> None:
     assert "data-reference-evidence-preview" in evidence
     assert 'data-ref-field="beta"' in evidence
     assert "veritas:evidence-field" in evidence
-    assert "/api/v1/audits/${encodeURIComponent(auditId)}" in graph
-    assert "result.consensus" in graph
-    assert "result.checks" in graph
-    assert "result.findings" in graph
+
+    claim_endpoint = "/api/v1/audits/${encodeURIComponent(auditId)}/claim-graph"
+    assert claim_endpoint in graph
+    assert "latest_result" not in graph
+    assert "result.consensus" not in graph
+    assert "result.checks" not in graph
+    assert "result.findings" not in graph
     assert "data-reference-claim-graph" in graph
     assert "data-cg-detail-panel" in graph
     assert "data-cg-detail-action" in graph
-    assert "data-cg-finding-id" in graph
-    assert "veritas:finding-select" in graph
+    assert "data-cg-persisted-edge" in graph
+    assert "No publication claim identity bound" in graph
+    assert claim_endpoint in annotations
+    assert "dataset.cgFindingId" in annotations
+    assert "annotation.graph_edge !== false" in annotations
+    assert "Detector annotations never become ClaimEdges" in annotations
+    assert "veritas:finding-select" in annotations
+
     assert "/api/v1/audits/${encodeURIComponent(auditId)}" in finding_navigation
     assert "data-fn-finding-id" in finding_navigation
     assert "data-fn-reproduce" in finding_navigation
@@ -134,6 +146,7 @@ def test_reference_workbench_uses_live_backend_contracts() -> None:
     assert "/static/reference-evidence-preview.js" in shell
     assert "/static/claim-graph.css" in shell
     assert "/static/claim-graph.js" in shell
+    assert "/static/claim-graph-annotations.js" in shell
     assert "/static/finding-navigation.css" in shell
     assert "/static/finding-navigation.js" in shell
 
