@@ -7,6 +7,7 @@ on:
       - "src/veritas/harness/**"
       - "scripts/smoke_harness_browser.py"
       - "scripts/smoke_finding_replication_browser.py"
+      - "scripts/smoke_findings_pagination_browser.py"
       - "scripts/smoke_replication_diff_browser.py"
       - "scripts/smoke_replication_review_browser.py"
       - "scripts/smoke_model_providers_browser.py"
@@ -23,6 +24,7 @@ on:
       - "src/veritas/harness/**"
       - "scripts/smoke_harness_browser.py"
       - "scripts/smoke_finding_replication_browser.py"
+      - "scripts/smoke_findings_pagination_browser.py"
       - "scripts/smoke_replication_diff_browser.py"
       - "scripts/smoke_replication_review_browser.py"
       - "scripts/smoke_model_providers_browser.py"
@@ -94,6 +96,9 @@ jobs:
             --base-url http://127.0.0.1:8765 \
             --output-dir artifacts/ui
           python scripts/smoke_audits_pagination_browser.py \
+            --base-url http://127.0.0.1:8765 \
+            --output-dir artifacts/ui
+          python scripts/smoke_findings_pagination_browser.py \
             --base-url http://127.0.0.1:8765 \
             --output-dir artifacts/ui
           python scripts/smoke_benchmarks_browser.py \
