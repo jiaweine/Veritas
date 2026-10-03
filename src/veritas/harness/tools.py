@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Any
 
 from veritas.audit import AuditEngine
+from veritas.claims import ArtifactRef, ExtractedField, StatisticalClaimGraph, StatisticalObjectNode
 from veritas.models import RegressionResult
 from veritas.pdf_native import NativePDFSnapshot
 from veritas.pdf_regression import (
@@ -69,9 +70,7 @@ class PaperToolbox:
                         "label": table.publication_label,
                         "caption": table.caption,
                         "bbox": list(table.bbox),
-                        "rows_preview": [
-                            [cell for cell in row] for row in table.rows[:4]
-                        ],
+                        "rows_preview": [[cell for cell in row] for row in table.rows[:4]],
                         "parsers": [],
                     },
                 )
@@ -114,10 +113,7 @@ class PaperToolbox:
         parsed = snapshots or self.parse(pdf_bytes, artifact_id=artifact_id)
         locator = None
         if table_label is not None or expected_page is not None:
-            locator = RegressionLocator(
-                table_label=table_label,
-                expected_page=expected_page,
-            )
+            locator = RegressionLocator(table_label=table_label, expected_page=expected_page)
         bundle = extract_regression_table(
             parsed,
             variable_label=row_label,
@@ -136,30 +132,37 @@ class PaperToolbox:
             key: self._consensus_value(candidates)
             for key, candidates in bundle.field_candidates.items()
         }
-        distribution = self._consensus_value(
+        distribution_consensus = self._consensus_value(
             bundle.semantic_candidates.get("inference_distribution", ())
         )
-        if distribution is None:
-            distribution = "unknown"
+        distribution = distribution_consensus or "unknown"
+        claim_graph = self._regression_claim_graph(
+            bundle,
+            row_label=row_label,
+            consensus=consensus,
+            distribution_consensus=distribution_consensus,
+        )
+        claim_graph_authority = {
+            "persisted": True,
+            "publication_claim_bound": False,
+            "claim_edges_persisted": 0,
+            "client_inference_required": False,
+            "extraction_confidence_promoted": False,
+            "note": (
+                "The graph persists the extracted statistical object and source provenance only. "
+                "No publication claim identity or claim-object edge has been inferred."
+            ),
+        }
 
-        missing = [
-            key
-            for key in ("beta", "se", "t_stat")
-            if consensus.get(key) is None
-        ]
+        missing = [key for key in ("beta", "se", "t_stat") if consensus.get(key) is None]
         if bundle.ambiguities or missing:
             reasons = list(bundle.ambiguities)
             if missing:
-                reasons.append(
-                    "No two-parser consensus for required fields: " + ", ".join(missing)
-                )
+                reasons.append("No two-parser consensus for required fields: " + ", ".join(missing))
             return {
                 "status": "review_required",
                 "row_label": row_label,
-                "locator": {
-                    "table_label": table_label,
-                    "expected_page": expected_page,
-                },
+                "locator": {"table_label": table_label, "expected_page": expected_page},
                 "source": _source_payload(bundle.source),
                 "fields": fields,
                 "semantics": semantics,
@@ -170,6 +173,8 @@ class PaperToolbox:
                 "review_priority": 0.0,
                 "findings": [],
                 "checks": [],
+                "claim_graph": claim_graph,
+                "claim_graph_authority": claim_graph_authority,
                 "scope": "interactive_research",
             }
 
@@ -189,8 +194,12 @@ class PaperToolbox:
         summary = AuditEngine().audit([result])
         checks = [_jsonable(check) for check in summary.checks]
         findings = [_jsonable(finding) for finding in summary.findings]
-        failed = sum(1 for check in summary.checks if getattr(check.status, "value", "") == "fail")
-        passed = sum(1 for check in summary.checks if getattr(check.status, "value", "") == "pass")
+        failed = sum(
+            1 for check in summary.checks if getattr(check.status, "value", "") == "fail"
+        )
+        passed = sum(
+            1 for check in summary.checks if getattr(check.status, "value", "") == "pass"
+        )
         review = sum(
             1
             for check in summary.checks
@@ -200,10 +209,7 @@ class PaperToolbox:
         return {
             "status": status,
             "row_label": row_label,
-            "locator": {
-                "table_label": table_label,
-                "expected_page": expected_page,
-            },
+            "locator": {"table_label": table_label, "expected_page": expected_page},
             "source": _source_payload(bundle.source),
             "fields": fields,
             "semantics": semantics,
@@ -218,8 +224,73 @@ class PaperToolbox:
                 "needs_review": review,
                 "contradictions": failed,
             },
+            "claim_graph": claim_graph,
+            "claim_graph_authority": claim_graph_authority,
             "scope": "interactive_research",
         }
+
+    @classmethod
+    def _regression_claim_graph(
+        cls,
+        bundle: object,
+        *,
+        row_label: str,
+        consensus: dict[str, str | None],
+        distribution_consensus: str | None,
+    ) -> dict[str, Any]:
+        graph = StatisticalClaimGraph()
+        graph.add_artifact(
+            ArtifactRef(
+                artifact_id=bundle.artifact_id,
+                kind="pdf",
+                sha256=bundle.artifact_sha256,
+            )
+        )
+        graph_fields: dict[str, ExtractedField] = {}
+        for key in ("beta", "se", "t_stat", "p_value"):
+            value = consensus.get(key)
+            if value is None:
+                continue
+            candidates = tuple(bundle.field_candidates.get(key, ()))
+            if not candidates:
+                continue
+            candidate = min(
+                candidates,
+                key=lambda item: (item.nonconformity_score, item.parser_family, item.parser_id),
+            )
+            reported = parse_reported_number(str(value))
+            graph_fields[key] = ExtractedField(
+                raw=candidate.raw,
+                value=reported.value,
+                source=candidate.source,
+                extraction_confidence=0.0,
+                displayed_precision=reported.decimals,
+                comparison_operator=reported.operator,
+            )
+
+        if distribution_consensus is not None:
+            candidates = tuple(bundle.semantic_candidates.get("inference_distribution", ()))
+            if candidates:
+                candidate = min(
+                    candidates,
+                    key=lambda item: (item.nonconformity_score, item.parser_family, item.parser_id),
+                )
+                graph_fields["inference_distribution"] = ExtractedField(
+                    raw=candidate.raw,
+                    value=distribution_consensus,
+                    source=candidate.source,
+                    extraction_confidence=0.0,
+                )
+
+        graph.add_object(
+            StatisticalObjectNode(
+                object_id=f"{bundle.artifact_id}:{row_label}",
+                object_type="RegressionResult",
+                fields=graph_fields,
+                source=bundle.source,
+            )
+        )
+        return graph.to_dict()
 
     @staticmethod
     def _consensus_value(candidates: object) -> str | None:

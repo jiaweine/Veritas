@@ -20,6 +20,7 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "/static/evidence-lens.js" in shell.text
     assert "/static/claim-graph.css" in shell.text
     assert "/static/claim-graph.js" in shell.text
+    assert "/static/claim-graph-annotations.js" in shell.text
     assert "/static/finding-navigation.css" in shell.text
     assert "/static/finding-navigation.js" in shell.text
     assert "/static/settings.css" in shell.text
@@ -73,14 +74,24 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
 
     claim_script = client.get("/static/claim-graph.js")
     assert claim_script.status_code == 200
+    assert "/api/v1/audits/${encodeURIComponent(auditId)}/claim-graph" in claim_script.text
     assert "data-reference-claim-graph" in claim_script.text
     assert "data-cg-detail-panel" in claim_script.text
     assert "data-cg-detail-action" in claim_script.text
-    assert "data-cg-finding-id" in claim_script.text
-    assert "veritas:claim-finding" in claim_script.text
-    assert "veritas:finding-select" in claim_script.text
+    assert "data-cg-persisted-edge" in claim_script.text
+    assert "No publication claim identity bound" in claim_script.text
+    assert "latest_result" not in claim_script.text
     assert "aria-current" in claim_script.text
     assert "veritas:evidence-field" in claim_script.text
+
+    annotation_script = client.get("/static/claim-graph-annotations.js")
+    assert annotation_script.status_code == 200
+    assert "/api/v1/audits/${encodeURIComponent(auditId)}/claim-graph" in annotation_script.text
+    assert "dataset.cgFindingId" in annotation_script.text
+    assert "annotation.graph_edge !== false" in annotation_script.text
+    assert "Detector annotations never become ClaimEdges" in annotation_script.text
+    assert "veritas:claim-finding" in annotation_script.text
+    assert "veritas:finding-select" in annotation_script.text
 
     finding_script = client.get("/static/finding-navigation.js")
     assert finding_script.status_code == 200
@@ -176,6 +187,7 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
     assert "/static/evidence-lens.js" in service_worker.text
     assert "/static/claim-graph.css" in service_worker.text
     assert "/static/claim-graph.js" in service_worker.text
+    assert "/static/claim-graph-annotations.js" in service_worker.text
     assert "/static/finding-navigation.css" in service_worker.text
     assert "/static/finding-navigation.js" in service_worker.text
     assert "/static/settings.css" in service_worker.text

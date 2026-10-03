@@ -1,5 +1,5 @@
 const CACHE = "veritas-shell-v29";
-const CACHE_REVISION = "runs-pagination-1";
+const CACHE_REVISION = "claim-graph-authority-2";
 const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`;
 const SHELL = [
   "/",
@@ -44,6 +44,7 @@ const SHELL = [
   "/static/reference-evidence-preview.js",
   "/static/evidence-lens.js",
   "/static/claim-graph.js",
+  "/static/claim-graph-annotations.js",
   "/static/finding-navigation.js",
   "/static/icon.svg",
   "/manifest.webmanifest",

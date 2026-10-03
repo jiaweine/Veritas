@@ -41,8 +41,8 @@ def test_product_boot_bounds_legacy_run_fetch_before_app_executes() -> None:
     assert '"X-Veritas-Run-Page": "1"' in bootstrap
     assert "entity headers must be rebuilt" in bootstrap
     assert 'const CACHE = "veritas-shell-v29"' in service_worker
-    assert 'const CACHE_REVISION = "runs-pagination-1"' in service_worker
-    assert "ACTIVE_CACHE" in service_worker
+    assert "const CACHE_REVISION = " in service_worker
+    assert "const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`" in service_worker
     assert '"/static/run-page-bootstrap.js"' in service_worker
 
 
