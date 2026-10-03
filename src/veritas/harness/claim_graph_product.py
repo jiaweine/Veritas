@@ -11,6 +11,51 @@ from veritas.claim_reconstruction import (
 from veritas.claims import StatisticalClaimGraph
 
 
+def _check_field(check_id: object) -> str | None:
+    value = str(check_id or "").strip().lower()
+    if value == "p_value" or "p_value" in value:
+        return "p_value"
+    if value == "se_positive" or "standard_error" in value:
+        return "se"
+    if value == "beta_se_t" or "t_stat" in value:
+        return "t_stat"
+    if value == "confidence_interval" or "confidence_interval" in value:
+        return "ci_lower"
+    return None
+
+
+def _detector_annotations(result: dict[str, Any]) -> list[dict[str, object]]:
+    """Return UI navigation annotations without mutating graph semantics."""
+
+    annotations: list[dict[str, object]] = []
+    for check in result.get("checks") or []:
+        if not isinstance(check, dict):
+            continue
+        finding = check.get("finding")
+        if not isinstance(finding, dict):
+            continue
+        finding_id = str(finding.get("finding_id") or "").strip()
+        field = _check_field(check.get("check_id"))
+        if not finding_id or field is None:
+            continue
+        source = finding.get("source") if isinstance(finding.get("source"), dict) else {}
+        annotations.append(
+            {
+                "kind": "detector_finding",
+                "finding_id": finding_id,
+                "finding_title": str(finding.get("title") or "Finding")[:500],
+                "explanation": str(finding.get("explanation") or "")[:4000],
+                "severity": str(finding.get("severity") or "review")[:80],
+                "check_id": str(check.get("check_id") or "")[:160],
+                "status": str(check.get("status") or "")[:80],
+                "field": field,
+                "source": source,
+                "graph_edge": False,
+            }
+        )
+    return annotations
+
+
 def project_claim_graph(record: dict[str, Any]) -> dict[str, object]:
     """Project one persisted StatisticalClaimGraph without inventing missing semantics."""
 
@@ -71,6 +116,7 @@ def project_claim_graph(record: dict[str, Any]) -> dict[str, object]:
         else:
             reconstruction[object_id] = {"available": True, "reason": None}
 
+    annotations = _detector_annotations(result)
     return {
         "audit_id": audit_id,
         "available": True,
@@ -81,6 +127,7 @@ def project_claim_graph(record: dict[str, Any]) -> dict[str, object]:
             "client_inferred_edges": False,
             "publication_claim_bound": bool(graph.claims),
             "claim_edges_persisted": len(graph.edges),
+            "detector_annotations_are_graph_edges": False,
         },
         "counts": {
             "artifacts": len(graph.artifacts),
@@ -88,8 +135,10 @@ def project_claim_graph(record: dict[str, Any]) -> dict[str, object]:
             "objects": len(graph.objects),
             "evidence_nodes": len(graph.evidence_nodes),
             "edges": len(graph.edges),
+            "detector_annotations": len(annotations),
         },
         "reconstruction": reconstruction,
+        "annotations": annotations,
         "graph": graph.to_dict(),
     }
 
@@ -111,6 +160,7 @@ def _unavailable(
             "client_inferred_edges": False,
             "publication_claim_bound": False,
             "claim_edges_persisted": 0,
+            "detector_annotations_are_graph_edges": False,
         },
         "counts": {
             "artifacts": 0,
@@ -118,8 +168,10 @@ def _unavailable(
             "objects": 0,
             "evidence_nodes": 0,
             "edges": 0,
+            "detector_annotations": 0,
         },
         "reconstruction": {},
+        "annotations": [],
         "graph": None,
     }
     if validation_error is not None:
