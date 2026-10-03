@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import pytest
 
 from veritas.claim_reconstruction import (
     ClaimObjectReconstructionError,
@@ -19,7 +19,6 @@ from veritas.harness.claim_graph_product import (
 )
 from veritas.harness.tools import PaperToolbox
 from veritas.models import SourceLocation
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
