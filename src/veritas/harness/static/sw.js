@@ -3,6 +3,10 @@ const CACHE_REVISION = "audit-pagination-1";
 const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`;
 const FINDING_CACHE_REVISION = "finding-pagination-1";
 const SHELL_CACHE = `${ACTIVE_CACHE}-${FINDING_CACHE_REVISION}`;
+// Bumping this source-level revision forces a fresh service-worker install.
+// Keep SHELL_CACHE stable for the existing Audit/Runs/Findings compatibility contract;
+// install re-adds every shell asset and therefore refreshes benchmarks.js/css.
+const BENCHMARK_CACHE_REVISION = "benchmark-history-1";
 const SHELL = [
   "/",
   "/static/styles.css",
@@ -61,6 +65,9 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
+  // Reference the revision in install so future static checks do not mistake it
+  // for dead metadata; the worker source hash itself is the update trigger.
+  if (!BENCHMARK_CACHE_REVISION) return;
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 

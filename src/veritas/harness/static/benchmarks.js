@@ -1,5 +1,15 @@
 const main = document.querySelector("#main-content");
 let enhancementGeneration = 0;
+const BENCHMARK_PAGE_LIMIT = 50;
+
+const benchmarkHistory = {
+  items: [],
+  nextCursor: null,
+  hasMore: false,
+  total: 0,
+  loadingMore: false,
+  loadMoreError: "",
+};
 
 const escapeHtml = (value = "") => String(value)
   .replaceAll("&", "&amp;")
@@ -22,14 +32,25 @@ function badge(tone, label) {
   return `<span class="badge ${escapeHtml(tone)}">${escapeHtml(label)}</span>`;
 }
 
-async function fetchCatalog() {
-  const response = await fetch("/api/v1/benchmarks", { headers: { Accept: "application/json" } });
+async function fetchJson(url) {
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
     try { detail = (await response.json()).detail || detail; } catch {}
     throw new Error(detail);
   }
   return response.json();
+}
+
+async function fetchCatalog() {
+  return fetchJson("/api/v1/benchmarks");
+}
+
+async function fetchHistoryPage(cursor = null) {
+  const url = new URL("/api/v1/benchmark-result-pages", window.location.origin);
+  url.searchParams.set("limit", String(BENCHMARK_PAGE_LIMIT));
+  if (cursor) url.searchParams.set("cursor", cursor);
+  return fetchJson(`${url.pathname}${url.search}`);
 }
 
 function resultBadge(result) {
@@ -83,6 +104,82 @@ function suiteCard(suite, latest) {
   </article>`;
 }
 
+function resetHistoryFeed() {
+  benchmarkHistory.items = [];
+  benchmarkHistory.nextCursor = null;
+  benchmarkHistory.hasMore = false;
+  benchmarkHistory.total = 0;
+  benchmarkHistory.loadingMore = false;
+  benchmarkHistory.loadMoreError = "";
+}
+
+function mergeHistoryItems(items) {
+  const seen = new Set(benchmarkHistory.items.map((item) => item.result_id));
+  for (const item of items) {
+    if (!item || !item.result_id || seen.has(item.result_id)) continue;
+    seen.add(item.result_id);
+    benchmarkHistory.items.push(item);
+  }
+}
+
+function applyHistoryPage(page, { replace = false } = {}) {
+  if (replace) benchmarkHistory.items = [];
+  mergeHistoryItems(Array.isArray(page.items) ? page.items : []);
+  benchmarkHistory.nextCursor = page.next_cursor || null;
+  benchmarkHistory.hasMore = Boolean(page.has_more);
+  benchmarkHistory.total = Number(page.total || 0);
+  benchmarkHistory.loadMoreError = "";
+}
+
+function historyRow(result) {
+  const commit = result.commit_sha ? String(result.commit_sha).slice(0, 10) : "operator";
+  const title = result.title || result.benchmark_id || "Benchmark result";
+  return `<article class="benchmark-history-row" data-benchmark-result-id="${escapeHtml(result.result_id || "")}">
+    <div class="benchmark-history-primary">
+      <div><span class="benchmark-kind">${escapeHtml(result.benchmark_id || "benchmark")}</span><strong>${escapeHtml(title)}</strong></div>
+      ${resultBadge(result)}
+    </div>
+    <div class="benchmark-history-meta">
+      <span><small>finished</small>${escapeHtml(result.finished_at || "")}</span>
+      <span><small>commit</small><span class="mono">${escapeHtml(commit)}</span></span>
+      <span><small>source</small>${escapeHtml(result.source || "")}</span>
+    </div>
+    <details>
+      <summary>Envelope details</summary>
+      ${resultMeta(result)}
+    </details>
+  </article>`;
+}
+
+function renderHistorySection() {
+  const loaded = benchmarkHistory.items.length;
+  const total = benchmarkHistory.total;
+  const body = loaded
+    ? `<div class="benchmark-history-list">${benchmarkHistory.items.map(historyRow).join("")}</div>`
+    : `<div class="benchmark-history-empty">No persisted benchmark history yet.</div>`;
+
+  let footer = "";
+  if (benchmarkHistory.loadMoreError) {
+    footer = `<div class="benchmark-history-footer benchmark-history-error">
+      <span>Unable to load the next benchmark result page. ${escapeHtml(benchmarkHistory.loadMoreError)}</span>
+      <button type="button" class="btn btn-secondary" data-benchmark-load-more>Retry</button>
+    </div>`;
+  } else if (benchmarkHistory.hasMore) {
+    footer = `<div class="benchmark-history-footer">
+      <span>${loaded} of ${total} persisted results loaded.</span>
+      <button type="button" class="btn btn-secondary" data-benchmark-load-more ${benchmarkHistory.loadingMore ? "disabled" : ""}>${benchmarkHistory.loadingMore ? "Loading…" : `Load ${BENCHMARK_PAGE_LIMIT} more`}</button>
+    </div>`;
+  } else if (loaded) {
+    footer = `<div class="benchmark-history-footer"><span>Loaded all ${total} persisted results.</span></div>`;
+  }
+
+  return `<section class="panel benchmark-section benchmark-history-section" data-benchmark-history>
+    <div class="panel-head"><div><h2>Persisted result history</h2><p>Validated Benchmark Result Envelope v1 records, newest first. Metrics are shown as recorded; no cross-suite score or trend is inferred.</p></div><span class="panel-link">${loaded} / ${total}</span></div>
+    ${body}
+    ${footer}
+  </section>`;
+}
+
 function renderCatalog(catalog) {
   const suites = Array.isArray(catalog.suites) ? catalog.suites : [];
   const latest = catalog.latest_results && typeof catalog.latest_results === "object" ? catalog.latest_results : {};
@@ -109,12 +206,23 @@ function renderCatalog(catalog) {
       <div class="benchmark-grid">${probes.map((suite) => suiteCard(suite, latest[suite.benchmark_id])).join("")}</div>
     </section>
 
+    ${renderHistorySection()}
+
     <section class="benchmark-policy panel"><div><strong>Result policy</strong><p>Benchmark inventory, execution status, and benchmark metrics remain separate facts. Veritas persists validated Benchmark Result Envelope v1 objects only when an operator explicitly ingests them; heterogeneous metrics are shown as recorded and are never collapsed into a synthetic global score or trend.</p></div>${catalog.result_persistence ? badge("success", "versioned persistence") : badge("review", "inventory only")}</section>
   </div>`;
 }
 
 function benchmarkTitleIsActive() {
   return main?.querySelector(".page-title")?.textContent?.trim() === "Benchmarks";
+}
+
+function replaceHistorySection() {
+  if (!main || !benchmarkTitleIsActive()) return;
+  const section = main.querySelector("[data-benchmark-history]");
+  if (!section) return;
+  const previousScrollY = window.scrollY;
+  section.outerHTML = renderHistorySection();
+  window.scrollTo(0, previousScrollY);
 }
 
 async function enhanceBenchmarks() {
@@ -125,15 +233,34 @@ async function enhanceBenchmarks() {
 
   const generation = ++enhancementGeneration;
   main.dataset.benchmarksEnhanced = "loading";
+  resetHistoryFeed();
   try {
-    const catalog = await fetchCatalog();
+    const [catalog, historyPage] = await Promise.all([fetchCatalog(), fetchHistoryPage()]);
     if (generation !== enhancementGeneration || !benchmarkTitleIsActive()) return;
+    applyHistoryPage(historyPage, { replace: true });
     main.innerHTML = renderCatalog(catalog);
     main.dataset.benchmarksEnhanced = "true";
   } catch (error) {
     if (generation !== enhancementGeneration || !benchmarkTitleIsActive()) return;
     main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Benchmark inventory unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
     main.dataset.benchmarksEnhanced = "true";
+  }
+}
+
+async function loadMoreBenchmarkHistory() {
+  if (!benchmarkHistory.hasMore || benchmarkHistory.loadingMore) return;
+  benchmarkHistory.loadingMore = true;
+  benchmarkHistory.loadMoreError = "";
+  replaceHistorySection();
+  try {
+    const page = await fetchHistoryPage(benchmarkHistory.nextCursor);
+    if (!benchmarkTitleIsActive()) return;
+    applyHistoryPage(page);
+  } catch (error) {
+    benchmarkHistory.loadMoreError = error.message || String(error);
+  } finally {
+    benchmarkHistory.loadingMore = false;
+    replaceHistorySection();
   }
 }
 
@@ -144,12 +271,17 @@ const observer = new MutationObserver(() => {
   if (title !== "Benchmarks" && !hasSurface) {
     enhancementGeneration += 1;
     delete main.dataset.benchmarksEnhanced;
+    resetHistoryFeed();
     return;
   }
   queueMicrotask(enhanceBenchmarks);
 });
 
 if (main) {
+  main.addEventListener("click", (event) => {
+    const button = event.target.closest?.("[data-benchmark-load-more]");
+    if (button) void loadMoreBenchmarkHistory();
+  });
   observer.observe(main, { childList: true, subtree: true });
   queueMicrotask(enhanceBenchmarks);
 }
