@@ -23,9 +23,17 @@ Veritas deliberately separates software release state from scientific-validation
 
 - evidence-first Research Audit Workbench with separate Replication Runtime authority;
 - persistent Audit Notes, Projects, Findings/Evidence inspection, Reproduction review, model-provider controls, native mobile client, PWA support, and real Chromium acceptance;
-- bounded keyset pagination for Runs and Benchmark history rather than product-facing unbounded history materialization;
+- bounded product-facing keyset/cursor pagination for Runs, Audits, Findings, and Benchmark history rather than unbounded history materialization in the browser;
+- persisted Claim Graph authority in the product surface: validated graph payloads drive graph nodes/edges, unbound publication claim identity stays unbound, and detector findings remain non-edge annotations;
+- strict Benchmark Result Envelope ingestion with detailed AuditBench raw reports kept separate from product envelopes;
 - locked synthetic AuditBench detector regression gates, PDF extraction/geometry/adversarial gates, real-PDF research probes, and fail-closed evidence handling;
-- parser-independent Claim Graph reconstruction and paper-only DiD/IV/RDD plus additional deterministic detector families.
+- parser-independent Claim Graph reconstruction and paper-only DiD/IV/RDD plus additional deterministic detector families;
+- governed package artifact validation and exact-tag full-CI release orchestration, without equating software release readiness with scientific certification.
+
+### Hosting governance boundary
+
+- source-controlled CI/release gates are present, but GitHub hosting controls remain an administrator responsibility;
+- at the 2026-10-04 completion audit, `main` was not protected and the repository had no active rulesets, so host-level prevention of authorized direct pushes/force-pushes/deletion is not yet machine-enforced by GitHub repository settings.
 
 ### Evidence boundary
 
