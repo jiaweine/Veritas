@@ -21,7 +21,7 @@ AuditSortKey = tuple[str, str]
 
 
 class ProductAuditHarness(_BaseProductAuditHarness):
-    """Product harness with validated keyset pages for Runs and Audits."""
+    """Product harness with validated keyset pages and warm overview activity."""
 
     def __init__(
         self,
@@ -31,6 +31,90 @@ class ProductAuditHarness(_BaseProductAuditHarness):
     ) -> None:
         super().__init__(data_dir, toolbox=toolbox)
         self.store = ProductHarnessStore(self.store.root)
+
+    def overview(self) -> dict[str, Any]:
+        audits = self._metadata_audits()
+        total_pages = 0
+        running = 0
+        verified = 0
+        needs_review = 0
+        contradictions = 0
+        coverage_values: list[float] = []
+        recent_activity: list[dict[str, Any]] = []
+        coverage_series: list[dict[str, Any]] = []
+        valid_audits: list[dict[str, Any]] = []
+
+        for audit in audits:
+            audit_id = str(audit.get("audit_id") or "")
+            try:
+                if len(recent_activity) < 8:
+                    tail = self.store.validated_recent_event_tail(audit_id)
+                else:
+                    self.store.validate_events(audit_id)
+                    tail = []
+            except _INTEGRITY_ERRORS:
+                continue
+
+            valid_audits.append(audit)
+            summary = audit.get("paper_summary") or {}
+            total_pages += int(summary.get("pages") or 0)
+            if audit.get("status") == "running":
+                running += 1
+
+            result = audit.get("latest_result") or {}
+            counts = result.get("counts") or {}
+            verified += int(counts.get("verified") or 0)
+            needs_review += int(counts.get("needs_review") or 0)
+            contradictions += int(counts.get("contradictions") or 0)
+            if result:
+                coverage = float(result.get("verification_coverage") or 0.0)
+                coverage_values.append(coverage)
+                coverage_series.append(
+                    {
+                        "audit_id": audit.get("audit_id"),
+                        "title": audit.get("title"),
+                        "coverage": coverage,
+                        "updated_at": audit.get("updated_at"),
+                    }
+                )
+
+            for event in reversed(tail):
+                if len(recent_activity) >= 8:
+                    break
+                recent_activity.append(
+                    {
+                        "audit_id": audit.get("audit_id"),
+                        "audit_title": audit.get("title"),
+                        "event_id": event.get("event_id"),
+                        "kind": event.get("kind"),
+                        "title": event.get("title"),
+                        "detail": event.get("detail"),
+                        "status": event.get("status"),
+                        "created_at": event.get("created_at"),
+                    }
+                )
+
+        total_checks = verified + needs_review + contradictions
+        verification_rate = (verified / total_checks) if total_checks else 0.0
+        mean_coverage = (sum(coverage_values) / len(coverage_values)) if coverage_values else 0.0
+        coverage_series = list(reversed(coverage_series[:12]))
+        recent_activity.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+
+        return {
+            "audits_total": len(valid_audits),
+            "audits_running": running,
+            "papers_pages": total_pages,
+            "checks_total": total_checks,
+            "checks_verified": verified,
+            "checks_review": needs_review,
+            "checks_contradictions": contradictions,
+            "verification_rate": verification_rate,
+            "mean_coverage": mean_coverage,
+            "findings_open": contradictions,
+            "coverage_series": coverage_series,
+            "recent_activity": recent_activity[:8],
+            "updated_at": valid_audits[0].get("updated_at") if valid_audits else None,
+        }
 
     def audits_page(
         self,

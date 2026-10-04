@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -9,22 +10,25 @@ from .product_store_compact import ProductHarnessStore as _BaseProductHarnessSto
 
 EventVisitor = Callable[[dict[str, Any]], None]
 RunSortKey = tuple[str, str]
+_RECENT_EVENT_TAIL = 4
 
 
 class ProductHarnessStore(_BaseProductHarnessStore):
-    """Product store with a bounded-cost in-memory terminal-run projection.
+    """Product store with bounded-cost in-memory product projections.
 
     The authoritative event journals remain the source of truth. This layer only
-    retains the compact terminal row that the Runs product surface already
-    derives from a fully validated journal. A cold process still validates each
-    audit before exposing rows; warm requests reuse the validation watermarks and
-    avoid reparsing unrelated event history.
+    retains compact projections derived from fully validated journals: terminal
+    run rows for Runs, plus the tiny recent-event tail used by Overview. A cold
+    process still validates authoritative history before exposing projections;
+    warm requests reuse validation watermarks and avoid reparsing unrelated
+    event history.
     """
 
     def __init__(self, root: str | Path) -> None:
         super().__init__(root)
         self._terminal_runs: dict[str, dict[str, Any]] = {}
         self._terminal_sorted_cache: tuple[str, ...] | None = None
+        self._recent_event_tails: dict[str, tuple[dict[str, Any], ...]] = {}
 
     def scan_events(self, audit_id: str, visitor: EventVisitor) -> int:
         projected: dict[str, dict[str, Any]] = {}
@@ -57,12 +61,42 @@ class ProductHarnessStore(_BaseProductHarnessStore):
         hydrate_result: bool = False,
     ) -> dict[str, Any]:
         result = super().append_event(event, hydrate_result=hydrate_result)
-        summary = self._terminal_summary(event.audit_id, event.to_dict())
-        if summary is not None:
-            with self._lock:
+        event_dict = event.to_dict()
+        summary = self._terminal_summary(event.audit_id, event_dict)
+        with self._lock:
+            if summary is not None:
                 self._terminal_runs[str(summary["run_id"])] = summary
                 self._terminal_sorted_cache = None
+            existing_tail = self._recent_event_tails.get(event.audit_id)
+            if existing_tail is not None:
+                recent = deque(existing_tail, maxlen=_RECENT_EVENT_TAIL)
+                recent.append(dict(event_dict))
+                self._recent_event_tails[event.audit_id] = tuple(recent)
         return result
+
+    def validated_recent_event_tail(self, audit_id: str) -> list[dict[str, Any]]:
+        """Return the recent authoritative activity tail for one audit.
+
+        The projection is populated only after a complete journal scan. Warm
+        journal reads require the same current validation watermark used by
+        indexed run reads. Legacy inline-event audits have no journal watermark,
+        so they intentionally stay on the authoritative scan path every time.
+        """
+
+        with self._lock:
+            journal = self._event_journal_path(audit_id)
+            cached = self._recent_event_tails.get(audit_id)
+            if self._event_journal_exists(journal) and cached is not None:
+                current = self._current_valid_audits_locked({audit_id})
+                if audit_id in current:
+                    return [dict(event) for event in cached]
+
+        tail: deque[dict[str, Any]] = deque(maxlen=_RECENT_EVENT_TAIL)
+        self.scan_events(audit_id, lambda event: tail.append(dict(event)))
+        projected = tuple(tail)
+        with self._lock:
+            self._recent_event_tails[audit_id] = projected
+        return [dict(event) for event in projected]
 
     def terminal_runs(self, valid_audit_ids: set[str]) -> list[dict[str, Any]]:
         """Return terminal run rows only for journals validated by the caller."""
