@@ -17,6 +17,7 @@ Veritas deliberately separates software release state from scientific-validation
 ### Fixed
 
 - the `web` optional dependency set now declares `httpx`, which the Harness model-provider routes import at runtime; clean wheel installs no longer rely on the `dev` extra to make `veritas-harness` importable;
+- the `dev` dependency set now includes `httpx2` for Starlette/FastAPI `TestClient`; CI promotes `StarletteDeprecationWarning` to an error so the legacy TestClient fallback cannot silently return;
 - tag publication can no longer race an independent full-CI workflow: release creation now has an explicit dependency on the full detector/PDF CI result for the tagged commit.
 
 ### Product and reliability state carried by current `main`
