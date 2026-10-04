@@ -8,22 +8,40 @@ Before creating a release tag:
 
 1. Merge release changes into `main`; do not release from an unmerged feature branch.
 2. Update `pyproject.toml` to the intended semantic version and move the relevant `CHANGELOG.md` material into a level-2 section for that exact version, for example `## 0.14.1 — 2026-10-04`.
-3. Require the normal repository CI and browser/stress workflows to be green on the exact release candidate commit.
+3. Require the normal full repository CI and every product/browser/stress workflow applicable to the release-candidate changes to be green on the exact release candidate commit. Do not claim path-scoped workflows ran when their paths were not touched.
 4. Require the `package-release` artifact-smoke job to be green. It builds both wheel and sdist, checks package metadata, verifies all four console entry points, confirms critical Web/PWA assets are present, installs the wheel into a clean virtual environment, and runs every CLI's `--version` path.
 5. Re-check `docs/REPOSITORY_COMPLETION.md` and the open evidence milestones. Release notes must not turn synthetic, benchmark-only, pilot, or unadjudicated evidence into a production-certification claim.
-6. Create an immutable tag named exactly `vX.Y.Z`, where `X.Y.Z` exactly matches `[project].version` in `pyproject.toml`.
+6. After the verified release candidate is on `main`, add a governed `release-promotions/vX.Y.Z.json` manifest binding the exact tag/version to the exact verified source commit. Merge that manifest through a pull request; do not move an existing release tag.
 
-The tag workflow independently enforces the release candidate again. Before GitHub Release publication it requires both the package artifact smoke and a reusable invocation of the full repository CI on the exact tagged commit. It also enforces three identity conditions: the tag must match the package version, the changelog must contain the same version, and the tagged commit must already be contained in `main` history.
+The promotion workflow validates the manifest against package metadata, the versioned changelog, and `main` ancestry before it can create the lightweight `vX.Y.Z` tag. The tag workflow independently enforces the release candidate again. Before GitHub Release publication it requires both the package artifact smoke and a reusable invocation of the full repository CI on the exact tagged commit. It also enforces three identity conditions: the tag must match the package version, the changelog must contain the same version, and the tagged commit must already be contained in `main` history.
 
 ## Workflow dependency identity
 
-Active workflows that continuously protect `main`, pull requests, release artifacts, browser acceptance, mobile typechecking, and Harness stress use third-party GitHub Actions only by immutable 40-character commit SHA. Human-readable major versions remain comments, not executable refs. `scripts/check_github_action_pins.py` and `tests/test_github_action_pins.py` fail if one of those active workflows reintroduces a movable external action ref.
+Active workflows that continuously protect `main`, pull requests, release artifacts, browser acceptance, mobile typechecking, Harness stress, and release promotion use third-party GitHub Actions only by immutable 40-character commit SHA. Human-readable major versions remain comments, not executable refs. `scripts/check_github_action_pins.py` and `tests/test_github_action_pins.py` fail if one of those active workflows reintroduces a movable external action ref.
 
 The frozen `capture-v015-*` evidence workflows and the historical reproduction shakedown are intentionally outside that modernization list. Rewriting historical evidence workflow source after the fact would blur which workflow semantics belonged to earlier capture runs. Past evidence remains tied to its original repository commit and Actions run; future production-authority evidence must use separately precommitted and externally trusted workflow identity as required by the evidence protocol.
 
+## Source-controlled tag promotion
+
+`.github/workflows/release-promotion.yml` separates the decision to promote a verified `main` commit from the tag-triggered publication workflow.
+
+A promotion manifest contains only four governed fields: `schema_version`, `tag`, `version`, and the exact 40-character `source_sha`. On the promotion pull request, the workflow is read-only and fails closed unless:
+
+- the manifest filename and tag agree with the current `pyproject.toml` version;
+- the source SHA resolves to a commit already contained in `main`;
+- that exact source commit declares the same package version;
+- that exact source commit contains a matching level-2 changelog section; and
+- an existing remote tag, if present, already points to exactly the same source SHA.
+
+Only a push of the promotion manifest to `main` gives the promotion job `contents: write`. It creates a lightweight tag only when the tag is absent. If the tag already exists at the governed source commit, the job is idempotent; if it points anywhere else, the job fails rather than moving it.
+
+GitHub suppresses ordinary workflow recursion for refs pushed with the default `GITHUB_TOKEN`. Therefore the promotion job also has narrowly scoped `actions: write` permission and explicitly dispatches `package-release.yml` at the newly governed tag ref. `workflow_dispatch` is the supported recursion exception; the dispatched workflow still runs in exact-tag context, and its own package/full-CI/release authority gates remain unchanged. Before dispatching, promotion checks for an existing GitHub Release and for an already active exact-source package-release dispatch to avoid duplicate publication runs.
+
+This source-controlled promotion record may be merged after the release candidate itself. Therefore the promotion workflow/manifest does not need to be part of the released source tree: the manifest explicitly records which earlier verified `main` commit is being released.
+
 ## Automated GitHub Release
 
-Pushing a `v*` tag triggers `.github/workflows/package-release.yml`.
+Pushing a `v*` tag or explicitly dispatching `package-release.yml` at a `v*` tag ref runs `.github/workflows/package-release.yml` in exact-tag context.
 
 The workflow:
 
@@ -63,4 +81,4 @@ The current v0.15 evidence path remains explicitly non-production until its inde
 
 ## Failed release handling
 
-Do not move an existing release tag to different source bytes and do not replace assets on an existing GitHub Release. Fix the problem on `main`, increment the version as appropriate, update the changelog, re-run the release gates, and create a new tag. This keeps the mapping from release tag to source tree and attached hashes auditable.
+Do not move an existing release tag to different source bytes and do not replace assets on an existing GitHub Release. Fix the problem on `main`, increment the version as appropriate, update the changelog, re-run the release gates, and create a new governed promotion manifest/tag. This keeps the mapping from release tag to source tree and attached hashes auditable.

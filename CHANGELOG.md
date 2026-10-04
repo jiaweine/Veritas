@@ -6,7 +6,7 @@ Veritas deliberately separates software release state from scientific-validation
 
 ## Unreleased
 
-No changes yet.
+- add source-controlled release-promotion manifests so a reviewed pull request binds an immutable release tag to an exact verified `main` source commit before the existing tag-triggered full-CI publication gate runs.
 
 ## 0.14.1 — 2026-10-04
 

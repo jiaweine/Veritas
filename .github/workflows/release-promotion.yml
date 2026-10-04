@@ -1,0 +1,149 @@
+name: release-promotion
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release-promotion.yml"
+      - "release-promotions/*.json"
+      - "docs/RELEASE_PROCESS.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "release-promotions/*.json"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.promotion.outputs.tag }}
+      source_sha: ${{ steps.promotion.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - name: Validate governed release promotion
+        id: promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          root = Path.cwd()
+          current = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+          manifest_path = root / "release-promotions" / f"v{current}.json"
+          if not manifest_path.is_file():
+              raise SystemExit(f"missing governed promotion manifest: {manifest_path.relative_to(root)}")
+
+          payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+          expected_keys = {"schema_version", "tag", "version", "source_sha"}
+          if set(payload) != expected_keys:
+              raise SystemExit(f"promotion manifest keys must be exactly {sorted(expected_keys)}")
+          if payload["schema_version"] != 1:
+              raise SystemExit("promotion manifest schema_version must be 1")
+          version = payload["version"]
+          tag = payload["tag"]
+          source_sha = payload["source_sha"]
+          if version != current or tag != f"v{version}":
+              raise SystemExit("promotion tag/version must match current pyproject version")
+          if re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
+              raise SystemExit("promotion source_sha must be a lowercase 40-character commit SHA")
+
+          subprocess.run(["git", "cat-file", "-e", f"{source_sha}^{{commit}}"], check=True)
+          if subprocess.run(["git", "merge-base", "--is-ancestor", source_sha, "origin/main"]).returncode != 0:
+              raise SystemExit(f"promotion source {source_sha} is not contained in main history")
+
+          source_pyproject = subprocess.check_output(
+              ["git", "show", f"{source_sha}:pyproject.toml"], text=True
+          )
+          source_version = tomllib.loads(source_pyproject)["project"]["version"]
+          if source_version != version:
+              raise SystemExit(
+                  f"promotion source version {source_version!r} does not match manifest {version!r}"
+              )
+          source_changelog = subprocess.check_output(
+              ["git", "show", f"{source_sha}:CHANGELOG.md"], text=True
+          )
+          if re.search(rf"^##\s+\[?{re.escape(version)}\]?(?:\s|$)", source_changelog, re.MULTILINE) is None:
+              raise SystemExit(f"promotion source changelog has no level-2 section for {version}")
+
+          remote = subprocess.run(
+              ["git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"],
+              check=True,
+              text=True,
+              capture_output=True,
+          ).stdout.strip()
+          if remote:
+              fields = remote.split()
+              if len(fields) != 2 or fields[0] != source_sha:
+                  raise SystemExit(f"existing tag {tag} does not point to promotion source {source_sha}")
+
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as handle:
+              handle.write(f"tag={tag}\n")
+              handle.write(f"source_sha={source_sha}\n")
+          print(f"validated {tag} -> {source_sha}")
+          PY
+
+  promote:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Create immutable release tag and dispatch exact-tag release graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          RELEASE_SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing=$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')
+          if [ -n "$existing" ]; then
+            if [ "$existing" != "$RELEASE_SOURCE_SHA" ]; then
+              echo "existing tag $RELEASE_TAG points to $existing, expected $RELEASE_SOURCE_SHA" >&2
+              exit 1
+            fi
+            echo "$RELEASE_TAG already points to the governed source commit"
+          else
+            git tag "$RELEASE_TAG" "$RELEASE_SOURCE_SHA"
+            git push origin "refs/tags/$RELEASE_TAG"
+            echo "created $RELEASE_TAG -> $RELEASE_SOURCE_SHA"
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $RELEASE_TAG already exists; no dispatch needed"
+            exit 0
+          fi
+
+          active=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/package-release.yml/runs?event=workflow_dispatch&head_sha=$RELEASE_SOURCE_SHA&per_page=20" \
+            --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')
+          if [ "$active" != "0" ]; then
+            echo "an exact-source package-release dispatch is already active; no duplicate dispatch"
+            exit 0
+          fi
+
+          # Pushes made with GITHUB_TOKEN do not recursively start workflows. workflow_dispatch is
+          # an explicit exception, so dispatch the existing exact-tag release graph at the tag ref.
+          gh workflow run package-release.yml --ref "$RELEASE_TAG"
+          echo "dispatched package-release.yml at $RELEASE_TAG"
