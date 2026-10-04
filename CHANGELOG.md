@@ -6,6 +6,12 @@ Veritas deliberately separates software release state from scientific-validation
 
 ## Unreleased
 
+No changes yet.
+
+## 0.14.1 — 2026-10-04
+
+This is the first governed Veritas software release. It packages the current repository engineering state without changing the documented scientific-evidence authority boundary.
+
 ### Added
 
 - governed wheel/source-distribution release artifact smoke, including package metadata, console-entry-point, Web/PWA asset, clean-install, and CLI-version checks;
