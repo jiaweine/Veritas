@@ -11,6 +11,7 @@ Veritas deliberately separates software release state from scientific-validation
 - governed wheel/source-distribution release artifact smoke, including package metadata, console-entry-point, Web/PWA asset, clean-install, and CLI-version checks;
 - tag/version equality enforcement and automated GitHub Release artifact publication with SHA-256 manifests;
 - an exact-tag reusable full-CI gate that must succeed before GitHub Release publication;
+- immutable full-commit pins for third-party actions used by active main/PR workflows, plus a regression gate that rejects future mutable action refs;
 - an explicit release process documenting software/evidence authority boundaries.
 
 ### Fixed

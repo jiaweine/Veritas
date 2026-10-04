@@ -57,7 +57,7 @@ def test_benchmark_catalog_suites_are_enveloped_in_ci_without_changing_gate_sema
         else:
             assert non_gating_block in workflow
 
-    assert "if: always()\n        uses: actions/upload-artifact@v7" in workflow
+    assert "if: always()\n        uses: actions/upload-artifact@" in workflow
     assert "path: benchmark-result-envelopes/*.json" in workflow
     assert "path: auditbench-raw-reports/*.json" in workflow
     assert "veritas-auditbench-reports-${{ github.run_id }}-${{ github.run_attempt }}" in workflow

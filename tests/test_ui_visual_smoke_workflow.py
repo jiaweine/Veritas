@@ -19,7 +19,7 @@ def test_ui_visual_smoke_workflow_captures_product_surfaces() -> None:
     assert "scripts/browser_replication_diff_agent.py" in workflow
     assert "--port 8766" in workflow
     assert 'VERITAS_REPLICATION_AGENT_NAME="Browser diff fixture agent"' in workflow
-    assert "actions/upload-artifact@v4" in workflow
+    assert "actions/upload-artifact@" in workflow
     assert "veritas-ui-screenshots" in workflow
 
     assert '"audit-workspace.png"' in script
