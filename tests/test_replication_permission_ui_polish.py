@@ -38,4 +38,4 @@ def test_permission_review_surface_is_one_shot_accessible_and_browser_gated() ->
 
     assert "smoke_replication_permission_browser.py" in workflow
     assert "smoke_replication_permission_polish_browser.py" in workflow
-    assert "actions/upload-artifact@v7" in workflow
+    assert "actions/upload-artifact@" in workflow

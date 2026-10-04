@@ -15,6 +15,12 @@ Before creating a release tag:
 
 The tag workflow independently enforces the release candidate again. Before GitHub Release publication it requires both the package artifact smoke and a reusable invocation of the full repository CI on the exact tagged commit. It also enforces three identity conditions: the tag must match the package version, the changelog must contain the same version, and the tagged commit must already be contained in `main` history.
 
+## Workflow dependency identity
+
+Active workflows that continuously protect `main`, pull requests, release artifacts, browser acceptance, mobile typechecking, and Harness stress use third-party GitHub Actions only by immutable 40-character commit SHA. Human-readable major versions remain comments, not executable refs. `scripts/check_github_action_pins.py` and `tests/test_github_action_pins.py` fail if one of those active workflows reintroduces a movable external action ref.
+
+The frozen `capture-v015-*` evidence workflows and the historical reproduction shakedown are intentionally outside that modernization list. Rewriting historical evidence workflow source after the fact would blur which workflow semantics belonged to earlier capture runs. Past evidence remains tied to its original repository commit and Actions run; future production-authority evidence must use separately precommitted and externally trusted workflow identity as required by the evidence protocol.
+
 ## Automated GitHub Release
 
 Pushing a `v*` tag triggers `.github/workflows/package-release.yml`.
@@ -38,6 +44,10 @@ The workflow:
 Published GitHub Release assets are treated as immutable. If a release for the tag already exists, the workflow fails instead of overwriting or clobbering its assets.
 
 Release notes explicitly preserve the authority boundary: a software package release is not a production scientific-validation certificate.
+
+## Repository hosting controls
+
+Branch protection and repository rulesets live in GitHub hosting configuration rather than in the source tree. For a governed release, `main` should require pull requests and the relevant required checks, and should reject force-pushes and deletion. Source-controlled CI/release gates remain independently valuable, but they cannot substitute for host-level protection against an authorized direct push.
 
 ## Package publication scope
 

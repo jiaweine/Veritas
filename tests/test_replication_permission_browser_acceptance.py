@@ -56,4 +56,4 @@ def test_interactive_permission_path_has_real_browser_acceptance() -> None:
     assert 'VERITAS_REPLICATION_PERMISSION_POLICY="interactive"' in workflow
     assert "browser_replication_permission_agent.py" in workflow
     assert "smoke_replication_permission_browser.py" in workflow
-    assert "actions/upload-artifact@v7" in workflow
+    assert "actions/upload-artifact@" in workflow
