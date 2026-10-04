@@ -6,6 +6,7 @@ on:
     paths:
       - "src/veritas/harness/**"
       - "scripts/smoke_harness_browser.py"
+      - "scripts/smoke_overview_projection_browser.py"
       - "scripts/smoke_finding_replication_browser.py"
       - "scripts/smoke_findings_pagination_browser.py"
       - "scripts/smoke_replication_diff_browser.py"
@@ -25,6 +26,7 @@ on:
     paths:
       - "src/veritas/harness/**"
       - "scripts/smoke_harness_browser.py"
+      - "scripts/smoke_overview_projection_browser.py"
       - "scripts/smoke_finding_replication_browser.py"
       - "scripts/smoke_findings_pagination_browser.py"
       - "scripts/smoke_replication_diff_browser.py"
@@ -85,6 +87,9 @@ jobs:
         run: |
           rm -rf artifacts/ui
           python scripts/smoke_harness_browser.py \
+            --base-url http://127.0.0.1:8765 \
+            --output-dir artifacts/ui
+          python scripts/smoke_overview_projection_browser.py \
             --base-url http://127.0.0.1:8765 \
             --output-dir artifacts/ui
           python scripts/smoke_evidence_lens_browser.py \
