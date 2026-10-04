@@ -428,4 +428,4 @@ __all__ = [
     "validate_extraction_gold_review_records",
 ]
 
-__version__ = "0.14.0"
+__version__ = "0.14.1"
