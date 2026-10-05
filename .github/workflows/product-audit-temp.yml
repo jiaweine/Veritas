@@ -8,68 +8,20 @@ on:
       - .github/workflows/product-audit-temp.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  audit:
+  migrate:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - name: Audit frontend/backend wiring and static asset graph
+        with:
+          ref: product/conversation-neutral-shell
+      - name: Apply conversation-first neutral product migration
         run: |
-          python3 - <<'PY'
-          from __future__ import annotations
-          import re
-          from collections import defaultdict
-          from pathlib import Path
-
-          static = Path('src/veritas/harness/static')
-          html = (static / 'index.html').read_text()
-          active_css = set(re.findall(r'/static/([^"\']+\.css)', html))
-          active_js = set(re.findall(r'/static/([^"\']+\.js)', html))
-
-          js_api = defaultdict(set)
-          for path in static.glob('*.js'):
-              text = path.read_text()
-              for match in re.finditer(r'["\'`](/api/v1/[^"\'`?$ {]+)', text):
-                  js_api[match.group(1)].add(path.name)
-          print('UI_API_LITERAL_COUNT=' + str(len(js_api)))
-          for route, files in sorted(js_api.items()):
-              print('UI_API ' + route + ' <- ' + ','.join(sorted(files)))
-
-          py_routes = defaultdict(set)
-          for path in Path('src/veritas/harness').glob('*.py'):
-              text = path.read_text()
-              for match in re.finditer(r'@(?:app|router)\.(?:get|post|put|patch|delete)\(["\']([^"\']+)', text):
-                  py_routes[match.group(1)].add(path.name)
-          print('BACKEND_ROUTE_LITERAL_COUNT=' + str(len(py_routes)))
-          for route, files in sorted(py_routes.items()):
-              if route.startswith('/api/v1/'):
-                  print('BACKEND_API ' + route + ' <- ' + ','.join(sorted(files)))
-
-          # Asset files not loaded directly and not imported/referenced by another active static asset.
-          all_css = {p.name for p in static.glob('*.css')}
-          all_js = {p.name for p in static.glob('*.js')}
-          corpus = '\n'.join(p.read_text() for p in static.glob('*') if p.is_file() and p.suffix in {'.html','.js','.css'})
-          for name in sorted(all_css - active_css):
-              print('CSS_NOT_DIRECTLY_LOADED ' + name + ' referenced=' + str(name in corpus).lower())
-          for name in sorted(all_js - active_js):
-              print('JS_NOT_DIRECTLY_LOADED ' + name + ' referenced=' + str(name in corpus).lower())
-
-          # Product feature probes: UI markers and corresponding backend modules/routes.
-          probes = {
-              'conversation_messages': ('/messages', 'stream_message'),
-              'search': ('/api/v1/search', 'def search('),
-              'projects': ('/api/v1/projects', 'register'),
-              'reproduction': ('replication', 'stream_replication'),
-              'claim_graph': ('claim-graph', 'register_claim_graph_routes'),
-              'model_providers': ('settings', 'register_model_provider_routes'),
-              'audit_pagination': ('audit-page-bootstrap', 'register_audit_pagination_routes'),
-              'finding_pagination': ('finding-page-bootstrap', 'register_finding_pagination_routes'),
-              'run_pagination': ('run-page-bootstrap', 'register_run_pagination_routes'),
-          }
-          source = '\n'.join(p.read_text() for p in Path('src/veritas/harness').glob('*.py'))
-          static_source = html + '\n' + '\n'.join(p.read_text() for p in static.glob('*.js'))
-          for name, (front, back) in probes.items():
-              print(f'FEATURE {name} frontend={str(front in static_source).lower()} backend={str(back in source).lower()}')
-          PY
+          python scripts/product_conversation_patch_temp.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "product: make Veritas conversation-first and neutral"
+          git push origin HEAD:product/conversation-neutral-shell
