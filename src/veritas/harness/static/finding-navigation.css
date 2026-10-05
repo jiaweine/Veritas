@@ -30,7 +30,7 @@
   border: 1px solid rgba(231, 180, 75, .2);
   border-top: 0;
   border-radius: 0 0 8px 8px;
-  background: #0a151a;
+  background: #131313;
 }
 
 .fn-finding-actions > span {
@@ -38,7 +38,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #667d84;
+  color: #797979;
   font-size: 6.6px;
 }
 
@@ -50,23 +50,23 @@
 
 .fn-finding-actions button {
   min-height: 24px;
-  border: 1px solid #243b43;
+  border: 1px solid #373737;
   border-radius: 6px;
-  background: #0d1b21;
-  color: #8fa2a7;
+  background: #181818;
+  color: #9e9e9e;
   padding: 0 7px;
   font-size: 6.8px;
   cursor: pointer;
 }
 
 .fn-finding-actions button:hover {
-  border-color: #3d6669;
+  border-color: #5d5d5d;
   color: #d8e7e8;
 }
 
 .fn-finding-actions button.primary {
   border-color: #326d69;
-  background: #123035;
+  background: #2a2a2a;
   color: #80d9d1;
 }
 

@@ -12,7 +12,7 @@
 .ah-splitter {
   position: relative;
   min-width: 5px;
-  background: #091217;
+  background: #101010;
   border-left: 1px solid var(--ah-line);
   border-right: 1px solid var(--ah-line);
   cursor: col-resize;
@@ -25,18 +25,18 @@
   inset: 0 -4px;
 }
 .ah-splitter:hover,
-body.ah-resizing .ah-splitter { background: #10282c; border-color: #285257; }
+body.ah-resizing .ah-splitter { background: #232323; border-color: #494949; }
 body.ah-resizing { cursor: col-resize !important; user-select: none !important; }
 body.ah-resizing iframe { pointer-events: none; }
 
 .ah-shortcut-hint {
   margin-left: auto;
-  color: #587078 !important;
+  color: #6b6b6b !important;
   font-size: 6.8px !important;
   white-space: nowrap;
 }
 
-.ah-run-inspector { min-height: 100%; padding: 12px; background: #091318; }
+.ah-run-inspector { min-height: 100%; padding: 12px; background: #111111; }
 .ah-run-hero {
   display: flex;
   align-items: flex-start;
@@ -45,15 +45,15 @@ body.ah-resizing iframe { pointer-events: none; }
   padding: 12px;
   border: 1px solid var(--ah-line);
   border-radius: 9px;
-  background: #0d181e;
+  background: #161616;
 }
 .ah-run-hero span { color: var(--ah-accent); font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
 .ah-run-hero h3 { margin: 4px 0 0; color: var(--ah-text); font-size: 11px; }
 .ah-run-hero p { margin: 4px 0 0; color: var(--ah-faint); font: 7px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.ah-run-phase { flex: 0 0 auto; border: 1px solid #285257; border-radius: 999px; background: rgba(79,209,197,.1); color: #83eee4; padding: 4px 7px; font-size: 7px; font-weight: 650; }
+.ah-run-phase { flex: 0 0 auto; border: 1px solid #494949; border-radius: 999px; background: rgba(79,209,197,.1); color: #83eee4; padding: 4px 7px; font-size: 7px; font-weight: 650; }
 
 .ah-run-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; margin-top: 8px; }
-.ah-run-metrics > div { padding: 9px; border: 1px solid var(--ah-line); border-radius: 7px; background: #0c171c; }
+.ah-run-metrics > div { padding: 9px; border: 1px solid var(--ah-line); border-radius: 7px; background: #151515; }
 .ah-run-metrics span, .ah-run-meta span { display: block; color: var(--ah-faint); font-size: 6.8px; }
 .ah-run-metrics strong { display: block; margin-top: 4px; color: var(--ah-text); font-size: 12px; font-variant-numeric: tabular-nums; }
 
@@ -65,9 +65,9 @@ body.ah-resizing iframe { pointer-events: none; }
   grid-template-columns: auto minmax(0,1fr) auto;
   align-items: center;
   gap: 8px;
-  border: 1px solid #275556;
+  border: 1px solid #4b4b4b;
   border-radius: 7px;
-  background: #102328;
+  background: #1f1f1f;
   color: var(--ah-text);
   text-align: left;
   cursor: pointer;
@@ -75,20 +75,20 @@ body.ah-resizing iframe { pointer-events: none; }
 .ah-run-source span { color: var(--ah-accent); font-size: 6.8px; text-transform: uppercase; letter-spacing: .08em; }
 .ah-run-source strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; }
 .ah-run-source em { color: var(--ah-soft); font-size: 7px; font-style: normal; }
-.ah-run-source:hover { border-color: #3d7978; background: #133036; }
+.ah-run-source:hover { border-color: #3d7978; background: #2a2a2a; }
 
 .ah-run-meta { display: grid; gap: 0; margin-top: 8px; border: 1px solid var(--ah-line); border-radius: 8px; overflow: hidden; }
-.ah-run-meta > div { min-height: 38px; display: grid; grid-template-columns: 82px minmax(0,1fr); align-items: center; gap: 10px; padding: 6px 9px; border-bottom: 1px solid var(--ah-line); background: #0b151a; }
+.ah-run-meta > div { min-height: 38px; display: grid; grid-template-columns: 82px minmax(0,1fr); align-items: center; gap: 10px; padding: 6px 9px; border-bottom: 1px solid var(--ah-line); background: #131313; }
 .ah-run-meta > div:last-child { border-bottom: 0; }
 .ah-run-meta strong, .ah-run-meta code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c6d2d6; font-size: 7.5px; font-weight: 550; }
-.ah-run-meta code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #8db8bb; }
+.ah-run-meta code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #afafaf; }
 
 .ah-run-trace-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 1px 7px; }
 .ah-run-trace-head strong { color: var(--ah-text); font-size: 8px; }
 .ah-run-trace-head span { color: var(--ah-faint); font-size: 7px; }
 .ah-run-trace { display: grid; gap: 6px; padding-bottom: 12px; }
-.ah-run-event { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 8px; padding: 8px; border: 1px solid var(--ah-line); border-radius: 7px; background: #0b151a; }
-.ah-run-event-mark { width: 22px; height: 22px; border: 1px solid var(--ah-line-strong); border-radius: 6px; display: grid; place-items: center; color: var(--ah-accent); background: #101d23; font-size: 7px; }
+.ah-run-event { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 8px; padding: 8px; border: 1px solid var(--ah-line); border-radius: 7px; background: #131313; }
+.ah-run-event-mark { width: 22px; height: 22px; border: 1px solid var(--ah-line-strong); border-radius: 6px; display: grid; place-items: center; color: var(--ah-accent); background: #1b1b1b; font-size: 7px; }
 .ah-run-event-mark.danger, .ah-run-event-mark.error { color: var(--ah-bad); background: var(--ah-bad-soft); }
 .ah-run-event-mark.review, .ah-run-event-mark.warning { color: var(--ah-warn); background: var(--ah-warn-soft); }
 .ah-run-event strong { display: block; color: #d9e3e6; font-size: 8px; }
@@ -98,7 +98,7 @@ body.ah-resizing iframe { pointer-events: none; }
 
 body.audit-harness-active .command-results .ah-command-context { border-color: transparent; }
 body.audit-harness-active .command-results .ah-command-context:hover { background: #f1f4f5; }
-body.audit-harness-active .command-results [data-ah-command-context-label] { color: #4b7c7c; }
+body.audit-harness-active .command-results [data-ah-command-context-label] { color: #727272; }
 
 @media (max-width: 1120px) {
   .ah-splitter { display: none; }

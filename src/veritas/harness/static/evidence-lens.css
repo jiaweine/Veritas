@@ -22,7 +22,7 @@
 .ref-evidence-preview::before {
   background:
     radial-gradient(210px circle at var(--lens-x) var(--lens-y), rgba(74, 235, 220, .16), transparent 64%),
-    radial-gradient(520px circle at var(--lens-x) var(--lens-y), rgba(18, 85, 90, .08), transparent 74%);
+    radial-gradient(520px circle at var(--lens-x) var(--lens-y), rgba(71,71,71, .08), transparent 74%);
   mix-blend-mode: multiply;
 }
 
@@ -41,8 +41,8 @@
   z-index: 1;
   padding-bottom: 112px;
   background:
-    linear-gradient(rgba(47, 138, 138, .035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(47, 138, 138, .028) 1px, transparent 1px),
+    linear-gradient(rgba(119,119,119, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(119,119,119, .028) 1px, transparent 1px),
     radial-gradient(circle at 50% 0%, rgba(255,255,255,.26), transparent 34%),
     #d4d5d2;
   background-size: 26px 26px, 26px 26px, auto, auto;
@@ -56,7 +56,7 @@
 }
 
 .ref-evidence-preview[data-evidence-lens-pointer="active"] .ref-paper-sheet {
-  box-shadow: 0 14px 42px rgba(0,0,0,.2), 0 0 0 1px rgba(34, 120, 122, .09);
+  box-shadow: 0 14px 42px rgba(0,0,0,.2), 0 0 0 1px rgba(102,102,102, .09);
 }
 
 .ref-evidence-preview [data-ref-field] {
@@ -71,7 +71,7 @@
 .ref-evidence-preview [data-ref-field]:focus-visible {
   z-index: 2;
   background: rgba(57, 226, 211, .27);
-  color: #031314;
+  color: #101010;
   box-shadow: 0 0 0 1px rgba(24, 130, 126, .46), 0 0 20px rgba(44, 224, 210, .3);
   transform: translateY(-1px) scale(1.025);
 }
@@ -79,7 +79,7 @@
 .ref-evidence-preview [data-ref-field][data-lens-pinned="true"] {
   z-index: 3;
   background: linear-gradient(180deg, rgba(75, 246, 226, .55), rgba(56, 205, 197, .36));
-  color: #021516;
+  color: #111111;
   box-shadow: 0 0 0 1px rgba(21, 108, 106, .72), 0 0 0 4px rgba(66, 228, 215, .12), 0 0 26px rgba(31, 208, 196, .36);
   font-weight: 800;
 }
@@ -110,7 +110,7 @@
   border: 1px solid rgba(88, 220, 211, .32);
   border-radius: 10px;
   background:
-    linear-gradient(90deg, rgba(5, 18, 22, .96), rgba(8, 27, 31, .94)),
+    linear-gradient(90deg, rgba(16,16,16, .96), rgba(23,23,23, .94)),
     repeating-linear-gradient(90deg, transparent 0 30px, rgba(79, 222, 211, .035) 31px);
   box-shadow: 0 16px 38px rgba(0,0,0,.25), inset 0 1px 0 rgba(143, 255, 244, .04);
   color: #d9efee;
@@ -136,7 +136,7 @@
   letter-spacing: .16em;
 }
 .evidence-lens-hud-copy strong { display: block; margin-top: 4px; color: #efffff; font-size: 12px; }
-.evidence-lens-hud-copy small { display: block; margin-top: 3px; color: #769398; font-size: 8px; line-height: 1.4; }
+.evidence-lens-hud-copy small { display: block; margin-top: 3px; color: #8d8d8d; font-size: 8px; line-height: 1.4; }
 
 .evidence-lens-hud-actions { display: flex; gap: 7px; }
 .evidence-lens-hud-actions button {
@@ -144,7 +144,7 @@
   padding: 0 10px;
   border: 1px solid rgba(86, 218, 207, .28);
   border-radius: 6px;
-  background: rgba(15, 49, 52, .7);
+  background: rgba(42,42,42, .7);
   color: #96e8e2;
   font: 700 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: .04em;
@@ -155,7 +155,7 @@
 .evidence-lens-hud-actions button:focus-visible {
   transform: translateY(-1px);
   border-color: rgba(111, 244, 232, .7);
-  background: rgba(23, 77, 78, .82);
+  background: rgba(66,66,66, .82);
   box-shadow: 0 0 20px rgba(56, 220, 207, .12);
   outline: none;
 }
@@ -178,7 +178,7 @@
 .evidence-lens-radar::before { inset: 8px; border: 1px dashed rgba(91, 222, 212, .36); animation: evidence-lens-spin 5s linear infinite; }
 .evidence-lens-radar::after { inset: 19px; background: #5ed9d0; box-shadow: 0 0 13px rgba(94, 217, 208, .6); }
 .evidence-lens-radar i:nth-child(1) { width: 4px; height: 4px; top: 6px; left: 23px; background: #72eee4; }
-.evidence-lens-radar i:nth-child(2) { width: 3px; height: 3px; right: 7px; bottom: 12px; background: #467d82; }
+.evidence-lens-radar i:nth-child(2) { width: 3px; height: 3px; right: 7px; bottom: 12px; background: #727272; }
 .evidence-lens-radar i:nth-child(3) { width: 2px; height: 2px; left: 8px; bottom: 15px; background: #80e7df; }
 .evidence-lens-radar.active { border-color: rgba(104, 242, 228, .5); box-shadow: inset 0 0 20px rgba(65, 225, 212, .08), 0 0 20px rgba(55, 213, 201, .1); }
 

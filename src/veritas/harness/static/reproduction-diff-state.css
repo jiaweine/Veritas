@@ -10,8 +10,8 @@
 .rep-file-detail .rep-code { max-height: min(62vh, 640px); }
 .rep-code.diff[data-rep-diff-rendered="true"] { padding-left: 0; padding-right: 0; }
 .rep-diff-line { display: block; min-height: 1.55em; padding: 0 11px; }
-.rep-diff-line.header { color: #b9c5ff; background: rgba(83,104,245,.08); }
-.rep-diff-line.hunk { color: #d7c9ff; background: rgba(121,92,190,.11); }
+.rep-diff-line.header { color: #c7c7c7; background: rgba(110,110,110,.08); }
+.rep-diff-line.hunk { color: #d0d0d0; background: rgba(105,105,105,.11); }
 .rep-diff-line.add { color: #bfe9ce; background: rgba(45,132,87,.15); }
 .rep-diff-line.remove { color: #f2bfc4; background: rgba(176,62,73,.15); }
 .rep-diff-line.context { color: #dce2eb; }

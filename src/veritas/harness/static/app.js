@@ -113,6 +113,7 @@ function pageHead(eyebrow, title, subtitle, actions = "") {
 }
 
 function setView(view, { push = true } = {}) {
+  if (state.agentOpen) setAgent(false);
   state.view = view;
   $$('[data-view]').forEach((node) => node.classList.toggle("active", node.dataset.view === view));
   document.body.classList.remove("sidebar-open");
@@ -157,7 +158,7 @@ function coverageChart(series = []) {
   const line = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
   const area = `${px},${height - py} ${line} ${width - px},${height - py}`;
   return `<svg class="coverage-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Verification coverage by recent audit">
-    <defs><linearGradient id="coverageFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5368f5" stop-opacity=".18"/><stop offset="1" stop-color="#5368f5" stop-opacity="0"/></linearGradient></defs>
+    <defs><linearGradient id="coverageFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6e6e6e" stop-opacity=".18"/><stop offset="1" stop-color="#6e6e6e" stop-opacity="0"/></linearGradient></defs>
     ${[.25,.5,.75,1].map((level) => `<line class="chart-grid" x1="${px}" x2="${width-px}" y1="${height-py-level*(height-py*2)}" y2="${height-py-level*(height-py*2)}"/>`).join("")}
     <polygon class="chart-area" points="${area}"/><polyline class="chart-line" points="${line}"/>
     ${points.map((p) => `<circle class="chart-point" cx="${p.x}" cy="${p.y}" r="3"><title>${escapeHtml(p.item.title)} · ${pct(p.item.coverage)}</title></circle>`).join("")}
@@ -171,7 +172,7 @@ function renderOverview() {
   const series = o.coverage_series || [];
   const values = series.map((item) => item.coverage);
   els.main.innerHTML = `<div class="page">
-    ${pageHead("Research audit cockpit", "Good morning. What needs verification?", "Veritas turns papers into inspectable evidence, deterministic checks, findings, and reproducible audit traces.", `<button class="secondary-button" data-action="refresh">Refresh</button><button class="primary-button" data-action="new-audit">＋ New audit</button>`)}
+    ${pageHead("Research workspace", "Evidence, findings, and runs", "Conversation is the primary workflow; this workspace keeps the underlying papers, checks, findings, and execution traces inspectable.", `<button class="secondary-button" data-action="refresh">Refresh</button><button class="primary-button" data-action="new-audit">＋ New audit</button>`)}
     <section class="kpi-grid">
       <article class="kpi-card"><div class="kpi-label">Papers in workspace</div><div class="kpi-value">${num(o.audits_total)}</div><div class="kpi-foot"><strong class="good">${num(o.papers_pages)}</strong> pages parsed</div></article>
       <article class="kpi-card"><div class="kpi-label">Verification coverage</div><div class="kpi-value">${pct(o.mean_coverage)}</div><div class="kpi-foot">Across papers with completed checks</div>${sparkline(values)}</article>
@@ -290,7 +291,7 @@ function renderWorkbench() {
   const events = audit.events || [];
   const findings = result?.findings || [];
   els.main.innerHTML = `<div class="page workbench">
-    <div class="workbench-head"><div><div class="breadcrumb"><button data-view="audits">Audits</button><span>/</span><span>${escapeHtml(audit.audit_id)}</span></div><div class="workbench-title">${escapeHtml(audit.title)}</div></div><div class="page-actions"><button class="secondary-button" data-action="open-pdf">Open PDF ↗</button><button class="primary-button" data-action="agent-open">Open Agent</button></div></div>
+    <div class="workbench-head"><div><div class="breadcrumb"><button data-view="audits">Audits</button><span>/</span><span>${escapeHtml(audit.audit_id)}</span></div><div class="workbench-title">${escapeHtml(audit.title)}</div></div><div class="page-actions"><button class="secondary-button" data-action="open-pdf">Open PDF ↗</button><button class="primary-button" data-action="agent-open">Open conversation</button></div></div>
     <div class="workbench-grid">
       <div class="workbench-column">
         <article class="panel summary-card"><h3>Paper structure</h3><div class="stat-list"><div class="stat-item"><span>Pages</span><strong>${num(summary.pages)}</strong></div><div class="stat-item"><span>Words</span><strong>${num(summary.words)}</strong></div><div class="stat-item"><span>Tables</span><strong>${num(summary.tables_detected)}</strong></div><div class="stat-item"><span>Status</span><strong>${String(audit.status||"ready")}</strong></div></div></article>
@@ -300,7 +301,7 @@ function renderWorkbench() {
 
       <div class="workbench-column">
         <article class="panel pdf-panel"><div class="pdf-toolbar"><div><strong>Evidence viewer</strong> <span>${source.page ? `· source page ${escapeHtml(source.page)}` : "· full paper"}</span></div><span>${escapeHtml(audit.filename)}</span></div><iframe class="pdf-frame" title="${escapeHtml(audit.title)} PDF" src="/api/v1/audits/${encodeURIComponent(audit.audit_id)}/paper${source.page ? `#page=${encodeURIComponent(source.page)}` : ""}"></iframe></article>
-        ${result ? `<article class="panel result-card"><div class="result-head"><div><h3>${escapeHtml(result.status === "verified" ? "Latest audit verified" : result.status === "contradiction" ? "Latest audit found a contradiction" : "Latest audit needs review")}</h3><p>${escapeHtml(source.table || "Located source")}${source.page ? ` · page ${escapeHtml(source.page)}` : ""}${source.row ? ` · ${escapeHtml(source.row)}` : ""}</p></div>${statusBadge(result.status, result.status)}</div><div class="result-metrics"><div class="result-metric"><span>Verified</span><strong>${num(result.counts?.verified)}</strong></div><div class="result-metric"><span>Review</span><strong>${num(result.counts?.needs_review)}</strong></div><div class="result-metric"><span>Contradictions</span><strong>${num(result.counts?.contradictions)}</strong></div></div>${source.text_quote ? `<pre class="evidence-quote">${escapeHtml(source.text_quote)}</pre>` : ""}</article>` : `<article class="panel">${emptyPanel("⌁", "No detector result yet", "Open the Agent and run /audit row=\"…\" table=2 page=1 to create evidence-linked results.")}</article>`}
+        ${result ? `<article class="panel result-card"><div class="result-head"><div><h3>${escapeHtml(result.status === "verified" ? "Latest audit verified" : result.status === "contradiction" ? "Latest audit found a contradiction" : "Latest audit needs review")}</h3><p>${escapeHtml(source.table || "Located source")}${source.page ? ` · page ${escapeHtml(source.page)}` : ""}${source.row ? ` · ${escapeHtml(source.row)}` : ""}</p></div>${statusBadge(result.status, result.status)}</div><div class="result-metrics"><div class="result-metric"><span>Verified</span><strong>${num(result.counts?.verified)}</strong></div><div class="result-metric"><span>Review</span><strong>${num(result.counts?.needs_review)}</strong></div><div class="result-metric"><span>Contradictions</span><strong>${num(result.counts?.contradictions)}</strong></div></div>${source.text_quote ? `<pre class="evidence-quote">${escapeHtml(source.text_quote)}</pre>` : ""}</article>` : `<article class="panel">${emptyPanel("⌁", "No detector result yet", "Open the conversation and audit a reported row to create evidence-linked results.")}</article>`}
       </div>
 
       <div class="workbench-column">
@@ -362,13 +363,34 @@ async function submitUpload(event) {
     state.activeAudit = audit;
     showToast("Paper parsed and evidence workspace created.");
     await openAudit(audit.audit_id);
+    await openConversation({ autoSelect: false });
   } catch (error) { showToast(error.message); }
-  finally { state.sending = false; els.uploadSubmit.textContent = "Parse & create audit"; els.uploadSubmit.disabled = !state.selectedFile; els.file.value = ""; }
+  finally { state.sending = false; els.uploadSubmit.textContent = "Parse & start conversation"; els.uploadSubmit.disabled = !state.selectedFile; els.file.value = ""; }
+}
+
+async function openConversation({ autoSelect = true } = {}) {
+  if (!state.activeAudit && autoSelect && state.audits.length) {
+    try {
+      const auditId = state.audits[0].audit_id;
+      state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
+  setAgent(true);
 }
 
 function setAgent(open) {
   state.agentOpen = open;
   document.body.classList.toggle("agent-open", open);
+  $("#conversation-nav")?.classList.toggle("active", open);
+  $("#agent-toggle")?.setAttribute("aria-pressed", String(open));
+  $("#mobile-agent")?.classList.toggle("active", open);
+  if (open) {
+    $$('[data-view]').forEach((node) => node.classList.remove("active"));
+  } else {
+    $$('[data-view]').forEach((node) => node.classList.toggle("active", node.dataset.view === state.view));
+  }
   renderAgent();
   if (open && state.activeAudit) setTimeout(() => els.agentMessage.focus(), 100);
 }
@@ -378,14 +400,15 @@ function renderAgent() {
   els.agentMessage.disabled = !audit || state.sending;
   els.agentSend.disabled = !audit || state.sending;
   if (!audit) {
-    els.agentContext.innerHTML = `<div class="context-label">Current context</div><div class="context-title">No paper selected</div><div class="context-meta">Open an audit to give the harness evidence context.</div>`;
-    els.agentTimeline.innerHTML = `<div class="agent-empty"><div><div class="empty-mark">⌁</div><strong>Agent is a collaboration layer</strong><p>It operates on the selected paper and emits structured tool events, findings, and evidence—not hidden state.</p></div></div>`;
+    els.agentContext.innerHTML = `<div class="context-label">Research context</div><div class="context-title">Start with a paper</div><div class="context-meta">Veritas conversations stay attached to inspectable evidence instead of inventing a context.</div>`;
+    els.agentTimeline.innerHTML = `<div class="agent-empty"><div><div class="empty-mark">V</div><strong>Add a paper to begin</strong><p>Upload a PDF, then ask what needs attention, inspect its structure, or audit a reported row.</p><button class="primary-button" type="button" data-conversation-upload="true">＋ Add paper</button></div></div>`;
+    $("[data-conversation-upload]", els.agentTimeline)?.addEventListener("click", openUpload);
     return;
   }
   const summary = audit.paper_summary || {};
-  els.agentContext.innerHTML = `<div class="context-label">Current paper</div><div class="context-title">${escapeHtml(audit.title)}</div><div class="context-meta">${num(summary.pages)} pages · ${num(summary.tables_detected)} tables · ${escapeHtml(audit.status)}</div>`;
+  els.agentContext.innerHTML = `<div class="context-label">Current paper</div><div class="context-title">${escapeHtml(audit.title)}</div><div class="context-meta">${num(summary.pages)} pages · ${num(summary.tables_detected)} tables · ${escapeHtml(audit.status)} · responses use persisted audit state</div>`;
   const events = audit.events || [];
-  els.agentTimeline.innerHTML = events.length ? events.slice(-18).map((event) => `<div class="trace"><span class="trace-dot ${escapeHtml(event.status || "")}">${event.kind === "tool" ? "⌁" : event.kind === "finding" ? "!" : event.kind === "user_message" ? "→" : "·"}</span><div class="trace-card"><strong>${escapeHtml(event.title)}</strong>${event.detail ? `<p>${escapeHtml(event.detail)}</p>` : ""}<div class="trace-meta">${escapeHtml(event.kind)} · ${shortTime(event.created_at)}</div></div></div>`).join("") : `<div class="agent-empty">Run <span class="mono">/inspect</span> to start the trace.</div>`;
+  els.agentTimeline.innerHTML = events.length ? events.slice(-24).map((event) => `<div class="trace" data-kind="${escapeHtml(event.kind || "event")}"><span class="trace-dot ${escapeHtml(event.status || "")}">${event.kind === "tool" ? "⌁" : event.kind === "finding" ? "!" : event.kind === "user_message" ? "→" : event.kind === "assistant_message" ? "V" : "·"}</span><div class="trace-card"><strong>${escapeHtml(event.title)}</strong>${event.detail ? `<p>${escapeHtml(event.detail)}</p>` : ""}<div class="trace-meta">${event.kind === "user_message" ? "You" : event.kind === "assistant_message" ? "Veritas" : escapeHtml(event.kind)} · ${shortTime(event.created_at)}</div></div></div>`).join("") : `<div class="agent-empty"><div><strong>Ask from the evidence</strong><p>Try “What needs attention?” or inspect the paper structure.</p></div></div>`;
   els.agentTimeline.scrollTop = els.agentTimeline.scrollHeight;
 }
 
@@ -421,13 +444,13 @@ async function sendAgentMessage() {
     await loadProductData();
     if (state.activeAudit) state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(audit.audit_id)}`).then((r) => r.json());
     renderAgent(); renderMain();
-  } catch (error) { showToast(error.message); }
+  } catch (error) { els.agentMessage.value = message; showToast(error.message); }
   finally { state.sending = false; els.agentMessage.disabled = !state.activeAudit; els.agentSend.disabled = !state.activeAudit; }
 }
 
 function commandDefaults() {
   return [
-    { kind: "view", id: "overview", title: "Overview", detail: "Research audit cockpit", icon: "⌂" },
+    { kind: "view", id: "overview", title: "Workspace", detail: "Evidence, findings, and audit state", icon: "⌂" },
     { kind: "view", id: "audits", title: "Audits", detail: "Papers and evidence workspaces", icon: "▤" },
     { kind: "view", id: "findings", title: "Findings", detail: "Contradictions requiring review", icon: "◇" },
     { kind: "view", id: "runs", title: "Agent runs", detail: "Tool traces and evidence outcomes", icon: "⌁" },
@@ -486,8 +509,9 @@ function bindGlobal() {
     if (event.key === "ArrowUp") { event.preventDefault(); state.commandIndex = Math.max(0, state.commandIndex - 1); renderCommandResults(); }
     if (event.key === "Enter") { event.preventDefault(); activateCommand(); }
   });
-  $("#agent-toggle").addEventListener("click", () => setAgent(!state.agentOpen));
-  $("#mobile-agent").addEventListener("click", () => setAgent(true));
+  $("#conversation-nav").addEventListener("click", () => openConversation());
+  $("#agent-toggle").addEventListener("click", () => state.agentOpen ? setAgent(false) : openConversation());
+  $("#mobile-agent").addEventListener("click", () => openConversation());
   $("#agent-close").addEventListener("click", () => setAgent(false));
   els.agentSend.addEventListener("click", sendAgentMessage);
   els.agentMessage.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendAgentMessage(); } });
@@ -508,7 +532,10 @@ async function boot() {
     await openAudit(decodeURIComponent(hash.split("=").slice(1).join("=")));
   } else if (["overview","audits","findings","runs","evidence","reproduction","benchmarks","settings"].includes(hash)) {
     setView(hash, { push: false });
-  } else renderMain();
+  } else {
+    renderMain();
+    await openConversation();
+  }
   renderAgent();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 }

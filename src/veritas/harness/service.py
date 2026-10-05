@@ -23,6 +23,71 @@ from .store import HarnessStore
 from .tools import PaperToolbox
 
 
+
+def _conversation_summary(record: dict[str, Any]) -> tuple[str, str, str, dict[str, Any]]:
+    """Derive a conversational answer only from persisted authoritative audit state."""
+    paper = record.get("paper_summary") or {}
+    result = record.get("latest_result") or {}
+    if not result:
+        pages = int(paper.get("pages") or 0)
+        tables = int(paper.get("tables_detected") or 0)
+        return (
+            "No verification result yet",
+            f"This paper has {pages} pages and {tables} detected tables. "
+            "Inspect the paper structure or audit a specific reported row before asking for findings.",
+            "review",
+            {"conversation_intent": "summary", "has_result": False},
+        )
+
+    counts = result.get("counts") or {}
+    verified = int(counts.get("verified") or 0)
+    needs_review = int(counts.get("needs_review") or 0)
+    contradictions = int(counts.get("contradictions") or 0)
+    audit_status = str(result.get("status") or "review_required").replace("_", " ")
+    findings = list(result.get("findings") or [])
+    source = result.get("source") or {}
+    location = " · ".join(
+        part
+        for part in (
+            str(source.get("table") or "").strip(),
+            f'p.{source.get("page")}' if source.get("page") else "",
+            str(source.get("row") or "").strip(),
+        )
+        if part
+    )
+
+    detail = (
+        f"Latest audit status: {audit_status}. "
+        f"{verified} verified, {needs_review} need review, {contradictions} contradictions."
+    )
+    if findings:
+        finding = findings[0]
+        finding_title = str(finding.get("title") or "Finding")
+        explanation = str(finding.get("explanation") or "").strip()
+        detail += f" First persisted finding: {finding_title}."
+        if explanation:
+            detail += f" {explanation}"
+    else:
+        detail += " No persisted contradiction findings are attached to the latest result."
+    if location:
+        detail += f" Source: {location}."
+
+    tone = "danger" if contradictions else "review" if needs_review else "success"
+    return (
+        "Current audit summary",
+        detail,
+        tone,
+        {
+            "conversation_intent": "summary",
+            "has_result": True,
+            "audit_status": result.get("status"),
+            "counts": counts,
+            "finding_count": len(findings),
+            "source": source,
+        },
+    )
+
+
 class AuditHarness:
     """Conversation-oriented orchestration around deterministic Veritas tools.
 
@@ -489,14 +554,51 @@ class AuditHarness:
             yield event.to_dict()
             return
 
-        if command.action == "help" or command.action == "chat":
+        if command.action == "help":
             event = HarnessEvent(
                 audit_id=audit_id,
                 kind="assistant_message",
-                title="Ready to audit this paper.",
+                title="How to work with this paper",
                 detail=help_text(),
                 status="info",
-                payload={"commands": ["/inspect", '/audit row="Treatment" table=2 page=1']},
+                payload={
+                    "commands": [
+                        "What needs attention?",
+                        "inspect this paper",
+                        '/audit row="Treatment" table=2 page=1',
+                    ]
+                },
+            )
+            self.store.append_event(event)
+            yield event.to_dict()
+            return
+
+        if command.action == "summary":
+            title, detail, status, payload = _conversation_summary(record)
+            event = HarnessEvent(
+                audit_id=audit_id,
+                kind="assistant_message",
+                title=title,
+                detail=detail,
+                status=status,
+                payload=payload,
+            )
+            self.store.append_event(event)
+            yield event.to_dict()
+            return
+
+        if command.action == "chat":
+            event = HarnessEvent(
+                audit_id=audit_id,
+                kind="assistant_message",
+                title="I stay grounded in this audit.",
+                detail=(
+                    "I can summarize the latest persisted findings, inspect detected paper structure, "
+                    "or run a deterministic audit on a reported row. I will not invent an answer beyond "
+                    f"the evidence and tools available here. {help_text()}"
+                ),
+                status="review",
+                payload={"conversation_intent": "bounded_help"},
             )
             self.store.append_event(event)
             yield event.to_dict()

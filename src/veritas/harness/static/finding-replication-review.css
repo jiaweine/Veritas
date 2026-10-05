@@ -4,10 +4,10 @@
   align-items: center;
   gap: 8px;
   padding: 7px 8px;
-  border: 1px solid #243b43;
+  border: 1px solid #373737;
   border-top: 0;
   border-radius: 0 0 8px 8px;
-  background: #091419;
+  background: #121212;
 }
 
 .fn-finding-row:has(.fn-replication-review) .fn-finding-actions {
@@ -20,8 +20,8 @@
   display: grid;
   place-items: center;
   border-radius: 7px;
-  background: #12262d;
-  color: #8fa2a7;
+  background: #222222;
+  color: #9e9e9e;
   font-size: 9px;
   font-weight: 800;
 }
@@ -58,9 +58,9 @@
 
 .fn-review-title span {
   padding: 2px 5px;
-  border: 1px solid #2a4148;
+  border: 1px solid #3d3d3d;
   border-radius: 999px;
-  color: #90a4aa;
+  color: #a0a0a0;
   font-size: 5.8px;
   font-weight: 800;
   text-transform: uppercase;
@@ -69,7 +69,7 @@
 .fn-review-copy p {
   margin: 3px 0 0;
   overflow: hidden;
-  color: #8fa2a7;
+  color: #9e9e9e;
   font-size: 6.6px;
   line-height: 1.45;
   text-overflow: ellipsis;
@@ -79,7 +79,7 @@
 .fn-review-copy small {
   display: block;
   margin-top: 3px;
-  color: #567078;
+  color: #6b6b6b;
   font-size: 5.8px;
   line-height: 1.4;
 }
@@ -87,10 +87,10 @@
 .fn-replication-review > button {
   min-height: 25px;
   padding: 0 7px;
-  border: 1px solid #31525a;
+  border: 1px solid #4c4c4c;
   border-radius: 6px;
-  background: #0e2026;
-  color: #9bc5c7;
+  background: #1d1d1d;
+  color: #bcbcbc;
   font: inherit;
   font-size: 6.4px;
   font-weight: 700;
@@ -98,7 +98,7 @@
 }
 
 .fn-replication-review > button:hover {
-  border-color: #4b777a;
+  border-color: #6e6e6e;
   color: #d7efef;
 }
 
