@@ -20,6 +20,9 @@ def test_product_boot_directly_pages_audit_history() -> None:
     assert "window.__veritasAuditPageFeed = page" in app
     assert 'new CustomEvent("veritas:audit-page-reset", { detail: page })' in app
     assert "pageTotal(auditPage, audits)" in app
+    assert "const activeAuditId = state.activeAudit.audit_id" in app
+    assert "encodeURIComponent(activeAuditId)" in app
+    assert "audits.find((item) => item.audit_id === state.activeAudit.audit_id)" not in app
 
     assert "/static/audit-page-bootstrap.js" not in shell
     assert '<script type="module" src="/static/app.js"></script>' in shell
@@ -36,8 +39,8 @@ def test_product_boot_directly_pages_audit_history() -> None:
     assert ".audit-page-footer" in styles
     assert ".audit-page-error" in styles
 
-    assert 'const CACHE = "veritas-shell-v29"' in service_worker
-    assert 'const CACHE_REVISION = "direct-bounded-boot-1"' in service_worker
+    assert 'const CACHE = "veritas-shell-v30"' in service_worker
+    assert 'const CACHE_REVISION = "off-page-active-audit-refresh-1"' in service_worker
     assert '"/static/audit-page-bootstrap.js"' not in service_worker
     assert '"/static/audit-pagination.js"' in service_worker
     assert '"/static/audit-pagination.css"' in service_worker
@@ -58,7 +61,13 @@ def test_audit_pagination_is_syntax_checked_and_has_real_chromium_acceptance() -
     assert "Audit pagination changed keyset order" in browser
     assert "Evidence surface did not preserve loaded audit history" in browser
     assert "Paged audit navigation did not reach the product detail API" in browser
+    assert "Off-page active audit was not refreshed from the detail API" in browser
+    assert "Conversation retained stale off-page audit state" in browser
+    assert "data-audit-harness='true'" in browser
+    assert '"[data-ah-nav=\'audits\']"' in browser
+    assert '"#sidebar [data-view=\'overview\']"' in browser
     assert 'wait_until="domcontentloaded"' in browser
     assert '"audits-pagination.png"' in browser
     assert '"evidence-pagination.png"' in browser
     assert '"paged-audit-open.png"' in browser
+    assert '"off-page-audit-refresh.png"' in browser

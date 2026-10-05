@@ -34,8 +34,8 @@ def test_product_boot_directly_pages_run_history() -> None:
     assert 'api(PRODUCT_BOOT_PAGE_PATHS.runs)' in app
     assert 'api("/api/v1/runs").then' not in app
     assert "/static/run-page-bootstrap.js" not in shell
-    assert 'const CACHE = "veritas-shell-v29"' in service_worker
-    assert 'const CACHE_REVISION = "direct-bounded-boot-1"' in service_worker
+    assert 'const CACHE = "veritas-shell-v30"' in service_worker
+    assert 'const CACHE_REVISION = "off-page-active-audit-refresh-1"' in service_worker
     assert '"/static/run-page-bootstrap.js"' not in service_worker
 
 

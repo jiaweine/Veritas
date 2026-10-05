@@ -125,8 +125,8 @@ async function loadProductData({ keepAudit = true } = {}) {
     publishProductPage("audit", auditPage);
     publishProductPage("finding", findingPage);
     if (keepAudit && state.activeAudit) {
-      const current = audits.find((item) => item.audit_id === state.activeAudit.audit_id);
-      if (current) state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(current.audit_id)}`).then((r) => r.json());
+      const activeAuditId = state.activeAudit.audit_id;
+      state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(activeAuditId)}`).then((r) => r.json());
     }
     setSync("ready", "System ready");
   } catch (error) {

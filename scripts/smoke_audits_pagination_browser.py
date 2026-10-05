@@ -192,10 +192,41 @@ def main() -> None:
         paged_audit_id = "audit_browser_000000"
         page.locator(f"[data-audit-page-id='{paged_audit_id}']").click()
         page.wait_for_url(f"**?audit_open={paged_audit_id}#audit={paged_audit_id}", timeout=10_000)
-        page.locator("[data-audit-harness='true']").wait_for(state="visible", timeout=20_000)
+        page.locator(
+            f"[data-audit-harness='true'][data-audit-id='{paged_audit_id}']"
+        ).wait_for(state="visible", timeout=20_000)
         if paged_audit_id not in detail_requests:
             raise AssertionError("Paged audit navigation did not reach the product detail API")
         page.screenshot(path=output_dir / "paged-audit-open.png", full_page=True)
+
+        audits_by_id[paged_audit_id]["title"] = "Refreshed off-page audit"
+        audits_by_id[paged_audit_id]["status"] = "running"
+        page.locator("[data-ah-nav='audits']").click()
+        page.wait_for_function(
+            """() => document.querySelector('.page-title')?.textContent?.trim() === 'Audits'""",
+            timeout=10_000,
+        )
+        page.locator("#sidebar [data-view='overview']").click()
+        page.wait_for_function(
+            """() => document.querySelector('.page-title')?.textContent?.trim() === 'Evidence, findings, and runs'""",
+            timeout=10_000,
+        )
+        page.locator("[data-action='refresh']").click()
+        page.wait_for_function(
+            """() => document.querySelector('#sync-status')?.classList.contains('ready')""",
+            timeout=10_000,
+        )
+        if detail_requests.count(paged_audit_id) < 2:
+            raise AssertionError("Off-page active audit was not refreshed from the detail API")
+        page.locator("#conversation-nav").click()
+        page.wait_for_function(
+            """() => document.querySelector('#agent-context')?.textContent?.includes('Refreshed off-page audit')""",
+            timeout=10_000,
+        )
+        context_text = page.locator("#agent-context").inner_text().lower()
+        if "running" not in context_text:
+            raise AssertionError(f"Conversation retained stale off-page audit state: {context_text!r}")
+        page.screenshot(path=output_dir / "off-page-audit-refresh.png", full_page=True)
 
         context.close()
         browser.close()
@@ -206,10 +237,10 @@ def main() -> None:
         raise AssertionError("Browser issued an unbounded /api/v1/audits request")
     if page_requests.count(None) < 1 or "cursor-next" not in page_requests:
         raise AssertionError(f"Audit-page request sequence was incomplete: {page_requests!r}")
-    if "audit_browser_000000" not in detail_requests:
-        raise AssertionError(f"Paged audit detail request was not observed: {detail_requests!r}")
+    if detail_requests.count("audit_browser_000000") < 2:
+        raise AssertionError(f"Off-page audit detail was not authoritatively refreshed: {detail_requests!r}")
 
-    screenshots = ["audits-pagination.png", "evidence-pagination.png", "paged-audit-open.png"]
+    screenshots = ["audits-pagination.png", "evidence-pagination.png", "paged-audit-open.png", "off-page-audit-refresh.png"]
     for name in screenshots:
         if not (output_dir / name).is_file():
             raise AssertionError(f"Audit pagination screenshot was not captured: {name}")
