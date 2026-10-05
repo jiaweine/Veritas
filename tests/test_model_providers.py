@@ -351,7 +351,7 @@ def test_cyber_provider_settings_and_browser_acceptance_are_locked() -> None:
     assert '/static/settings-shell.css' in service_worker
     assert '/static/settings-interactions.css' in service_worker
     assert '/static/settings-interactions.js' in service_worker
-    assert 'const CACHE = "veritas-shell-v29"' in service_worker
+    assert 'const CACHE = "veritas-shell-v30"' in service_worker
     assert '"settings-model-providers.png"' in browser
     assert '"settings-model-providers-interactive.png"' in browser
     assert '"settings-model-providers-probe.png"' in browser
