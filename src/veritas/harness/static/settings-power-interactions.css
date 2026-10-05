@@ -14,7 +14,7 @@
   border: 1px solid rgba(104, 226, 216, .32);
   background:
     radial-gradient(circle at 85% 0%, rgba(70, 217, 205, .11), transparent 34%),
-    linear-gradient(180deg, rgba(8, 24, 29, .97), rgba(6, 17, 21, .98));
+    linear-gradient(180deg, rgba(21,21,21, .97), rgba(15,15,15, .98));
   box-shadow: 0 24px 70px rgba(0, 0, 0, .42), inset 0 1px 0 rgba(170, 255, 246, .03);
   backdrop-filter: blur(18px) saturate(1.12);
 }
@@ -71,7 +71,7 @@
 .provider-quicklook-head small {
   display: block;
   margin-top: 3px;
-  color: #6f8d92;
+  color: #878787;
   font-size: 9px;
 }
 
@@ -79,10 +79,10 @@
 .provider-action-panel kbd {
   min-width: 28px;
   padding: 4px 6px;
-  border: 1px solid rgba(93, 160, 161, .24);
+  border: 1px solid rgba(146,146,146, .24);
   border-radius: 5px;
-  background: rgba(4, 13, 16, .72);
-  color: #6d9fa0;
+  background: rgba(11,11,11, .72);
+  color: #949494;
   font: 700 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
   text-align: center;
   box-shadow: inset 0 -1px rgba(255, 255, 255, .025);
@@ -98,10 +98,10 @@
 .provider-quicklook-grid span {
   min-width: 0;
   padding: 8px 9px;
-  border: 1px solid rgba(70, 130, 134, .19);
+  border: 1px solid rgba(118,118,118, .19);
   border-radius: 8px;
-  background: rgba(8, 28, 32, .42);
-  color: #a4c2c3;
+  background: rgba(24,24,24, .42);
+  color: #bcbcbc;
   font: 600 8px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -122,7 +122,7 @@
   gap: 7px 12px;
   padding: 8px 15px 10px;
   border-top: 1px solid rgba(92, 201, 195, .1);
-  color: #55747a;
+  color: #6e6e6e;
   font: 600 7px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -154,7 +154,7 @@
 .provider-action-head small {
   display: block;
   margin-top: 3px;
-  color: #68858a;
+  color: #7f7f7f;
   font-size: 8px;
   line-height: 1.4;
 }
@@ -176,7 +176,7 @@
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
-  color: #acc6c7;
+  color: #c1c1c1;
   font-size: 9px;
   text-align: left;
   cursor: pointer;

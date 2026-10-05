@@ -263,7 +263,7 @@ function WorkspaceFileRow({ file, selected, onPress }: { file: WorkspaceFile; se
 }
 
 function RunDetailCard({ detail, loading }: { detail: RunDetail | null; loading: boolean }) {
-  if (loading) return <View style={styles.centered}><ActivityIndicator color="#5368f5" /><Text style={styles.helper}>Loading run…</Text></View>;
+  if (loading) return <View style={styles.centered}><ActivityIndicator color="#6e6e6e" /><Text style={styles.helper}>Loading run…</Text></View>;
   if (!detail) return <Text style={styles.empty}>Select a replication run to inspect its persisted lifecycle.</Text>;
   return <View>
     <CapabilityRow label="Run" value={detail.run_id} />
@@ -598,9 +598,9 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
       {selectedAudit ? <View style={styles.artifactSection}>
         <View style={styles.artifactHead}>
           <View style={styles.flex}><Text style={styles.sectionTitle}>Immutable inputs</Text><Text style={styles.sectionCopy}>Staged byte-for-byte into each run · max {formatBytes(maxAttachmentBytes)} each</Text></View>
-          <Pressable onPress={attachArtifact} disabled={interactionLocked} style={[styles.smallButton, interactionLocked && styles.disabled]}>{uploadingArtifact ? <ActivityIndicator size="small" color="#5368f5" /> : <Text style={styles.smallButtonText}>＋ Attach</Text>}</Pressable>
+          <Pressable onPress={attachArtifact} disabled={interactionLocked} style={[styles.smallButton, interactionLocked && styles.disabled]}>{uploadingArtifact ? <ActivityIndicator size="small" color="#6e6e6e" /> : <Text style={styles.smallButtonText}>＋ Attach</Text>}</Pressable>
         </View>
-        {loadingAttachments ? <View style={styles.centered}><ActivityIndicator size="small" color="#5368f5" /></View> : null}
+        {loadingAttachments ? <View style={styles.centered}><ActivityIndicator size="small" color="#6e6e6e" /></View> : null}
         {!loadingAttachments && attachments.map((attachment) => <View style={styles.artifactRow} key={attachment.attachment_id}>
           <View style={styles.artifactMark}><Text style={styles.artifactMarkText}>◇</Text></View>
           <View style={styles.flex}><Text style={styles.artifactTitle} numberOfLines={1}>{attachment.filename}</Text><Text style={styles.artifactMeta} numberOfLines={1}>{formatBytes(attachment.size_bytes)} · sha256:{attachment.sha256.slice(0, 14)}…</Text></View>
@@ -611,7 +611,7 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
     <View style={styles.card}>
       <View style={styles.cardHead}><Text style={styles.cardTitle}>Agent conversation</Text><Text style={styles.cardMeta}>{running ? "live" : events.length ? `${events.length} events` : "idle"}</Text></View>
       <Text style={styles.fieldLabel}>Reproduction goal</Text>
-      <TextInput value={prompt} onChangeText={setPrompt} multiline editable={!interactionLocked && configured} style={styles.input} placeholder="Describe the reproduction goal…" placeholderTextColor="#9aa2b1" />
+      <TextInput value={prompt} onChangeText={setPrompt} multiline editable={!interactionLocked && configured} style={styles.input} placeholder="Describe the reproduction goal…" placeholderTextColor="#a1a1a1" />
       <View style={styles.actionRow}>
         <Pressable onPress={run} disabled={runDisabled} style={[styles.runButton, runDisabled && styles.disabled]}>
           {running ? <ActivityIndicator color="#fff" /> : <Text style={styles.runButtonText}>Run agent</Text>}
@@ -643,7 +643,7 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
     </View>
 
     <View style={styles.card}>
-      <View style={styles.cardHead}><Text style={styles.cardTitle}>Workspace inspector</Text><Pressable disabled={!inspectedRunId || loadingWorkspace} onPress={() => inspectedRunId && void loadWorkspace(inspectedRunId)} style={[styles.refreshButton, (!inspectedRunId || loadingWorkspace) && styles.disabled]}>{loadingWorkspace ? <ActivityIndicator size="small" color="#5368f5" /> : <Text style={styles.refreshText}>Refresh</Text>}</Pressable></View>
+      <View style={styles.cardHead}><Text style={styles.cardTitle}>Workspace inspector</Text><Pressable disabled={!inspectedRunId || loadingWorkspace} onPress={() => inspectedRunId && void loadWorkspace(inspectedRunId)} style={[styles.refreshButton, (!inspectedRunId || loadingWorkspace) && styles.disabled]}>{loadingWorkspace ? <ActivityIndicator size="small" color="#6e6e6e" /> : <Text style={styles.refreshText}>Refresh</Text>}</Pressable></View>
       <View style={styles.tabs}>
         {(["changes", "files", "run"] as InspectorTab[]).map((tab) => <Pressable key={tab} onPress={() => setInspectorTab(tab)} style={[styles.tab, inspectorTab === tab && styles.tabActive]}><Text style={[styles.tabText, inspectorTab === tab && styles.tabTextActive]}>{tab === "changes" ? `Changes ${changedFiles.length}` : tab === "files" ? `Files ${workspace?.files.length || 0}` : "Run"}</Text></Pressable>)}
       </View>
@@ -654,7 +654,7 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
         {visibleFiles.map((file) => <WorkspaceFileRow key={file.path} file={file} selected={selectedPath === file.path} onPress={() => inspectedRunId && void openWorkspaceFile(inspectedRunId, file.path)} />)}
         {workspace && !visibleFiles.length ? <Text style={styles.empty}>{inspectorTab === "changes" ? "No workspace changes detected." : "No regular workspace files found."}</Text> : null}
 
-        {loadingFile ? <View style={styles.centered}><ActivityIndicator color="#5368f5" /><Text style={styles.helper}>Reading safe workspace preview…</Text></View> : null}
+        {loadingFile ? <View style={styles.centered}><ActivityIndicator color="#6e6e6e" /><Text style={styles.helper}>Reading safe workspace preview…</Text></View> : null}
         {fileDetail && !loadingFile ? <View style={styles.fileDetail}>
           <View style={styles.fileDetailHead}><View style={styles.flex}><Text style={styles.fileDetailTitle}>{fileDetail.path}</Text><Text style={styles.fileDetailMeta}>{fileDetail.change} · {formatBytes(fileDetail.size_bytes)}{fileDetail.truncated ? " · preview truncated" : ""}</Text></View></View>
           {fileDetail.binary ? <Text style={styles.empty}>Binary content is not rendered. Hash and change status remain available.</Text> : fileDetail.diff ? <ScrollView horizontal style={styles.codeScroll}><Text selectable style={styles.code}>{fileDetail.diff}</Text></ScrollView> : <ScrollView horizontal style={styles.codeScroll}><Text selectable style={styles.code}>{fileDetail.content || ""}</Text></ScrollView>}
@@ -664,7 +664,7 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
 
     <View style={styles.historyHead}>
       <View style={styles.flex}><Text style={styles.cardTitle}>Previous replication runs</Text><Text style={styles.historyCopy}>Reopen the persisted trace and retained run workspace.</Text></View>
-      <Pressable onPress={() => void refreshRuns()} disabled={loadingRuns} style={[styles.refreshButton, loadingRuns && styles.disabled]}>{loadingRuns ? <ActivityIndicator size="small" color="#5368f5" /> : <Text style={styles.refreshText}>Refresh</Text>}</Pressable>
+      <Pressable onPress={() => void refreshRuns()} disabled={loadingRuns} style={[styles.refreshButton, loadingRuns && styles.disabled]}>{loadingRuns ? <ActivityIndicator size="small" color="#6e6e6e" /> : <Text style={styles.refreshText}>Refresh</Text>}</Pressable>
     </View>
     <View style={styles.card}>
       {runs.slice(0, 12).map((item) => <RunRow key={item.run_id} run={item} selected={selectedRunId === item.run_id} onPress={() => void openRun(item.run_id)} />)}
@@ -677,50 +677,50 @@ const styles = StyleSheet.create({
   page: { padding: 16, paddingBottom: 34, backgroundColor: "#f7f8fa" },
   heroRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 16 },
   heroCopy: { flex: 1 },
-  eyebrow: { color: "#5368f5", fontSize: 8.5, fontWeight: "800", letterSpacing: 1.1, marginBottom: 6 },
-  title: { color: "#151927", fontSize: 26, fontWeight: "800", letterSpacing: -0.7 },
-  subtitle: { color: "#626b7d", fontSize: 10.5, lineHeight: 16, marginTop: 6 },
+  eyebrow: { color: "#6e6e6e", fontSize: 8.5, fontWeight: "800", letterSpacing: 1.1, marginBottom: 6 },
+  title: { color: "#191919", fontSize: 26, fontWeight: "800", letterSpacing: -0.7 },
+  subtitle: { color: "#6a6a6a", fontSize: 10.5, lineHeight: 16, marginTop: 6 },
   card: { backgroundColor: "#fff", borderWidth: StyleSheet.hairlineWidth, borderColor: "#e1e4ea", borderRadius: 13, padding: 13, marginBottom: 11 },
   cardHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 },
-  cardTitle: { color: "#202532", fontSize: 12, fontWeight: "800" },
-  cardMeta: { color: "#8a93a4", fontSize: 7.5, fontWeight: "700" },
+  cardTitle: { color: "#252525", fontSize: 12, fontWeight: "800" },
+  cardMeta: { color: "#929292", fontSize: 7.5, fontWeight: "700" },
   badge: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, maxWidth: 120 },
   badgeReady: { backgroundColor: "#eaf8f3" },
   badgeReview: { backgroundColor: "#fff3d8" },
-  badgeText: { color: "#596273", fontSize: 7.5, fontWeight: "800" },
+  badgeText: { color: "#616161", fontSize: 7.5, fontWeight: "800" },
   capabilityRow: { minHeight: 31, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#eef0f3" },
-  capabilityLabel: { color: "#7c8595", fontSize: 8.5 },
-  capabilityValue: { color: "#202532", fontSize: 8.5, fontWeight: "700", maxWidth: "63%", textAlign: "right" },
+  capabilityLabel: { color: "#848484", fontSize: 8.5 },
+  capabilityValue: { color: "#252525", fontSize: 8.5, fontWeight: "700", maxWidth: "63%", textAlign: "right" },
   warning: { marginTop: 10, padding: 9, borderRadius: 8, backgroundColor: "#fff6df", color: "#8a651c", fontSize: 8.5, lineHeight: 13 },
-  boundaryCopy: { color: "#8a93a4", fontSize: 7.8, lineHeight: 12, marginTop: 9 },
-  selectedTitle: { color: "#5f6879", fontSize: 9, fontWeight: "700", marginTop: 1 },
+  boundaryCopy: { color: "#929292", fontSize: 7.8, lineHeight: 12, marginTop: 9 },
+  selectedTitle: { color: "#676767", fontSize: 9, fontWeight: "700", marginTop: 1 },
   auditChips: { gap: 7, paddingVertical: 10 },
   auditChip: { maxWidth: 190, borderWidth: StyleSheet.hairlineWidth, borderColor: "#d8dce4", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: "#fafbfc" },
-  auditChipActive: { borderColor: "#aeb9ff", backgroundColor: "#eef0ff" },
-  auditChipText: { color: "#687284", fontSize: 8.5 },
-  auditChipTextActive: { color: "#4054d5", fontWeight: "700" },
+  auditChipActive: { borderColor: "#bcbcbc", backgroundColor: "#eef0ff" },
+  auditChipText: { color: "#717171", fontSize: 8.5 },
+  auditChipTextActive: { color: "#595959", fontWeight: "700" },
   artifactSection: { paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#e7e9ee" },
   artifactHead: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 8 },
-  sectionTitle: { color: "#242936", fontSize: 9.5, fontWeight: "800" },
-  sectionCopy: { color: "#8a93a4", fontSize: 7.5, lineHeight: 11, marginTop: 2 },
+  sectionTitle: { color: "#292929", fontSize: 9.5, fontWeight: "800" },
+  sectionCopy: { color: "#929292", fontSize: 7.5, lineHeight: 11, marginTop: 2 },
   flex: { flex: 1, minWidth: 0 },
   smallButton: { minWidth: 70, minHeight: 30, paddingHorizontal: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: "#d0d5de", borderRadius: 8, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
-  smallButtonText: { color: "#5368f5", fontSize: 8.5, fontWeight: "800" },
+  smallButtonText: { color: "#6e6e6e", fontSize: 8.5, fontWeight: "800" },
   artifactRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6, padding: 7, borderWidth: StyleSheet.hairlineWidth, borderColor: "#e4e7ec", borderRadius: 9, backgroundColor: "#fbfcfd" },
   artifactMark: { width: 27, height: 27, borderRadius: 8, backgroundColor: "#eef0ff", alignItems: "center", justifyContent: "center" },
-  artifactMarkText: { color: "#5368f5", fontSize: 10, fontWeight: "800" },
-  artifactTitle: { color: "#242936", fontSize: 9, fontWeight: "700" },
-  artifactMeta: { color: "#8a93a4", fontSize: 7.3, marginTop: 3 },
-  fieldLabel: { color: "#596273", fontSize: 8.7, fontWeight: "700", marginTop: 2, marginBottom: 6 },
-  input: { minHeight: 104, borderWidth: StyleSheet.hairlineWidth, borderColor: "#d8dce4", borderRadius: 10, padding: 10, color: "#151927", fontSize: 9.5, lineHeight: 15, textAlignVertical: "top", backgroundColor: "#fdfdfe" },
+  artifactMarkText: { color: "#6e6e6e", fontSize: 10, fontWeight: "800" },
+  artifactTitle: { color: "#292929", fontSize: 9, fontWeight: "700" },
+  artifactMeta: { color: "#929292", fontSize: 7.3, marginTop: 3 },
+  fieldLabel: { color: "#616161", fontSize: 8.7, fontWeight: "700", marginTop: 2, marginBottom: 6 },
+  input: { minHeight: 104, borderWidth: StyleSheet.hairlineWidth, borderColor: "#d8dce4", borderRadius: 10, padding: 10, color: "#191919", fontSize: 9.5, lineHeight: 15, textAlignVertical: "top", backgroundColor: "#fdfdfe" },
   actionRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 9 },
-  runButton: { flex: 1, minHeight: 40, borderRadius: 10, backgroundColor: "#5368f5", alignItems: "center", justifyContent: "center" },
+  runButton: { flex: 1, minHeight: 40, borderRadius: 10, backgroundColor: "#6e6e6e", alignItems: "center", justifyContent: "center" },
   runButtonText: { color: "#fff", fontSize: 10, fontWeight: "800" },
   cancelButton: { minHeight: 40, paddingHorizontal: 13, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: "#e0aeb4", backgroundColor: "#fff7f7", alignItems: "center", justifyContent: "center" },
   cancelButtonText: { color: "#b63e49", fontSize: 9, fontWeight: "800" },
   disabled: { opacity: 0.4 },
-  helper: { color: "#8a93a4", fontSize: 7.8, lineHeight: 12, marginTop: 7 },
-  empty: { color: "#8a93a4", fontSize: 8.7, textAlign: "center", lineHeight: 13, paddingVertical: 14 },
+  helper: { color: "#929292", fontSize: 7.8, lineHeight: 12, marginTop: 7 },
+  empty: { color: "#929292", fontSize: 8.7, textAlign: "center", lineHeight: 13, paddingVertical: 14 },
   centered: { minHeight: 64, alignItems: "center", justifyContent: "center", gap: 5 },
   permissionCard: { marginTop: 11, padding: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: "#e8c97a", borderRadius: 10, backgroundColor: "#fffaf0" },
   permissionEyebrow: { color: "#9a6b12", fontSize: 7, fontWeight: "900", letterSpacing: 0.8 },
@@ -729,58 +729,58 @@ const styles = StyleSheet.create({
   permissionActions: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 9 },
   rejectButton: { minHeight: 32, paddingHorizontal: 11, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: "#d8b4b8", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   rejectText: { color: "#a63e49", fontSize: 8.5, fontWeight: "800" },
-  allowButton: { minHeight: 32, paddingHorizontal: 11, borderRadius: 8, backgroundColor: "#5368f5", alignItems: "center", justifyContent: "center" },
+  allowButton: { minHeight: 32, paddingHorizontal: 11, borderRadius: 8, backgroundColor: "#6e6e6e", alignItems: "center", justifyContent: "center" },
   allowText: { color: "#fff", fontSize: 8.5, fontWeight: "800" },
   permissionFoot: { color: "#9b8a69", fontSize: 7.2, lineHeight: 11, marginTop: 7 },
   traceHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 13, marginBottom: 8 },
-  traceCount: { color: "#8a93a4", fontSize: 7.5 },
+  traceCount: { color: "#929292", fontSize: 7.5 },
   eventRow: { flexDirection: "row", gap: 7, marginBottom: 7, alignItems: "flex-start" },
   eventIcon: { width: 25, height: 25, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: "#d8dce4", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   eventIconDanger: { borderColor: "#efc8cc", backgroundColor: "#fff0f1" },
-  eventIconText: { color: "#697385", fontSize: 8.5, fontWeight: "800" },
+  eventIconText: { color: "#727272", fontSize: 8.5, fontWeight: "800" },
   eventCard: { flex: 1, backgroundColor: "#fbfcfd", borderWidth: StyleSheet.hairlineWidth, borderColor: "#e4e7ec", borderRadius: 9, padding: 9 },
   eventTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
-  eventTitle: { flex: 1, color: "#242936", fontSize: 9.3, fontWeight: "700" },
-  eventStatus: { color: "#657082", fontSize: 7, fontWeight: "700" },
+  eventTitle: { flex: 1, color: "#292929", fontSize: 9.3, fontWeight: "700" },
+  eventStatus: { color: "#6f6f6f", fontSize: 7, fontWeight: "700" },
   eventStatusDanger: { color: "#b63e49" },
-  eventDetail: { color: "#687284", fontSize: 8.2, lineHeight: 12.5, marginTop: 4 },
-  eventMeta: { color: "#9aa2b1", fontSize: 7, marginTop: 5 },
+  eventDetail: { color: "#717171", fontSize: 8.2, lineHeight: 12.5, marginTop: 4 },
+  eventMeta: { color: "#a1a1a1", fontSize: 7, marginTop: 5 },
   emptyTrace: { minHeight: 82, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: "#d8dce4", borderRadius: 10, alignItems: "center", justifyContent: "center", padding: 13 },
   tabs: { flexDirection: "row", gap: 5, padding: 4, borderRadius: 9, backgroundColor: "#f1f3f6", marginBottom: 9 },
   tab: { flex: 1, minHeight: 31, borderRadius: 7, alignItems: "center", justifyContent: "center" },
   tabActive: { backgroundColor: "#fff", borderWidth: StyleSheet.hairlineWidth, borderColor: "#dfe2e8" },
-  tabText: { color: "#7a8393", fontSize: 8, fontWeight: "700" },
-  tabTextActive: { color: "#3e4fc4" },
+  tabText: { color: "#828282", fontSize: 8, fontWeight: "700" },
+  tabTextActive: { color: "#545454" },
   refreshButton: { minWidth: 58, minHeight: 29, paddingHorizontal: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: "#d8dce4", borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },
-  refreshText: { color: "#5368f5", fontSize: 8, fontWeight: "800" },
+  refreshText: { color: "#6e6e6e", fontSize: 8, fontWeight: "800" },
   driftBanner: { padding: 9, borderRadius: 8, backgroundColor: "#fff0f1", borderWidth: StyleSheet.hairlineWidth, borderColor: "#efc8cc", marginBottom: 8 },
   driftTitle: { color: "#a63e49", fontSize: 8.7, fontWeight: "800" },
   driftCopy: { color: "#a75a62", fontSize: 7.3, lineHeight: 11, marginTop: 3 },
   fileRow: { minHeight: 50, flexDirection: "row", alignItems: "center", gap: 8, padding: 7, marginBottom: 6, borderWidth: StyleSheet.hairlineWidth, borderColor: "#e4e7ec", borderRadius: 9, backgroundColor: "#fbfcfd" },
-  fileRowSelected: { borderColor: "#aeb9ff", backgroundColor: "#f4f5ff" },
+  fileRowSelected: { borderColor: "#bcbcbc", backgroundColor: "#f4f5ff" },
   fileRowUnsafe: { borderColor: "#efc8cc", backgroundColor: "#fff7f7" },
   fileMark: { width: 27, height: 27, borderRadius: 8, backgroundColor: "#f0f2f5", alignItems: "center", justifyContent: "center" },
   fileMarkChanged: { backgroundColor: "#eef0ff" },
-  fileMarkText: { color: "#657082", fontSize: 9, fontWeight: "800" },
+  fileMarkText: { color: "#6f6f6f", fontSize: 9, fontWeight: "800" },
   fileCopy: { flex: 1, minWidth: 0 },
-  fileTitle: { color: "#242936", fontSize: 8.8, fontWeight: "700" },
-  fileMeta: { color: "#8a93a4", fontSize: 7.1, marginTop: 3 },
+  fileTitle: { color: "#292929", fontSize: 8.8, fontWeight: "700" },
+  fileMeta: { color: "#929292", fontSize: 7.1, marginTop: 3 },
   changePill: { paddingHorizontal: 6, paddingVertical: 4, borderRadius: 999, backgroundColor: "#eef0ff" },
   changePillDanger: { backgroundColor: "#fff0f1" },
-  changePillText: { color: "#5869d5", fontSize: 6.8, fontWeight: "800" },
+  changePillText: { color: "#6d6d6d", fontSize: 6.8, fontWeight: "800" },
   fileDetail: { marginTop: 9, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#e4e7ec" },
   fileDetailHead: { flexDirection: "row", gap: 8, marginBottom: 7 },
-  fileDetailTitle: { color: "#202532", fontSize: 9.5, fontWeight: "800" },
-  fileDetailMeta: { color: "#8a93a4", fontSize: 7.2, marginTop: 3 },
-  codeScroll: { maxHeight: 300, borderRadius: 8, backgroundColor: "#151927" },
+  fileDetailTitle: { color: "#252525", fontSize: 9.5, fontWeight: "800" },
+  fileDetailMeta: { color: "#929292", fontSize: 7.2, marginTop: 3 },
+  codeScroll: { maxHeight: 300, borderRadius: 8, backgroundColor: "#191919" },
   code: { color: "#e8eaf0", fontSize: 8, lineHeight: 12, padding: 10, fontFamily: "monospace" },
   historyHead: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4, marginBottom: 8 },
-  historyCopy: { color: "#8a93a4", fontSize: 7.5, marginTop: 2 },
+  historyCopy: { color: "#929292", fontSize: 7.5, marginTop: 2 },
   runRow: { minHeight: 54, flexDirection: "row", alignItems: "center", gap: 8, padding: 7, marginBottom: 6, borderWidth: StyleSheet.hairlineWidth, borderColor: "#e4e7ec", borderRadius: 9, backgroundColor: "#fbfcfd" },
-  runRowSelected: { borderColor: "#aeb9ff", backgroundColor: "#f3f4ff" },
+  runRowSelected: { borderColor: "#bcbcbc", backgroundColor: "#f3f4ff" },
   runIcon: { width: 27, height: 27, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: "#d8dce4", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   runCopy: { flex: 1, minWidth: 0 },
-  runTitle: { color: "#242936", fontSize: 9, fontWeight: "700" },
-  runMeta: { color: "#8a93a4", fontSize: 7.2, marginTop: 3 },
-  runStatus: { color: "#657082", fontSize: 7.2, fontWeight: "800" },
+  runTitle: { color: "#292929", fontSize: 9, fontWeight: "700" },
+  runMeta: { color: "#929292", fontSize: 7.2, marginTop: 3 },
+  runStatus: { color: "#6f6f6f", fontSize: 7.2, fontWeight: "800" },
 });

@@ -3,15 +3,15 @@
 
 body.reference-audit-active {
   --sidebar-width: 258px;
-  --ah-bg: #071015;
-  --ah-panel: #0a1419;
-  --ah-panel-2: #0d181e;
-  --ah-panel-3: #111e25;
-  --ah-line: #1d2b32;
-  --ah-line-strong: #2a4048;
+  --ah-bg: #0e0e0e;
+  --ah-panel: #121212;
+  --ah-panel-2: #161616;
+  --ah-panel-3: #1c1c1c;
+  --ah-line: #292929;
+  --ah-line-strong: #3c3c3c;
   --ah-text: #eef5f6;
   --ah-soft: #a1b0b5;
-  --ah-faint: #697c83;
+  --ah-faint: #787878;
   --ah-accent: #52d5cb;
   --ah-accent-soft: rgba(82, 213, 203, .11);
   --ah-good: #55d59b;
@@ -20,19 +20,19 @@ body.reference-audit-active {
   --ah-warn-soft: rgba(231, 180, 74, .11);
   --ah-bad: #ff7070;
   --ah-bad-soft: rgba(255, 112, 112, .11);
-  background: #061015;
+  background: #0e0e0e;
 }
 
 body.reference-audit-active .app-shell {
-  background: #061015;
+  background: #0e0e0e;
 }
 
 body.reference-audit-active .sidebar {
   padding: 12px 10px 12px;
   background:
     radial-gradient(circle at 18% -6%, rgba(69, 183, 176, .08), transparent 28%),
-    linear-gradient(180deg, #071116 0%, #081217 100%);
-  border-right: 1px solid #1b2a31;
+    linear-gradient(180deg, #0f0f0f 0%, #101010 100%);
+  border-right: 1px solid #272727;
   color: #edf4f5;
 }
 
@@ -47,7 +47,7 @@ body.reference-audit-active .brand-mark {
   height: 25px;
   border-radius: 50%;
   border: 1px solid #34706f;
-  background: linear-gradient(145deg, #173f40, #0e292e);
+  background: linear-gradient(145deg, #373737, #242424);
   color: #8ef0e8;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.035), 0 0 18px rgba(82,213,203,.05);
   font-size: 11px;
@@ -59,7 +59,7 @@ body.reference-audit-active .brand-name {
 }
 
 body.reference-audit-active .brand-tagline {
-  color: #758990;
+  color: #858585;
   font-size: 8px;
 }
 
@@ -91,21 +91,21 @@ body.reference-audit-active .ref-sidebar-shell {
   gap: 6px;
   margin: 2px 0 16px;
   padding: 0 9px;
-  border: 1px solid #203038;
+  border: 1px solid #2d2d2d;
   border-radius: 7px;
-  background: #0e191f;
+  background: #171717;
   color: #9baab0;
   text-align: left;
   cursor: pointer;
 }
 
 .ref-sidebar-search:hover {
-  border-color: #2c464d;
-  background: #101e24;
+  border-color: #414141;
+  background: #1b1b1b;
 }
 
 .ref-sidebar-search > span:first-child {
-  color: #8fa0a6;
+  color: #9d9d9d;
   font-size: 15px;
 }
 
@@ -119,9 +119,9 @@ body.reference-audit-active .ref-sidebar-shell {
 .ref-sidebar-search kbd {
   margin: 0;
   padding: 2px 5px;
-  border-color: #26363e;
-  background: #101d23;
-  color: #71838a;
+  border-color: #333333;
+  background: #1b1b1b;
+  color: #808080;
   box-shadow: none;
   font-size: 8px;
 }
@@ -138,7 +138,7 @@ body.reference-audit-active .ref-sidebar-shell {
   justify-content: space-between;
   gap: 10px;
   padding: 0 7px 5px;
-  color: #72848b;
+  color: #818181;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: .06em;
@@ -147,9 +147,9 @@ body.reference-audit-active .ref-sidebar-shell {
 
 .ref-sidebar-heading button {
   height: 22px;
-  border: 1px solid #26373f;
+  border: 1px solid #343434;
   border-radius: 5px;
-  background: #0d191f;
+  background: #171717;
   color: #b9c6ca;
   padding: 0 7px;
   cursor: pointer;
@@ -170,18 +170,18 @@ body.reference-audit-active .ref-sidebar-shell {
   border-radius: 6px;
   padding: 0 8px;
   background: transparent;
-  color: #8fa1a7;
+  color: #9e9e9e;
   text-align: left;
   cursor: pointer;
 }
 
 .ref-sidebar-link:hover {
-  background: #0e1c22;
+  background: #191919;
   color: #e4edef;
 }
 
 .ref-sidebar-link > span {
-  color: #71868d;
+  color: #828282;
   text-align: center;
   font-size: 11px;
 }
@@ -196,7 +196,7 @@ body.reference-audit-active .ref-sidebar-shell {
 
 .ref-sidebar-link em {
   min-width: 20px;
-  color: #667980;
+  color: #757575;
   font-size: 8px;
   font-style: normal;
   text-align: right;
@@ -235,7 +235,7 @@ body.reference-audit-active .ref-sidebar-shell {
 }
 
 .ref-recent-audit:hover {
-  background: #0d1c22;
+  background: #191919;
 }
 
 .ref-recent-audit.active {
@@ -262,7 +262,7 @@ body.reference-audit-active .ref-sidebar-shell {
 
 .ref-recent-copy small {
   margin-top: 3px;
-  color: #72858c;
+  color: #818181;
   font-size: 7.7px;
 }
 
@@ -277,9 +277,9 @@ body.reference-audit-active .ref-sidebar-shell {
 
 .ref-status {
   padding: 3px 5px;
-  border: 1px solid #20343a;
-  background: #0d1a20;
-  color: #809299;
+  border: 1px solid #303030;
+  background: #181818;
+  color: #8f8f8f;
   font-size: 6.7px;
 }
 
@@ -309,7 +309,7 @@ body.reference-audit-active .ref-sidebar-shell {
   margin: 6px 6px 0;
   border: 0;
   background: transparent;
-  color: #8b9da4;
+  color: #9a9a9a;
   cursor: pointer;
   font-size: 8px;
 }
@@ -321,9 +321,9 @@ body.reference-audit-active .ref-sidebar-shell {
   flex: 0 0 auto;
   margin: 7px 4px 1px;
   padding: 10px 11px;
-  border: 1px solid #22323a;
+  border: 1px solid #2f2f2f;
   border-radius: 8px;
-  background: #0c171d;
+  background: #151515;
 }
 
 .ref-sidebar-promise strong {
@@ -336,7 +336,7 @@ body.reference-audit-active .ref-sidebar-shell {
 .ref-sidebar-promise small {
   display: block;
   margin-top: 5px;
-  color: #667981;
+  color: #767676;
   font-size: 7.5px;
   line-height: 1.4;
 }
@@ -347,29 +347,29 @@ body.reference-audit-active .topbar {
 
 body.reference-audit-active .app-main {
   height: 100dvh;
-  background: #061015;
+  background: #0e0e0e;
 }
 
 body.reference-audit-active .main-content {
   padding: 0;
   overflow: hidden;
-  background: #061015;
+  background: #0e0e0e;
 }
 
 body.reference-audit-active .audit-harness {
   height: 100dvh;
   min-height: 0;
   background:
-    radial-gradient(circle at 54% -12%, rgba(61,142,143,.07), transparent 31%),
-    #071015;
+    radial-gradient(circle at 54% -12%, rgba(125,125,125,.07), transparent 31%),
+    #0e0e0e;
 }
 
 body.reference-audit-active .ah-header {
   min-height: 48px;
   height: 48px;
   padding: 0 12px;
-  border-bottom-color: #1d2b32;
-  background: rgba(7,16,21,.98);
+  border-bottom-color: #292929;
+  background: rgba(14,14,14,.98);
 }
 
 body.reference-audit-active .ah-header-main {
@@ -379,7 +379,7 @@ body.reference-audit-active .ah-header-main {
 body.reference-audit-active .ah-paper-mark {
   width: 23px;
   height: 23px;
-  border-color: #285456;
+  border-color: #4b4b4b;
   font-size: 8px;
 }
 
@@ -396,7 +396,7 @@ body.reference-audit-active .ah-title-row h1 {
 
 body.reference-audit-active .ah-header-main p {
   margin-top: 2px;
-  color: #65777f;
+  color: #747474;
   font-size: 7px;
 }
 
@@ -411,10 +411,10 @@ body.reference-audit-active .ah-header-actions button,
   align-items: center;
   justify-content: center;
   gap: 5px;
-  border: 1px solid #203139;
+  border: 1px solid #2e2e2e;
   border-radius: 6px;
-  background: #0b151a;
-  color: #9eafb4;
+  background: #131313;
+  color: #acacac;
   padding: 0 8px;
   font-size: 7.6px;
   font-weight: 600;
@@ -425,8 +425,8 @@ body.reference-audit-active .ah-header-actions button,
 }
 
 body.reference-audit-active .ah-header-actions button.primary {
-  border-color: #275354;
-  background: #10292a;
+  border-color: #4a4a4a;
+  background: #242424;
   color: #91ebe4;
 }
 
@@ -434,14 +434,14 @@ body.reference-audit-active .ah-workspace-tabs {
   height: 36px;
   padding: 0 12px;
   gap: 5px;
-  border-bottom-color: #1d2b32;
-  background: #081217;
+  border-bottom-color: #292929;
+  background: #101010;
 }
 
 body.reference-audit-active .ah-workspace-tabs button {
   height: 35px;
   padding: 0 8px;
-  color: #778a91;
+  color: #868686;
   font-size: 8px;
   font-weight: 580;
 }
@@ -455,8 +455,8 @@ body.reference-audit-active .ah-workspace-tabs button span {
   min-width: 15px;
   height: 15px;
   margin-left: 3px;
-  background: #132129;
-  color: #91a3a9;
+  background: #1f1f1f;
+  color: #a0a0a0;
   font-size: 6.5px;
 }
 
@@ -491,22 +491,22 @@ body.reference-audit-active .ah-workspace-tabs button span {
 }
 
 body.reference-audit-active .ah-splitter {
-  background: #081116;
-  border-color: #18272e;
+  background: #0f0f0f;
+  border-color: #242424;
 }
 
 body.reference-audit-active .ah-splitter:hover,
 body.reference-audit-active.ah-resizing .ah-splitter {
-  background: #123036;
-  border-color: #2c5a5c;
+  background: #2a2a2a;
+  border-color: #505050;
 }
 
 body.reference-audit-active .ah-center-head,
 body.reference-audit-active .ah-inspector-head {
   height: 45px;
   padding: 0 12px;
-  border-bottom-color: #1d2b32;
-  background: #091318;
+  border-bottom-color: #292929;
+  background: #111111;
 }
 
 body.reference-audit-active .ah-agent-title {
@@ -516,7 +516,7 @@ body.reference-audit-active .ah-agent-title {
 body.reference-audit-active .ah-agent-avatar {
   width: 22px;
   height: 22px;
-  border-color: #285456;
+  border-color: #4b4b4b;
   font-size: 7px;
 }
 
@@ -530,12 +530,12 @@ body.reference-audit-active .ah-inspector-head strong {
 body.reference-audit-active .ah-agent-title small,
 body.reference-audit-active .ah-inspector-head small {
   margin-top: 2px;
-  color: #667a82;
+  color: #767676;
   font-size: 6.8px;
 }
 
 body.reference-audit-active .ah-inspector-head > span {
-  color: #72858c;
+  color: #818181;
   font-size: 7px;
 }
 
@@ -547,7 +547,7 @@ body.reference-audit-active .ah-thread {
   padding: 14px 15px 18px;
   background:
     radial-gradient(circle at 50% 0%, rgba(82,213,203,.025), transparent 27%),
-    #081217;
+    #101010;
 }
 
 body.reference-audit-active .ah-message {
@@ -557,9 +557,9 @@ body.reference-audit-active .ah-message {
 body.reference-audit-active .ah-message.user {
   max-width: 94%;
   margin-left: 0;
-  border: 1px solid #203139;
+  border: 1px solid #2e2e2e;
   border-radius: 8px;
-  background: #0d181e;
+  background: #161616;
   padding: 9px 10px;
 }
 
@@ -573,15 +573,15 @@ body.reference-audit-active .ah-message.assistant {
 }
 
 body.reference-audit-active .ah-message-body {
-  border-color: #203139;
+  border-color: #2e2e2e;
   border-radius: 4px 8px 8px 8px;
-  background: #0d181e;
+  background: #161616;
   padding: 9px 10px;
 }
 
 body.reference-audit-active .ah-message-meta {
   margin-bottom: 4px;
-  color: #667981;
+  color: #767676;
   font-size: 7px;
 }
 
@@ -597,7 +597,7 @@ body.reference-audit-active .ah-event {
   grid-template-columns: 24px minmax(0,1fr) auto;
   gap: 8px;
   border: 0;
-  border-left: 1px solid #1e3037;
+  border-left: 1px solid #2d2d2d;
   border-radius: 0;
   padding: 7px 8px 7px 12px;
   background: transparent;
@@ -611,8 +611,8 @@ body.reference-audit-active .ah-event-icon {
   width: 20px;
   height: 20px;
   margin-left: -23px;
-  border: 1px solid #274047;
-  background: #0c1a20;
+  border: 1px solid #3b3b3b;
+  background: #171717;
   font-size: 7px;
 }
 
@@ -624,7 +624,7 @@ body.reference-audit-active .ah-event-copy strong {
 
 body.reference-audit-active .ah-event-copy small {
   margin-top: 3px;
-  color: #768990;
+  color: #858585;
   font-size: 7.2px;
   line-height: 1.4;
 }
@@ -632,15 +632,15 @@ body.reference-audit-active .ah-event-copy small {
 body.reference-audit-active .ah-badge {
   height: 18px;
   padding: 0 6px;
-  border-color: #263940;
-  background: #101d23;
+  border-color: #353535;
+  background: #1b1b1b;
   font-size: 6.5px;
 }
 
 body.reference-audit-active .ah-composer-wrap {
   padding: 7px 12px 11px;
-  border-top-color: #1d2b32;
-  background: #081217;
+  border-top-color: #292929;
+  background: #101010;
 }
 
 body.reference-audit-active .ah-command-row {
@@ -650,24 +650,24 @@ body.reference-audit-active .ah-command-row {
 
 body.reference-audit-active .ah-command-row button,
 body.reference-audit-active .ah-suggestions button {
-  border-color: #22333b;
+  border-color: #303030;
   border-radius: 5px;
-  background: #0e1a20;
+  background: #181818;
   color: #9babb0;
   padding: 4px 7px;
   font-size: 7px;
 }
 
 body.reference-audit-active .ah-command-row > span {
-  color: #5d7077;
+  color: #6c6c6c;
   font-size: 6.5px;
 }
 
 body.reference-audit-active .ah-composer {
   min-height: 51px;
-  border-color: #253b43;
+  border-color: #373737;
   border-radius: 8px;
-  background: #0d181e;
+  background: #161616;
   box-shadow: none;
 }
 
@@ -686,7 +686,7 @@ body.reference-audit-active #ah-send {
   border-radius: 7px;
   border: 1px solid #3b7a78;
   background: #4bc9c0;
-  color: #071115;
+  color: #0f0f0f;
   font-size: 13px;
   font-weight: 800;
 }
@@ -695,14 +695,14 @@ body.reference-audit-active .ah-tabs {
   height: 35px;
   padding: 0 9px;
   gap: 4px;
-  border-bottom-color: #1d2b32;
-  background: #081217;
+  border-bottom-color: #292929;
+  background: #101010;
 }
 
 body.reference-audit-active .ah-tabs button {
   height: 34px;
   padding: 0 7px;
-  color: #75888f;
+  color: #848484;
   font-size: 7.6px;
   font-weight: 570;
 }
@@ -713,15 +713,15 @@ body.reference-audit-active .ah-tabs button.active {
 }
 
 body.reference-audit-active .ah-inspector {
-  background: #071116;
+  background: #0f0f0f;
 }
 
 body.reference-audit-active .ah-pdf-bar {
   height: 31px;
   padding: 0 9px;
-  border-bottom-color: #1d2b32;
-  color: #73868d;
-  background: #091318;
+  border-bottom-color: #292929;
+  color: #828282;
+  background: #111111;
   font-size: 7px;
 }
 
@@ -736,8 +736,8 @@ body.reference-audit-active .ah-pdf {
 
 body.reference-audit-active .ah-source-card {
   max-height: 150px;
-  border-top-color: #1d2b32;
-  background: #0a151a;
+  border-top-color: #292929;
+  background: #131313;
 }
 
 body.reference-audit-active .ah-source-pane:has(.ref-selected-analysis) .ah-source-card {
@@ -746,8 +746,8 @@ body.reference-audit-active .ah-source-pane:has(.ref-selected-analysis) .ah-sour
 
 .ref-selected-analysis {
   flex: 0 0 auto;
-  border-top: 1px solid #1d2b32;
-  background: linear-gradient(180deg, #0a151a, #091318);
+  border-top: 1px solid #292929;
+  background: linear-gradient(180deg, #131313, #111111);
   color: #dfe8ea;
 }
 
@@ -758,7 +758,7 @@ body.reference-audit-active .ah-source-pane:has(.ref-selected-analysis) .ah-sour
   justify-content: space-between;
   gap: 10px;
   padding: 7px 10px;
-  border-bottom: 1px solid #1b2a31;
+  border-bottom: 1px solid #272727;
 }
 
 .ref-analysis-head > div {
@@ -781,7 +781,7 @@ body.reference-audit-active .ah-source-pane:has(.ref-selected-analysis) .ah-sour
 
 .ref-analysis-head small {
   margin-top: 2px;
-  color: #6d8188;
+  color: #7d7d7d;
   font-size: 6.7px;
 }
 
@@ -797,13 +797,13 @@ body.reference-audit-active .ah-source-pane:has(.ref-selected-analysis) .ah-sour
 .ref-analysis-metrics {
   display: grid;
   grid-template-columns: minmax(120px,1.4fr) repeat(5,minmax(62px,.8fr));
-  border-bottom: 1px solid #1b2a31;
+  border-bottom: 1px solid #272727;
 }
 
 .ref-analysis-metrics > div {
   min-width: 0;
   padding: 7px 9px;
-  border-right: 1px solid #18272d;
+  border-right: 1px solid #242424;
 }
 
 .ref-analysis-metrics > div:last-child {
@@ -819,7 +819,7 @@ body.reference-audit-active .ah-source-pane:has(.ref-selected-analysis) .ah-sour
 }
 
 .ref-analysis-metrics span {
-  color: #6f8289;
+  color: #7e7e7e;
   font-size: 6.3px;
 }
 
@@ -850,8 +850,8 @@ body.reference-audit-active .ah-source-pane:has(.ref-selected-analysis) .ah-sour
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: #112027;
-  color: #7f9299;
+  background: #1d1d1d;
+  color: #8e8e8e;
   font-size: 7px;
 }
 
@@ -873,22 +873,22 @@ body.reference-audit-active .ah-source-pane:has(.ref-selected-analysis) .ah-sour
 
 .ref-analysis-check small {
   margin-top: 2px;
-  color: #71858c;
+  color: #818181;
   font-size: 6.4px;
   line-height: 1.35;
 }
 
 /* Runs keeps the same live data and API trace, but adopts the same product visual language. */
 body.reference-runs-active {
-  --bg: #071015;
-  --surface: #0a1419;
-  --surface-soft: #0d181e;
-  --surface-strong: #111e25;
+  --bg: #0e0e0e;
+  --surface: #121212;
+  --surface-soft: #161616;
+  --surface-strong: #1c1c1c;
   --text: #e9f1f3;
-  --text-soft: #9aaab0;
-  --text-faint: #697c83;
-  --line: #1d2b32;
-  --line-strong: #2a4048;
+  --text-soft: #a7a7a7;
+  --text-faint: #787878;
+  --line: #292929;
+  --line-strong: #3c3c3c;
   --accent: #52d5cb;
   --accent-soft: rgba(82,213,203,.12);
   --accent-ink: #80e5de;
@@ -898,31 +898,31 @@ body.reference-runs-active {
   --warn-soft: rgba(231,180,74,.11);
   --bad: #ff7070;
   --bad-soft: rgba(255,112,112,.11);
-  background: #071015;
+  background: #0e0e0e;
 }
 
 body.reference-runs-active .app-shell,
 body.reference-runs-active .app-main,
 body.reference-runs-active .main-content {
-  background: #071015;
+  background: #0e0e0e;
 }
 
 body.reference-runs-active .topbar {
-  background: #081217;
-  border-bottom-color: #1d2b32;
+  background: #101010;
+  border-bottom-color: #292929;
   color: #e7eff1;
 }
 
 body.reference-runs-active .command-trigger,
 body.reference-runs-active .ghost-button {
-  border-color: #203139;
-  background: #0d181e;
-  color: #9eafb4;
+  border-color: #2e2e2e;
+  background: #161616;
+  color: #acacac;
 }
 
 body.reference-runs-active .sidebar {
-  background: linear-gradient(180deg, #071116, #081217);
-  border-right-color: #1d2b32;
+  background: linear-gradient(180deg, #0f0f0f, #101010);
+  border-right-color: #292929;
 }
 
 body.reference-runs-active .main-content {
@@ -943,8 +943,8 @@ body.reference-runs-active .panel,
 body.reference-runs-active .run-inspector-row,
 body.reference-runs-active .run-detail-shell,
 body.reference-runs-active .run-trace-card {
-  background: #0a1419;
-  border-color: #1d2b32;
+  background: #121212;
+  border-color: #292929;
   box-shadow: none;
 }
 
@@ -955,7 +955,7 @@ body.reference-runs-active .run-inspector-grid {
 
 body.reference-runs-active .run-inspector-row:hover,
 body.reference-runs-active .run-inspector-row.selected {
-  background: #0e2025;
+  background: #1d1d1d;
 }
 
 body.reference-runs-active .run-inspector-row.selected {
@@ -972,7 +972,7 @@ body.reference-runs-active .run-row-copy small,
 body.reference-runs-active .run-detail-field span,
 body.reference-runs-active .run-event-meta,
 body.reference-runs-active .page-subtitle {
-  color: #71858c;
+  color: #818181;
 }
 
 @media (max-width: 1100px) {
@@ -1026,7 +1026,7 @@ body.reference-runs-active .page-subtitle {
     grid-template-columns: repeat(2,minmax(0,1fr));
   }
 
-  .ref-analysis-metrics > div:nth-child(odd) { border-right: 1px solid #18272d; }
+  .ref-analysis-metrics > div:nth-child(odd) { border-right: 1px solid #242424; }
   .ref-analysis-metrics > div:nth-child(even) { border-right: 0; }
 }
 

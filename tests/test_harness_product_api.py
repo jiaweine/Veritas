@@ -109,7 +109,7 @@ def test_product_api_overview_search_runs_and_pwa(tmp_path, monkeypatch) -> None
 
     assert client.get("/manifest.webmanifest").status_code == 200
     assert client.get("/sw.js").status_code == 200
-    assert "Research Audit Workbench" in client.get("/").text
+    assert "Veritas Research Conversation" in client.get("/").text
 
 
 def test_replication_stream_is_correlated_and_server_configured(tmp_path, monkeypatch) -> None:

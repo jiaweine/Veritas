@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 from playwright.sync_api import sync_playwright
 
+from smoke_conversation_browser import run as run_conversation
 from smoke_harness_browser import _drain_message, _seed_audit, _wait_for_server
 
 
@@ -77,6 +78,13 @@ def main() -> None:
             page.on("pageerror", lambda error: page_errors.append(str(error)))
             page.goto(base_url, wait_until="networkidle")
 
+            if page.evaluate("document.body.classList.contains('agent-open')"):
+                page.locator("#agent-close").click()
+                page.wait_for_function(
+                    "!document.body.classList.contains('agent-open')",
+                    timeout=10_000,
+                )
+
             heading = page.get_by_role("heading", name="Recent activity")
             heading.wait_for(state="visible", timeout=20_000)
             panel = heading.locator("xpath=ancestor::article[1]")
@@ -116,6 +124,9 @@ def main() -> None:
     if not (output_dir / "overview-warm-activity.png").is_file():
         raise AssertionError("Overview warm activity screenshot was not captured")
 
+    # Keep the conversation product contract on the existing Chromium workflow path.
+    run_conversation(base_url, output_dir)
+
     print(
         json.dumps(
             {
@@ -124,6 +135,7 @@ def main() -> None:
                 "newest_event_id": newest.get("event_id"),
                 "newest_title": newest_title,
                 "screenshot": "overview-warm-activity.png",
+                "conversation_screenshot": "conversation-home.png",
             },
             indent=2,
             sort_keys=True,

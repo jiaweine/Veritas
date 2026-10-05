@@ -32,7 +32,7 @@ def test_web_harness_upload_stream_and_pdf(tmp_path) -> None:
     client = TestClient(create_app(tmp_path))
 
     assert client.get("/api/health").json()["status"] == "ok"
-    assert "Research Audit Harness" in client.get("/").text
+    assert "Veritas Research Conversation" in client.get("/").text
 
     created = client.post(
         "/api/audits",
