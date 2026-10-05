@@ -2,10 +2,14 @@ const main = document.querySelector("#main-content");
 const sidebar = document.querySelector("#sidebar");
 const commandTrigger = document.querySelector("#command-trigger");
 
+const REFERENCE_AUDIT_LIMIT = 7;
+const REFERENCE_RUN_LIMIT = 50;
 const refState = {
   auditId: "",
   audits: [],
   runs: [],
+  auditTotal: 0,
+  runTotal: 0,
   sidebarRequest: 0,
   analysisRequest: 0,
   enhancementQueued: false,
@@ -65,8 +69,8 @@ function renderReferenceSidebar() {
     sidebar.querySelector(".brand-row")?.after(shell);
   }
 
-  const auditCount = refState.audits.length;
-  const runCount = refState.runs.length;
+  const auditCount = refState.auditTotal || refState.audits.length;
+  const runCount = refState.runTotal || refState.runs.length;
   const recent = refState.audits.slice(0, 7);
   shell.innerHTML = `
     <button class="ref-sidebar-search" type="button" data-ref-command>
@@ -105,11 +109,16 @@ function renderReferenceSidebar() {
 async function hydrateSidebar(auditId) {
   const token = ++refState.sidebarRequest;
   try {
-    const [audits, runs] = await Promise.all([json("/api/v1/audits"), json("/api/v1/runs")]);
+    const [auditPage, runPage] = await Promise.all([
+      json(`/api/v1/audit-pages?limit=${REFERENCE_AUDIT_LIMIT}`),
+      json(`/api/v1/run-pages?limit=${REFERENCE_RUN_LIMIT}`),
+    ]);
     if (token !== refState.sidebarRequest) return;
     refState.auditId = auditId;
-    refState.audits = Array.isArray(audits) ? audits : [];
-    refState.runs = Array.isArray(runs) ? runs : [];
+    refState.audits = Array.isArray(auditPage?.items) ? auditPage.items : [];
+    refState.runs = Array.isArray(runPage?.items) ? runPage.items : [];
+    refState.auditTotal = Number(auditPage?.total) || refState.audits.length;
+    refState.runTotal = Number(runPage?.total) || refState.runs.length;
     renderReferenceSidebar();
   } catch (error) {
     console.error("Unable to hydrate reference sidebar", error);
