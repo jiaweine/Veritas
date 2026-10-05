@@ -2,9 +2,9 @@ const CACHE = "veritas-shell-v29";
 const CACHE_REVISION = "audit-pagination-1";
 const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`;
 const FINDING_CACHE_REVISION = "finding-pagination-1";
-const SHELL_CACHE = `${ACTIVE_CACHE}-${FINDING_CACHE_REVISION}`;
-// Bumping this source-level revision forces a fresh service-worker install.
-// Keep SHELL_CACHE stable for the existing Audit/Runs/Findings compatibility contract;
+const PRODUCT_BOOT_CACHE_REVISION = "resilient-product-boot-1";
+const SHELL_CACHE = `${ACTIVE_CACHE}-${FINDING_CACHE_REVISION}-${PRODUCT_BOOT_CACHE_REVISION}`;
+// Bumping a source-level revision forces a fresh service-worker install.
 // install re-adds every shell asset and therefore refreshes product slices.
 const BENCHMARK_CACHE_REVISION = "benchmark-history-1";
 const COMMAND_SEARCH_CACHE_REVISION = "command-search-1";
@@ -69,7 +69,7 @@ const SHELL = [
 self.addEventListener("install", (event) => {
   // Reference source-level revisions in install so future static checks do not
   // mistake them for dead metadata; the worker source hash is the update trigger.
-  if (!BENCHMARK_CACHE_REVISION || !COMMAND_SEARCH_CACHE_REVISION) return;
+  if (!BENCHMARK_CACHE_REVISION || !COMMAND_SEARCH_CACHE_REVISION || !PRODUCT_BOOT_CACHE_REVISION) return;
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 
