@@ -1,0 +1,67 @@
+name: conversation-ui-smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/veritas/harness/**"
+      - "scripts/smoke_conversation_browser.py"
+      - "scripts/smoke_harness_browser.py"
+      - "pyproject.toml"
+      - ".github/workflows/conversation-ui-smoke.yml"
+  pull_request:
+    paths:
+      - "src/veritas/harness/**"
+      - "scripts/smoke_conversation_browser.py"
+      - "scripts/smoke_harness_browser.py"
+      - "pyproject.toml"
+      - ".github/workflows/conversation-ui-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  chromium-conversation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - name: Install Veritas browser-smoke dependencies
+        run: pip install -e '.[dev,pdf,web,replication,browser]'
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Start isolated Veritas harness
+        run: |
+          mkdir -p "$RUNNER_TEMP/veritas-conversation-smoke/data"
+          nohup veritas-harness \
+            --host 127.0.0.1 \
+            --port 8765 \
+            --data-dir "$RUNNER_TEMP/veritas-conversation-smoke/data" \
+            > "$RUNNER_TEMP/veritas-conversation-smoke/harness.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/veritas-conversation-smoke/harness.pid"
+      - name: Run bounded Conversation Chromium smoke
+        run: |
+          rm -rf artifacts/conversation
+          python scripts/smoke_conversation_browser.py \
+            --base-url http://127.0.0.1:8765 \
+            --output-dir artifacts/conversation
+      - name: Upload Conversation screenshot
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: veritas-conversation-ui-screenshot
+          path: artifacts/conversation/*.png
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload Conversation harness log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: veritas-conversation-ui-log
+          path: ${{ runner.temp }}/veritas-conversation-smoke/harness.log
+          if-no-files-found: warn
+          retention-days: 14

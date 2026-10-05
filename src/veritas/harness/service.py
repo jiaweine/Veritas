@@ -531,7 +531,10 @@ class AuditHarness:
             yield failed.to_dict()
 
     def stream_message(self, audit_id: str, message: str) -> Iterator[dict[str, Any]]:
-        record = self.store.get_audit(audit_id)
+        # Conversation commands use metadata/latest_result only. Validate the full
+        # journal while retaining zero historical events so long conversations and
+        # replication traces never become an unbounded Python list before each turn.
+        record = self.store.get_audit(audit_id, event_limit=0)
         user_event = HarnessEvent(
             audit_id=audit_id,
             kind="user_message",

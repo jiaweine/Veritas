@@ -78,6 +78,8 @@ async function api(path, options = {}) {
 }
 
 const PRODUCT_BOOT_PAGE_LIMIT = 50;
+const PRODUCT_AUDIT_EVENT_LIMIT = 24;
+const productAuditDetailPath = (auditId) => `/api/v1/audits/${encodeURIComponent(auditId)}/product-detail?event_limit=${PRODUCT_AUDIT_EVENT_LIMIT}`;
 const PRODUCT_BOOT_PAGE_PATHS = {
   audits: `/api/v1/audit-pages?limit=${PRODUCT_BOOT_PAGE_LIMIT}`,
   findings: `/api/v1/finding-pages?limit=${PRODUCT_BOOT_PAGE_LIMIT}`,
@@ -126,7 +128,7 @@ async function loadProductData({ keepAudit = true } = {}) {
     publishProductPage("finding", findingPage);
     if (keepAudit && state.activeAudit) {
       const current = audits.find((item) => item.audit_id === state.activeAudit.audit_id);
-      if (current) state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(current.audit_id)}`).then((r) => r.json());
+      if (current) state.activeAudit = await api(productAuditDetailPath(current.audit_id)).then((r) => r.json());
     }
     setSync("ready", "System ready");
   } catch (error) {
@@ -311,7 +313,7 @@ function renderSettings() {
 
 async function openAudit(auditId) {
   try {
-    state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+    state.activeAudit = await api(productAuditDetailPath(auditId)).then((r) => r.json());
     state.view = "audit";
     history.replaceState(null, "", `#audit=${encodeURIComponent(auditId)}`);
     $$('[data-view]').forEach((node) => node.classList.remove("active"));
@@ -409,7 +411,7 @@ async function openConversation({ autoSelect = true } = {}) {
   if (!state.activeAudit && autoSelect && state.audits.length) {
     try {
       const auditId = state.audits[0].audit_id;
-      state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+      state.activeAudit = await api(productAuditDetailPath(auditId)).then((r) => r.json());
     } catch (error) {
       showToast(error.message);
     }
@@ -480,7 +482,7 @@ async function sendAgentMessage() {
       }
     }
     await loadProductData();
-    if (state.activeAudit) state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(audit.audit_id)}`).then((r) => r.json());
+    if (state.activeAudit) state.activeAudit = await api(productAuditDetailPath(audit.audit_id)).then((r) => r.json());
     renderAgent(); renderMain();
   } catch (error) { els.agentMessage.value = message; showToast(`Conversation failed · ${error.message}`); }
   finally { state.sending = false; els.agentMessage.disabled = !state.activeAudit; els.agentSend.disabled = !state.activeAudit; }
