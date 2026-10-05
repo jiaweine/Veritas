@@ -73,28 +73,55 @@ async function api(path, options = {}) {
 
 async function loadProductData({ keepAudit = true } = {}) {
   setSync("loading", "Refreshing…");
-  try {
-    const [overview, audits, findings, runs] = await Promise.all([
-      api("/api/v1/overview").then((r) => r.json()),
-      api("/api/v1/audits").then((r) => r.json()),
-      api("/api/v1/findings").then((r) => r.json()),
-      api("/api/v1/runs").then((r) => r.json()),
-    ]);
-    state.overview = overview;
-    state.audits = audits;
-    state.findings = findings;
-    state.runs = runs;
-    els.auditCount.textContent = audits.length;
-    els.findingCount.textContent = findings.length;
-    if (keepAudit && state.activeAudit) {
-      const current = audits.find((item) => item.audit_id === state.activeAudit.audit_id);
-      if (current) state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(current.audit_id)}`).then((r) => r.json());
+  const sources = [
+    ["Overview", "overview", api("/api/v1/overview").then((r) => r.json())],
+    ["Audits", "audits", api("/api/v1/audits").then((r) => r.json())],
+    ["Findings", "findings", api("/api/v1/findings").then((r) => r.json())],
+    ["Runs", "runs", api("/api/v1/runs").then((r) => r.json())],
+  ];
+  const results = await Promise.allSettled(sources.map(([, , request]) => request));
+  const failures = [];
+  let successfulSources = 0;
+
+  results.forEach((result, index) => {
+    const [label, key] = sources[index];
+    if (result.status === "rejected") {
+      failures.push({ label, error: result.reason });
+      return;
     }
-    setSync("ready", "System ready");
-  } catch (error) {
-    setSync("error", "Offline");
-    showToast(error.message);
+    successfulSources += 1;
+    if (key === "overview") state.overview = result.value;
+    if (key === "audits") {
+      state.audits = Array.isArray(result.value) ? result.value : [];
+      els.auditCount.textContent = state.audits.length;
+    }
+    if (key === "findings") {
+      state.findings = Array.isArray(result.value) ? result.value : [];
+      els.findingCount.textContent = state.findings.length;
+    }
+    if (key === "runs") state.runs = Array.isArray(result.value) ? result.value : [];
+  });
+
+  if (keepAudit && state.activeAudit) {
+    try {
+      state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(state.activeAudit.audit_id)}`).then((r) => r.json());
+    } catch (error) {
+      failures.push({ label: "Open audit", error });
+    }
   }
+
+  if (!failures.length) {
+    setSync("ready", "System ready");
+    return;
+  }
+  if (successfulSources > 0) {
+    setSync("partial", "Partial data");
+    showToast(`Some workspace data could not refresh: ${failures.map(({ label }) => label).join(", ")}.`);
+    return;
+  }
+  setSync("error", "Offline");
+  const firstError = failures[0]?.error;
+  showToast(firstError instanceof Error ? firstError.message : "Unable to refresh workspace data.");
 }
 
 function setSync(status, text) {
