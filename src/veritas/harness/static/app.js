@@ -77,21 +77,53 @@ async function api(path, options = {}) {
   return response;
 }
 
+const PRODUCT_BOOT_PAGE_LIMIT = 50;
+const PRODUCT_BOOT_PAGE_PATHS = {
+  audits: `/api/v1/audit-pages?limit=${PRODUCT_BOOT_PAGE_LIMIT}`,
+  findings: `/api/v1/finding-pages?limit=${PRODUCT_BOOT_PAGE_LIMIT}`,
+  runs: `/api/v1/run-pages?limit=${PRODUCT_BOOT_PAGE_LIMIT}`,
+};
+
+function pageItems(page) {
+  return Array.isArray(page?.items) ? page.items : [];
+}
+
+function pageTotal(page, items) {
+  const total = Number(page?.total);
+  return Number.isFinite(total) && total >= 0 ? total : items.length;
+}
+
+function publishProductPage(kind, page) {
+  if (kind === "audit") {
+    window.__veritasAuditPageFeed = page;
+    window.dispatchEvent(new CustomEvent("veritas:audit-page-reset", { detail: page }));
+  }
+  if (kind === "finding") {
+    window.__veritasFindingPageFeed = page;
+    window.dispatchEvent(new CustomEvent("veritas:finding-page-reset", { detail: page }));
+  }
+}
+
 async function loadProductData({ keepAudit = true } = {}) {
   setSync("loading", "Refreshing…");
   try {
-    const [overview, audits, findings, runs] = await Promise.all([
+    const [overview, auditPage, findingPage, runPage] = await Promise.all([
       api("/api/v1/overview").then((r) => r.json()),
-      api("/api/v1/audits").then((r) => r.json()),
-      api("/api/v1/findings").then((r) => r.json()),
-      api("/api/v1/runs").then((r) => r.json()),
+      api(PRODUCT_BOOT_PAGE_PATHS.audits).then((r) => r.json()),
+      api(PRODUCT_BOOT_PAGE_PATHS.findings).then((r) => r.json()),
+      api(PRODUCT_BOOT_PAGE_PATHS.runs).then((r) => r.json()),
     ]);
+    const audits = pageItems(auditPage);
+    const findings = pageItems(findingPage);
+    const runs = pageItems(runPage);
     state.overview = overview;
     state.audits = audits;
     state.findings = findings;
     state.runs = runs;
-    els.auditCount.textContent = audits.length;
-    els.findingCount.textContent = findings.length;
+    els.auditCount.textContent = pageTotal(auditPage, audits);
+    els.findingCount.textContent = pageTotal(findingPage, findings);
+    publishProductPage("audit", auditPage);
+    publishProductPage("finding", findingPage);
     if (keepAudit && state.activeAudit) {
       const current = audits.find((item) => item.audit_id === state.activeAudit.audit_id);
       if (current) state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(current.audit_id)}`).then((r) => r.json());
@@ -304,7 +336,6 @@ function renderWorkbench() {
         <article class="panel summary-card"><h3>Detected tables</h3>${tables.length ? tables.slice(0,10).map((table, index) => `<div class="table-card" data-table-page="${escapeHtml(table.page || 1)}"><strong>${escapeHtml(table.caption || table.label || `Table ${index + 1}`)}</strong><small>page ${escapeHtml(table.page || "?")} · ${escapeHtml((table.parsers || []).join(" + ") || "parsed")}</small></div>`).join("") : `<p class="page-subtitle" style="margin:0">No tables detected in the parser summary.</p>`}</article>
         <article class="panel summary-card"><h3>Artifact provenance</h3><div class="hash">${escapeHtml(audit.artifact_sha256 || summary.artifact_sha256 || "No hash")}</div></article>
       </div>
-
       <div class="workbench-column">
         <article class="panel pdf-panel"><div class="pdf-toolbar"><div><strong>Evidence viewer</strong> <span>${source.page ? `· source page ${escapeHtml(source.page)}` : "· full paper"}</span></div><span>${escapeHtml(audit.filename)}</span></div><iframe class="pdf-frame" title="${escapeHtml(audit.title)} PDF" src="/api/v1/audits/${encodeURIComponent(audit.audit_id)}/paper${source.page ? `#page=${encodeURIComponent(source.page)}` : ""}"></iframe></article>
         ${result ? `<article class="panel result-card"><div class="result-head"><div><h3>${escapeHtml(result.status === "verified" ? "Latest audit verified" : result.status === "contradiction" ? "Latest audit found a contradiction" : "Latest audit needs review")}</h3><p>${escapeHtml(source.table || "Located source")}${source.page ? ` · page ${escapeHtml(source.page)}` : ""}${source.row ? ` · ${escapeHtml(source.row)}` : ""}</p></div>${statusBadge(result.status, result.status)}</div><div class="result-metrics"><div class="result-metric"><span>Verified</span><strong>${num(result.counts?.verified)}</strong></div><div class="result-metric"><span>Review</span><strong>${num(result.counts?.needs_review)}</strong></div><div class="result-metric"><span>Contradictions</span><strong>${num(result.counts?.contradictions)}</strong></div></div>${source.text_quote ? `<pre class="evidence-quote">${escapeHtml(source.text_quote)}</pre>` : ""}</article>` : `<article class="panel">${emptyPanel("⌁", "No detector result yet", "Open the conversation and audit a reported row to create evidence-linked results.")}</article>`}
