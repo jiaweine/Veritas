@@ -8,6 +8,7 @@ const runFeed = {
   loadingMore: false,
   loadMoreError: null,
   selectedRunId: null,
+  ready: false,
 };
 
 const escapeHtml = (value = "") => String(value)
@@ -141,6 +142,21 @@ function mergePageItems(items) {
   }
 }
 
+function adoptPage(page) {
+  const items = Array.isArray(page?.items) ? page.items : [];
+  const previousSelection = runFeed.selectedRunId;
+  runFeed.items = [];
+  mergePageItems(items);
+  runFeed.nextCursor = page?.next_cursor || null;
+  runFeed.hasMore = Boolean(page?.has_more && runFeed.nextCursor);
+  runFeed.loadingMore = false;
+  runFeed.loadMoreError = null;
+  runFeed.ready = true;
+  runFeed.selectedRunId = runFeed.items.some((item) => item.run_id === previousSelection)
+    ? previousSelection
+    : runFeed.items[0]?.run_id || null;
+}
+
 function runListMarkup() {
   const selected = runFeed.selectedRunId || runFeed.items[0]?.run_id || null;
   const rows = runFeed.items.map((run) => runRow(run, run.run_id === selected)).join("");
@@ -189,19 +205,12 @@ async function loadMoreRuns(detailNode) {
 }
 
 async function enhanceRuns() {
-  if (!main || main.dataset.runsEnhanced === "true") return;
+  if (!main || main.querySelector("[data-runs-surface='true']")) return;
   if (!main.textContent.includes("Agent runs")) return;
   main.dataset.runsEnhanced = "true";
 
   try {
-    const page = await json(pagePath());
-    runFeed.items = [];
-    runFeed.nextCursor = page.next_cursor || null;
-    runFeed.hasMore = Boolean(page.has_more && runFeed.nextCursor);
-    runFeed.loadingMore = false;
-    runFeed.loadMoreError = null;
-    runFeed.selectedRunId = page.items?.[0]?.run_id || null;
-    mergePageItems(page.items);
+    if (!runFeed.ready) adoptPage(await json(pagePath()));
 
     main.innerHTML = `<div class="page" data-runs-surface="true">
       <div class="page-head">
@@ -224,6 +233,9 @@ async function enhanceRuns() {
   }
 }
 
+window.addEventListener("veritas:run-page-reset", (event) => adoptPage(event.detail || {}));
+if (window.__veritasRunPageFeed) adoptPage(window.__veritasRunPageFeed);
+
 const observer = new MutationObserver(() => {
   if (!main) return;
   if (!main.textContent.includes("Agent runs")) {
@@ -235,6 +247,7 @@ const observer = new MutationObserver(() => {
       runFeed.loadingMore = false;
       runFeed.loadMoreError = null;
       runFeed.selectedRunId = null;
+      runFeed.ready = false;
     }
     return;
   }
