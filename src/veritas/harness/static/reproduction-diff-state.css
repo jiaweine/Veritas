@@ -14,7 +14,7 @@
 .rep-diff-line.hunk { color: #d0d0d0; background: rgba(105,105,105,.11); }
 .rep-diff-line.add { color: #bfe9ce; background: rgba(45,132,87,.15); }
 .rep-diff-line.remove { color: #f2bfc4; background: rgba(176,62,73,.15); }
-.rep-diff-line.context { color: #dce2eb; }
+.rep-diff-line.context { color: #e3e0d8; }
 .rep-truncated[data-rep-preview-truncated="true"] { border-top: 1px solid #ead3a5; font-weight: 700; }
 
 @media (max-width: 650px) {

@@ -6,7 +6,7 @@
 .run-inspector-row:hover { background: #f8f9fb; }
 .run-inspector-row.selected { background: #f3f5ff; border-color: #dfdfdf; }
 .run-kind-mark { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: #eef0f5; color: #6f6f6f; font-size: 13px; }
-.run-inspector-row.selected .run-kind-mark { background: #e5e9ff; color: #595959; }
+.run-inspector-row.selected .run-kind-mark { background: #eeeae3; color: #595959; }
 .run-row-copy { min-width: 0; }
 .run-row-copy strong { display: block; color: #292929; font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .run-row-copy small { display: block; color: var(--text-faint); font-size: 7.5px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

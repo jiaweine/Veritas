@@ -200,7 +200,7 @@
   border: 1px solid #393939;
   border-radius: 7px;
   background: #0c0c0c;
-  color: #d7e3e7;
+  color: #e2ded5;
   font-family: ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size: 6px;
   line-height: 1.4;
@@ -230,7 +230,7 @@
 .rep-permission.rep-permission-surface .rep-reject {
   border-color: #515151;
   background: #131313;
-  color: #c0cdd2;
+  color: #cbc7be;
 }
 .rep-permission.rep-permission-surface .rep-reject:hover:not(:disabled) {
   border-color: #7f7f7f;
