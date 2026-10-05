@@ -96,8 +96,10 @@ def test_reference_workbench_uses_live_backend_contracts() -> None:
     )
     shell = (ROOT / "src/veritas/harness/static/index.html").read_text(encoding="utf-8")
 
-    assert 'json("/api/v1/audits")' in script
-    assert 'json("/api/v1/runs")' in script
+    assert 'json(`/api/v1/audit-pages?limit=${REFERENCE_AUDIT_LIMIT}`)' in script
+    assert 'json(`/api/v1/run-pages?limit=${REFERENCE_RUN_LIMIT}`)' in script
+    assert 'json("/api/v1/audits")' not in script
+    assert 'json("/api/v1/runs")' not in script
     assert "/api/v1/audits/${encodeURIComponent(auditId)}" in script
     assert "latest_result" in script
     assert "result.consensus" in script

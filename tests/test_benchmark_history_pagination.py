@@ -178,10 +178,10 @@ def test_benchmarks_product_uses_cursor_history_without_legacy_materialization()
     assert ".benchmark-history-footer" in styles
     assert ".benchmark-history-error" in styles
 
-    # Preserve prior cache-key contracts while changing sw.js so the browser
-    # installs a fresh worker and re-adds the shell assets into the same cache.
+    # Preserve the shell family while bumping the active revision so installed
+    # clients refresh all assets for the direct bounded boot contract.
     assert 'const CACHE = "veritas-shell-v29";' in service_worker
-    assert 'const CACHE_REVISION = "audit-pagination-1";' in service_worker
+    assert 'const CACHE_REVISION = "direct-bounded-boot-1";' in service_worker
     assert 'const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`;' in service_worker
     assert 'const FINDING_CACHE_REVISION = "finding-pagination-1";' in service_worker
     assert 'const SHELL_CACHE = `${ACTIVE_CACHE}-${FINDING_CACHE_REVISION}`;' in service_worker

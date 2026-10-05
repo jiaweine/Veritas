@@ -46,8 +46,10 @@ def test_audit_harness_product_assets_are_wired_into_shell(tmp_path) -> None:
 
     reference_script = client.get("/static/reference-workbench.js")
     assert reference_script.status_code == 200
-    assert 'json("/api/v1/audits")' in reference_script.text
-    assert 'json("/api/v1/runs")' in reference_script.text
+    assert 'json(`/api/v1/audit-pages?limit=${REFERENCE_AUDIT_LIMIT}`)' in reference_script.text
+    assert 'json(`/api/v1/run-pages?limit=${REFERENCE_RUN_LIMIT}`)' in reference_script.text
+    assert 'json("/api/v1/audits")' not in reference_script.text
+    assert 'json("/api/v1/runs")' not in reference_script.text
     assert "latest_result" in reference_script.text
     assert "data-reference-analysis" in reference_script.text
 
