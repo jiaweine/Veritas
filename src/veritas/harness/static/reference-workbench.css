@@ -10,7 +10,7 @@ body.reference-audit-active {
   --ah-line: #292929;
   --ah-line-strong: #3c3c3c;
   --ah-text: #eef5f6;
-  --ah-soft: #a1b0b5;
+  --ah-soft: #ada9a0;
   --ah-faint: #787878;
   --ah-accent: #52d5cb;
   --ah-accent-soft: rgba(82, 213, 203, .11);
@@ -94,7 +94,7 @@ body.reference-audit-active .ref-sidebar-shell {
   border: 1px solid #2d2d2d;
   border-radius: 7px;
   background: #171717;
-  color: #9baab0;
+  color: #a7a39b;
   text-align: left;
   cursor: pointer;
 }
@@ -150,7 +150,7 @@ body.reference-audit-active .ref-sidebar-shell {
   border: 1px solid #343434;
   border-radius: 5px;
   background: #171717;
-  color: #b9c6ca;
+  color: #c5c1b8;
   padding: 0 7px;
   cursor: pointer;
   font-size: 8px;
@@ -564,7 +564,7 @@ body.reference-audit-active .ah-message.user {
 }
 
 body.reference-audit-active .ah-message.user .ah-message-meta span {
-  color: #bfcdd1;
+  color: #cbc7be;
 }
 
 body.reference-audit-active .ah-message.assistant {
@@ -653,7 +653,7 @@ body.reference-audit-active .ah-suggestions button {
   border-color: #303030;
   border-radius: 5px;
   background: #181818;
-  color: #9babb0;
+  color: #a7a39b;
   padding: 4px 7px;
   font-size: 7px;
 }
@@ -866,7 +866,7 @@ body.reference-audit-active .ah-source-pane:has(.ref-selected-analysis) .ah-sour
 }
 
 .ref-analysis-check strong {
-  color: #cdd8db;
+  color: #d8d4cc;
   font-size: 7px;
   font-weight: 610;
 }

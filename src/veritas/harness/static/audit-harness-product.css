@@ -80,7 +80,7 @@ body.ah-resizing iframe { pointer-events: none; }
 .ah-run-meta { display: grid; gap: 0; margin-top: 8px; border: 1px solid var(--ah-line); border-radius: 8px; overflow: hidden; }
 .ah-run-meta > div { min-height: 38px; display: grid; grid-template-columns: 82px minmax(0,1fr); align-items: center; gap: 10px; padding: 6px 9px; border-bottom: 1px solid var(--ah-line); background: #131313; }
 .ah-run-meta > div:last-child { border-bottom: 0; }
-.ah-run-meta strong, .ah-run-meta code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c6d2d6; font-size: 7.5px; font-weight: 550; }
+.ah-run-meta strong, .ah-run-meta code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d1cdc4; font-size: 7.5px; font-weight: 550; }
 .ah-run-meta code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #afafaf; }
 
 .ah-run-trace-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 1px 7px; }

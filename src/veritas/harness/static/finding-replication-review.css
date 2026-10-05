@@ -52,7 +52,7 @@
 }
 
 .fn-review-title strong {
-  color: #d6e2e5;
+  color: #e1ddd4;
   font-size: 7px;
 }
 
@@ -99,7 +99,7 @@
 
 .fn-replication-review > button:hover {
   border-color: #6e6e6e;
-  color: #d7efef;
+  color: #eee9df;
 }
 
 @media (max-width: 620px) {

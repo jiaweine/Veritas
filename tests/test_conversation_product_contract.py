@@ -54,11 +54,18 @@ def test_conversation_summary_fails_closed_without_a_result() -> None:
     assert payload == {"conversation_intent": "summary", "has_result": False}
 
 
-def _assert_not_blue_literal(path: Path, text: str) -> None:
+def _blue_literals(text: str) -> list[str]:
     colors: list[tuple[int, int, int, str]] = []
-    for match in re.finditer(r"#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b", text):
+    for match in re.finditer(
+        r"(?<!&)#[0-9a-fA-F]{8}\b|(?<!&)#[0-9a-fA-F]{6}\b|(?<!&)#[0-9a-fA-F]{4}\b|(?<!&)#[0-9a-fA-F]{3}\b",
+        text,
+    ):
         value = match.group(0)
-        digits = value[1:7]
+        digits = value[1:]
+        if len(digits) in {3, 4}:
+            digits = "".join(char * 2 for char in digits[:3])
+        else:
+            digits = digits[:6]
         colors.append((*(int(digits[i : i + 2], 16) for i in (0, 2, 4)), value))
     for match in re.finditer(
         r"\b(?:rgb|rgba)\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})",
@@ -69,9 +76,19 @@ def _assert_not_blue_literal(path: Path, text: str) -> None:
     violations = []
     for r, g, b, literal in colors:
         h, s, _ = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        if s >= 0.12 and 180 <= h * 360 <= 285:
+        if s >= 0.06 and 180 <= h * 360 <= 285:
             violations.append(literal)
-    assert not violations, f"blue/indigo literals remain in {path}: {violations[:12]}"
+
+    for match in re.finditer(
+        r"\bhsla?\(\s*(-?\d+(?:\.\d+)?)(?:deg)?(?:\s*,\s*|\s+)(\d+(?:\.\d+)?)%",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        hue = float(match.group(1)) % 360
+        saturation = float(match.group(2)) / 100
+        if saturation >= 0.06 and 180 <= hue <= 285:
+            violations.append(match.group(0))
+    return violations
 
 
 def test_active_product_palette_has_no_blue_or_indigo() -> None:
@@ -81,8 +98,13 @@ def test_active_product_palette_has_no_blue_or_indigo() -> None:
     paths = [STATIC / name for name in active_css + active_js]
     paths += [STATIC / "index.html", STATIC / "manifest.webmanifest", STATIC / "icon.svg"]
     paths += sorted((ROOT / "mobile").glob("*.tsx"))
-    for path in paths:
-        _assert_not_blue_literal(path, path.read_text())
+
+    violations = {
+        str(path.relative_to(ROOT)): literals
+        for path in paths
+        if (literals := _blue_literals(path.read_text()))
+    }
+    assert not violations, f"blue/indigo literals remain in active product: {violations}"
 
 
 def test_conversation_is_the_default_product_entry_not_a_side_utility() -> None:

@@ -135,7 +135,7 @@
   font: 800 7px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: .16em;
 }
-.evidence-lens-hud-copy strong { display: block; margin-top: 4px; color: #efffff; font-size: 12px; }
+.evidence-lens-hud-copy strong { display: block; margin-top: 4px; color: #faf8f3; font-size: 12px; }
 .evidence-lens-hud-copy small { display: block; margin-top: 3px; color: #8d8d8d; font-size: 8px; line-height: 1.4; }
 
 .evidence-lens-hud-actions { display: flex; gap: 7px; }

@@ -246,7 +246,7 @@ button.ah-event:hover { border-color: var(--ah-line-strong); background: #191919
 .ah-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ah-soft); font-size: 7.5px; }
 .ah-source-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 6px; color: var(--ah-faint); font-size: 7px; }
 .ah-source-meta b { color: var(--ah-text); }
-.ah-source-card pre { margin: 8px 0 0; padding: 8px; border-radius: 7px; border: 1px solid var(--ah-line); background: #101010; color: #b5c4c8; white-space: pre-wrap; word-break: break-word; font: 7.3px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.ah-source-card pre { margin: 8px 0 0; padding: 8px; border-radius: 7px; border: 1px solid var(--ah-line); background: #101010; color: #c2beb5; white-space: pre-wrap; word-break: break-word; font: 7.3px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .ah-finding-stack { padding: 10px; display: grid; gap: 7px; }
 .ah-finding-card { width: 100%; display: grid; grid-template-columns: 28px minmax(0,1fr); gap: 8px; align-items: start; border: 1px solid rgba(231,180,75,.2); background: rgba(231,180,75,.045); color: var(--ah-text); border-radius: 8px; padding: 9px; text-align: left; cursor: pointer; }
 .ah-finding-card:hover { border-color: rgba(231,180,75,.35); }
