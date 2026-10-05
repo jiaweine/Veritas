@@ -23,7 +23,6 @@ from .store import HarnessStore
 from .tools import PaperToolbox
 
 
-
 def _conversation_summary(record: dict[str, Any]) -> tuple[str, str, str, dict[str, Any]]:
     """Derive a conversational answer only from persisted authoritative audit state."""
     paper = record.get("paper_summary") or {}
@@ -33,8 +32,10 @@ def _conversation_summary(record: dict[str, Any]) -> tuple[str, str, str, dict[s
         tables = int(paper.get("tables_detected") or 0)
         return (
             "No verification result yet",
-            f"This paper has {pages} pages and {tables} detected tables. "
-            "Inspect the paper structure or audit a specific reported row before asking for findings.",
+            (
+                f"This paper has {pages} pages and {tables} detected tables. "
+                "Inspect the paper structure or audit a specific reported row before asking for findings."
+            ),
             "review",
             {"conversation_intent": "summary", "has_result": False},
         )

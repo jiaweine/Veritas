@@ -7,7 +7,6 @@ from pathlib import Path
 from veritas.harness.planner import parse_command
 from veritas.harness.service import _conversation_summary
 
-
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src/veritas/harness/static"
 
