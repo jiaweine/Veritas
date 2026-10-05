@@ -78,6 +78,13 @@ def main() -> None:
             page.on("pageerror", lambda error: page_errors.append(str(error)))
             page.goto(base_url, wait_until="networkidle")
 
+            if page.evaluate("document.body.classList.contains('agent-open')"):
+                page.locator("#agent-close").click()
+                page.wait_for_function(
+                    "!document.body.classList.contains('agent-open')",
+                    timeout=10_000,
+                )
+
             heading = page.get_by_role("heading", name="Recent activity")
             heading.wait_for(state="visible", timeout=20_000)
             panel = heading.locator("xpath=ancestor::article[1]")
