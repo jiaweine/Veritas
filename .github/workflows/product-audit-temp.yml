@@ -15,69 +15,61 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - name: Audit active frontend assets and colors
+      - name: Audit frontend/backend wiring and static asset graph
         run: |
           python3 - <<'PY'
           from __future__ import annotations
-          import colorsys
           import re
-          from collections import Counter, defaultdict
+          from collections import defaultdict
           from pathlib import Path
 
-          root = Path('src/veritas/harness/static')
-          html = (root / 'index.html').read_text()
-          styles = re.findall(r'<link[^>]+href="/static/([^"]+\.css)"', html)
-          scripts = re.findall(r'<script[^>]+src="/static/([^"]+\.js)"', html)
-          print(f'ACTIVE_CSS_COUNT={len(styles)}')
-          print('ACTIVE_CSS=' + ','.join(styles))
-          print(f'ACTIVE_JS_COUNT={len(scripts)}')
-          print('ACTIVE_JS=' + ','.join(scripts))
+          static = Path('src/veritas/harness/static')
+          html = (static / 'index.html').read_text()
+          active_css = set(re.findall(r'/static/([^"\']+\.css)', html))
+          active_js = set(re.findall(r'/static/([^"\']+\.js)', html))
 
-          blueish = Counter()
-          locations = defaultdict(list)
-          all_hex = Counter()
-          pattern = re.compile(r'#[0-9a-fA-F]{6}\b')
-          for name in styles + scripts:
-              path = root / name
-              if not path.exists():
-                  print(f'MISSING_ASSET={name}')
-                  continue
+          js_api = defaultdict(set)
+          for path in static.glob('*.js'):
               text = path.read_text()
-              for match in pattern.finditer(text):
-                  value = match.group(0).lower()
-                  all_hex[value] += 1
-                  r, g, b = (int(value[i:i+2], 16) / 255 for i in (1, 3, 5))
-                  h, s, v = colorsys.rgb_to_hsv(r, g, b)
-                  deg = h * 360
-                  # Include blue/indigo/cyan-purple boundary saturated accents; ignore near-neutrals.
-                  if s >= .22 and 185 <= deg <= 270:
-                      blueish[value] += 1
-                      line = text.count('\n', 0, match.start()) + 1
-                      if len(locations[value]) < 12:
-                          locations[value].append(f'{name}:{line}')
-          print(f'UNIQUE_HEX={len(all_hex)}')
-          print(f'BLUEISH_UNIQUE={len(blueish)}')
-          print(f'BLUEISH_OCCURRENCES={sum(blueish.values())}')
-          for value, count in blueish.most_common():
-              print(f'BLUEISH {value} x{count} ' + ' '.join(locations[value]))
+              for match in re.finditer(r'["\'`](/api/v1/[^"\'`?$ {]+)', text):
+                  js_api[match.group(1)].add(path.name)
+          print('UI_API_LITERAL_COUNT=' + str(len(js_api)))
+          for route, files in sorted(js_api.items()):
+              print('UI_API ' + route + ' <- ' + ','.join(sorted(files)))
 
-          # Conversation/product architecture probes.
-          app = (root / 'app.js').read_text()
-          print('HAS_AGENT_MESSAGE_ENDPOINT=' + str('/messages' in app).lower())
-          print('OVERVIEW_KPI_GRID=' + str('kpi-grid' in app).lower())
-          print('OVERVIEW_CONVERSATION_COMPOSER=' + str('conversation-composer' in app).lower())
-          print('AGENT_REQUIRES_ACTIVE_AUDIT=' + str('els.agentMessage.disabled = !audit' in app).lower())
+          py_routes = defaultdict(set)
+          for path in Path('src/veritas/harness').glob('*.py'):
+              text = path.read_text()
+              for match in re.finditer(r'@(?:app|router)\.(?:get|post|put|patch|delete)\(["\']([^"\']+)', text):
+                  py_routes[match.group(1)].add(path.name)
+          print('BACKEND_ROUTE_LITERAL_COUNT=' + str(len(py_routes)))
+          for route, files in sorted(py_routes.items()):
+              if route.startswith('/api/v1/'):
+                  print('BACKEND_API ' + route + ' <- ' + ','.join(sorted(files)))
 
-          # Global layering hotspots: files with duplicate selector declarations across active CSS.
-          selector_files = defaultdict(set)
-          for name in styles:
-              text = (root / name).read_text()
-              for selector in re.findall(r'(?m)([^@{}][^{}]*)\{', text):
-                  clean = ' '.join(selector.split())
-                  if clean and len(clean) < 180:
-                      selector_files[clean].add(name)
-          overlaps = [(sel, files) for sel, files in selector_files.items() if len(files) >= 3]
-          print(f'SELECTORS_DEFINED_IN_3PLUS_FILES={len(overlaps)}')
-          for sel, files in sorted(overlaps, key=lambda item: (-len(item[1]), item[0]))[:40]:
-              print('OVERLAP ' + sel + ' <- ' + ','.join(sorted(files)))
+          # Asset files not loaded directly and not imported/referenced by another active static asset.
+          all_css = {p.name for p in static.glob('*.css')}
+          all_js = {p.name for p in static.glob('*.js')}
+          corpus = '\n'.join(p.read_text() for p in static.glob('*') if p.is_file() and p.suffix in {'.html','.js','.css'})
+          for name in sorted(all_css - active_css):
+              print('CSS_NOT_DIRECTLY_LOADED ' + name + ' referenced=' + str(name in corpus).lower())
+          for name in sorted(all_js - active_js):
+              print('JS_NOT_DIRECTLY_LOADED ' + name + ' referenced=' + str(name in corpus).lower())
+
+          # Product feature probes: UI markers and corresponding backend modules/routes.
+          probes = {
+              'conversation_messages': ('/messages', 'stream_message'),
+              'search': ('/api/v1/search', 'def search('),
+              'projects': ('/api/v1/projects', 'register'),
+              'reproduction': ('replication', 'stream_replication'),
+              'claim_graph': ('claim-graph', 'register_claim_graph_routes'),
+              'model_providers': ('settings', 'register_model_provider_routes'),
+              'audit_pagination': ('audit-page-bootstrap', 'register_audit_pagination_routes'),
+              'finding_pagination': ('finding-page-bootstrap', 'register_finding_pagination_routes'),
+              'run_pagination': ('run-page-bootstrap', 'register_run_pagination_routes'),
+          }
+          source = '\n'.join(p.read_text() for p in Path('src/veritas/harness').glob('*.py'))
+          static_source = html + '\n' + '\n'.join(p.read_text() for p in static.glob('*.js'))
+          for name, (front, back) in probes.items():
+              print(f'FEATURE {name} frontend={str(front in static_source).lower()} backend={str(back in source).lower()}')
           PY
