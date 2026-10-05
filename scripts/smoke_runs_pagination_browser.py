@@ -104,6 +104,10 @@ def main() -> None:
             raise AssertionError("Runs UI did not stop at the bounded 50-row first page")
         if full_list_requests:
             raise AssertionError("Product boot escaped the bounded run-page bootstrap")
+        if page_requests != [None]:
+            raise AssertionError(
+                "Runs first page was not reused from product boot: " f"{page_requests!r}"
+            )
 
         load_more = page.locator("[data-run-load-more]")
         load_more.wait_for(state="visible", timeout=10_000)
@@ -124,6 +128,8 @@ def main() -> None:
         footer = page.locator(".run-page-footer").inner_text().lower()
         if "60 runs loaded" not in footer or "end of validated run history" not in footer:
             raise AssertionError(f"Runs footer lost terminal paging state: {footer!r}")
+        if page_requests != [None, "cursor-next"]:
+            raise AssertionError(f"Run-page request sequence was not minimal: {page_requests!r}")
 
         rows.last.click()
         page.wait_for_function(
@@ -138,7 +144,7 @@ def main() -> None:
         raise AssertionError("Browser page errors: " + " | ".join(page_errors))
     if full_list_requests:
         raise AssertionError("Browser issued an unbounded /api/v1/runs request")
-    if page_requests.count(None) < 1 or "cursor-next" not in page_requests:
+    if page_requests != [None, "cursor-next"]:
         raise AssertionError(f"Run-page request sequence was incomplete: {page_requests!r}")
 
     screenshot = output_dir / "runs-pagination.png"
