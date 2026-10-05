@@ -25,6 +25,9 @@ jobs:
           text = path.read_text()
           start = text.index("app_text = app_text.replace(\n    '  $$(")
           end = text.index("old_boot = '''", start)
+          text = text[:start] + text[end:]
+          start = text.index('workflow = ROOT / ".github/workflows/ui-visual-smoke.yml"')
+          end = text.index('# The diagnostic/patch machinery', start)
           path.write_text(text[:start] + text[end:])
           PY
           python scripts/product_conversation_patch_temp.py
