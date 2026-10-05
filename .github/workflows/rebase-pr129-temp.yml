@@ -1,0 +1,27 @@
+name: rebase-pr129-temp
+
+on:
+  push:
+    branches:
+      - "tmp/rebase-pr129-current-main"
+
+permissions:
+  contents: write
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: tmp/rebase-pr129-current-main
+          fetch-depth: 0
+      - name: Replay PR 129 onto current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin fix/direct-bounded-product-boot
+          git cherry-pick 40ebcf9c142b62d248341e877d1df0e2ebf526b9
+          git push origin HEAD:tmp/rebase-pr129-current-main
