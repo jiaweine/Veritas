@@ -1,0 +1,56 @@
+name: product-fix-temp
+
+on:
+  push:
+    branches:
+      - product/conversation-neutral-shell
+    paths:
+      - .github/workflows/product-fix-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: product/conversation-neutral-shell
+      - name: Repair lint-only product candidate issues
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service = Path('src/veritas/harness/service.py')
+          text = service.read_text()
+          text = text.replace(
+              'from .tools import PaperToolbox\n\n\n\ndef _conversation_summary',
+              'from .tools import PaperToolbox\n\n\ndef _conversation_summary',
+              1,
+          )
+          text = text.replace(
+              '            f"This paper has {pages} pages and {tables} detected tables. "\n'
+              '            "Inspect the paper structure or audit a specific reported row before asking for findings.",',
+              '            (\n'
+              '                f"This paper has {pages} pages and {tables} detected tables. "\n'
+              '                "Inspect the paper structure or audit a specific reported row before asking for findings."\n'
+              '            ),',
+              1,
+          )
+          service.write_text(text)
+
+          contract = Path('tests/test_conversation_product_contract.py')
+          text = contract.read_text().replace(
+              'from veritas.harness.service import _conversation_summary\n\n\nROOT',
+              'from veritas.harness.service import _conversation_summary\n\nROOT',
+              1,
+          )
+          contract.write_text(text)
+          PY
+          git rm .github/workflows/product-fix-temp.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/veritas/harness/service.py tests/test_conversation_product_contract.py
+          git commit -m "fix: satisfy conversation product lint"
+          git push origin HEAD:product/conversation-neutral-shell
