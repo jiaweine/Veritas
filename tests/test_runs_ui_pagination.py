@@ -23,27 +23,20 @@ def test_runs_ui_uses_bounded_server_pages_and_retryable_load_more() -> None:
     assert ".run-page-error" in styles
 
 
-def test_product_boot_bounds_legacy_run_fetch_before_app_executes() -> None:
-    shell = (ROOT / "src/veritas/harness/static/index.html").read_text(encoding="utf-8")
-    bootstrap = (ROOT / "src/veritas/harness/static/run-page-bootstrap.js").read_text(
-        encoding="utf-8"
-    )
-    service_worker = (ROOT / "src/veritas/harness/static/sw.js").read_text(encoding="utf-8")
+def test_product_boot_directly_pages_run_history() -> None:
+    static = ROOT / "src/veritas/harness/static"
+    shell = (static / "index.html").read_text(encoding="utf-8")
+    app = (static / "app.js").read_text(encoding="utf-8")
+    service_worker = (static / "sw.js").read_text(encoding="utf-8")
 
-    bootstrap_src = '<script src="/static/run-page-bootstrap.js"></script>'
-    app_src = '<script type="module" src="/static/app.js"></script>'
-    assert bootstrap_src in shell
-    assert shell.index(bootstrap_src) < shell.index(app_src)
-    assert 'url.pathname === "/api/v1/runs"' in bootstrap
-    assert 'new URL("/api/v1/run-pages"' in bootstrap
-    assert "const RUN_BOOT_LIMIT = 50" in bootstrap
-    assert '"Cache-Control": "no-store"' in bootstrap
-    assert '"X-Veritas-Run-Page": "1"' in bootstrap
-    assert "entity headers must be rebuilt" in bootstrap
+    assert "PRODUCT_BOOT_PAGE_LIMIT = 50" in app
+    assert 'runs: `/api/v1/run-pages?limit=${PRODUCT_BOOT_PAGE_LIMIT}`' in app
+    assert 'api(PRODUCT_BOOT_PAGE_PATHS.runs)' in app
+    assert 'api("/api/v1/runs").then' not in app
+    assert "/static/run-page-bootstrap.js" not in shell
     assert 'const CACHE = "veritas-shell-v29"' in service_worker
-    assert "const CACHE_REVISION = " in service_worker
-    assert "const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`" in service_worker
-    assert '"/static/run-page-bootstrap.js"' in service_worker
+    assert 'const CACHE_REVISION = "direct-bounded-boot-1"' in service_worker
+    assert '"/static/run-page-bootstrap.js"' not in service_worker
 
 
 def test_runs_pagination_has_real_chromium_acceptance() -> None:
@@ -52,6 +45,6 @@ def test_runs_pagination_has_real_chromium_acceptance() -> None:
 
     assert "Runs UI did not stop at the bounded 50-row first page" in browser
     assert "Runs pagination introduced duplicate run rows" in browser
-    assert "Product boot escaped the bounded run-page bootstrap" in browser
+    assert "Browser issued an unbounded /api/v1/runs request" in browser
     assert '"runs-pagination.png"' in browser
     assert "python scripts/smoke_runs_pagination_browser.py" in workflow

@@ -169,9 +169,13 @@ def main() -> None:
         assert len(all_ids) == len(set(all_ids)) == 60
         assert "Loaded all 60 findings" in page.locator(".finding-page-footer").inner_text()
 
-        # A fresh legacy product read must reset the mutable latest-result projection
+        # A real browser refresh must return the mutable latest-result projection
         # to the new first page instead of keeping older findings from a prior feed.
-        page.evaluate("() => fetch('/api/v1/findings').then((response) => response.json())")
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_function(
+            """() => document.querySelector('.page-title')?.textContent?.trim() === 'Findings'""",
+            timeout=20_000,
+        )
         page.wait_for_function(
             """() => document.querySelectorAll('[data-finding-page-id]').length === 50""",
             timeout=20_000,

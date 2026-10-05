@@ -1,11 +1,10 @@
 const CACHE = "veritas-shell-v29";
-const CACHE_REVISION = "audit-pagination-1";
+const CACHE_REVISION = "direct-bounded-boot-1";
 const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`;
 const FINDING_CACHE_REVISION = "finding-pagination-1";
 const SHELL_CACHE = `${ACTIVE_CACHE}-${FINDING_CACHE_REVISION}`;
 // Bumping this source-level revision forces a fresh service-worker install.
-// Keep SHELL_CACHE stable for the existing Audit/Runs/Findings compatibility contract;
-// install re-adds every shell asset and therefore refreshes product slices.
+// Install re-adds every shell asset so the direct paged boot contract and product slices move together.
 const BENCHMARK_CACHE_REVISION = "benchmark-history-1";
 const COMMAND_SEARCH_CACHE_REVISION = "command-search-1";
 const SHELL = [
@@ -34,9 +33,6 @@ const SHELL = [
   "/static/claim-graph.css",
   "/static/finding-navigation.css",
   "/static/mobile-polish.css",
-  "/static/audit-page-bootstrap.js",
-  "/static/run-page-bootstrap.js",
-  "/static/finding-page-bootstrap.js",
   "/static/app.js",
   "/static/command-search.js",
   "/static/audit-pagination.js",
