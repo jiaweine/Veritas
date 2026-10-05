@@ -18,6 +18,7 @@ on:
       - "scripts/smoke_command_search_browser.py"
       - "scripts/smoke_search_projection_browser.py"
       - "scripts/smoke_runs_pagination_browser.py"
+      - "scripts/smoke_product_resilient_boot_browser.py"
       - "scripts/smoke_audits_pagination_browser.py"
       - "scripts/smoke_benchmarks_browser.py"
       - "scripts/browser_replication_diff_agent.py"
@@ -39,6 +40,7 @@ on:
       - "scripts/smoke_command_search_browser.py"
       - "scripts/smoke_search_projection_browser.py"
       - "scripts/smoke_runs_pagination_browser.py"
+      - "scripts/smoke_product_resilient_boot_browser.py"
       - "scripts/smoke_audits_pagination_browser.py"
       - "scripts/smoke_benchmarks_browser.py"
       - "scripts/browser_replication_diff_agent.py"
@@ -113,6 +115,9 @@ jobs:
             --base-url http://127.0.0.1:8765 \
             --output-dir artifacts/ui
           python scripts/smoke_runs_pagination_browser.py \
+            --base-url http://127.0.0.1:8765 \
+            --output-dir artifacts/ui
+          python scripts/smoke_product_resilient_boot_browser.py \
             --base-url http://127.0.0.1:8765 \
             --output-dir artifacts/ui
           python scripts/smoke_audits_pagination_browser.py \
