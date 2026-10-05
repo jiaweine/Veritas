@@ -21,7 +21,7 @@ AuditSortKey = tuple[str, str]
 
 
 class ProductAuditHarness(_BaseProductAuditHarness):
-    """Product harness with validated keyset pages and warm overview activity."""
+    """Product harness with validated keyset pages and warm product projections."""
 
     def __init__(
         self,
@@ -115,6 +115,67 @@ class ProductAuditHarness(_BaseProductAuditHarness):
             "recent_activity": recent_activity[:8],
             "updated_at": valid_audits[0].get("updated_at") if valid_audits else None,
         }
+
+    def search(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
+        """Search validated metadata and bounded warm event-text projections.
+
+        Matching preserves the historical case-folded substring semantics and
+        result ordering. Warm event searches reuse only projections bound to a
+        current full-journal validation watermark; oversized histories stream
+        authoritatively instead of becoming unbounded cache entries.
+        """
+
+        needle = query.strip().casefold()
+        if not needle or limit <= 0:
+            return []
+        results: list[dict[str, Any]] = []
+        for audit in self._metadata_audits():
+            remaining = limit - len(results)
+            if remaining <= 0:
+                return results[:limit]
+            audit_text = " ".join(
+                str(value or "")
+                for value in (audit.get("title"), audit.get("filename"), audit.get("audit_id"))
+            ).casefold()
+            metadata_match = needle in audit_text
+            event_limit = max(0, remaining - (1 if metadata_match else 0))
+            audit_id = str(audit.get("audit_id") or "")
+            try:
+                documents = self.store.validated_search_matches(
+                    audit_id,
+                    needle,
+                    limit=event_limit,
+                )
+            except _INTEGRITY_ERRORS:
+                continue
+
+            pending: list[dict[str, Any]] = []
+            if metadata_match:
+                pending.append(
+                    {
+                        "kind": "audit",
+                        "id": audit.get("audit_id"),
+                        "audit_id": audit.get("audit_id"),
+                        "title": audit.get("title"),
+                        "detail": audit.get("filename"),
+                        "status": audit.get("status"),
+                    }
+                )
+            pending.extend(
+                {
+                    "kind": "event",
+                    "id": document.get("event_id"),
+                    "audit_id": audit.get("audit_id"),
+                    "title": document.get("title"),
+                    "detail": document.get("detail"),
+                    "status": document.get("status"),
+                }
+                for document in documents
+            )
+            results.extend(pending[:remaining])
+            if len(results) >= limit:
+                return results[:limit]
+        return results[:limit]
 
     def audits_page(
         self,
