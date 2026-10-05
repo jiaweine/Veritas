@@ -9,7 +9,7 @@ Turn papers, reported results, source evidence, findings, and reproduction work 
 </div>
 
 <p align="center">
-  <img src="docs/assets/product/overview.webp" alt="Veritas research audit overview" width="100%" />
+  <img src="docs/assets/product/overview.png" alt="Veritas research audit overview" width="100%" />
 </p>
 
 ## From paper to review, without losing context
@@ -25,7 +25,7 @@ Veritas brings the full research-review workflow into a single workspace. Start 
 The **Audit Workbench** keeps the paper, review timeline, selected result, and evidence inspector together. The **Evidence Lens** lets you focus on a reported value while preserving the surrounding table and review context, so the path from “this looks unusual” to “show me exactly where it came from” stays short.
 
 <p align="center">
-  <img src="docs/assets/product/evidence-lens.webp" alt="Veritas Evidence Lens showing a reported result beside its source evidence" width="100%" />
+  <img src="docs/assets/product/audit-workbench.png" alt="Veritas Audit Workbench showing a selected reported result beside its source evidence" width="100%" />
 </p>
 
 ## One review, many connected views
@@ -48,7 +48,7 @@ Veritas is designed as a workspace rather than a collection of disconnected repo
 As the workspace grows, the command search gives you a fast way back to the paper, finding, run, or audit event you were thinking about. Search lives above the whole product, so navigation does not depend on remembering which screen contained the detail.
 
 <p align="center">
-  <img src="docs/assets/product/command-search.webp" alt="Veritas command search across papers, findings, runs, and audit activity" width="100%" />
+  <img src="docs/assets/product/command-search.png" alt="Veritas command search across papers, findings, runs, and audit activity" width="100%" />
 </p>
 
 ## Follow the question all the way through
