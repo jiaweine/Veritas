@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from . import web_core as _core
+from .audit_detail import register_audit_detail_routes
 from .audit_pagination import register_audit_pagination_routes
 from .benchmark_pagination import register_benchmark_pagination_routes
 from .claim_graph_product import register_claim_graph_routes
@@ -49,6 +50,7 @@ def create_app(
     ).expanduser()
     runtime = harness or ProductAuditHarness(resolved_data_dir)
     app = _core.create_app(resolved_data_dir, harness=runtime)
+    register_audit_detail_routes(app, app.state.harness)
     register_model_provider_routes(app)
     register_replication_review_routes(app, app.state.harness)
     register_run_pagination_routes(app, app.state.harness)

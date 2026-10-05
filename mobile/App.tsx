@@ -20,6 +20,8 @@ import {
 import ReplicationScreen from "./ReplicationScreen";
 
 const API_BASE = (process.env.EXPO_PUBLIC_VERITAS_API_URL || "http://127.0.0.1:8765").replace(/\/$/, "");
+const PRODUCT_AUDIT_EVENT_LIMIT = 24;
+const productAuditDetailPath = (auditId: string) => `/api/v1/audits/${encodeURIComponent(auditId)}/product-detail?event_limit=${PRODUCT_AUDIT_EVENT_LIMIT}`;
 
 type Audit = {
   audit_id: string;
@@ -106,11 +108,11 @@ export default function App() {
       if (!didOpenInitialConversation.current) {
         didOpenInitialConversation.current = true;
         if (a[0]?.audit_id) {
-          const first = await request(`/api/v1/audits/${encodeURIComponent(a[0].audit_id)}`).then((r) => r.json());
+          const first = await request(productAuditDetailPath(a[0].audit_id)).then((r) => r.json());
           setActiveAudit(first);
         }
       } else if (activeAudit) {
-        const next = await request(`/api/v1/audits/${encodeURIComponent(activeAudit.audit_id)}`).then((r) => r.json());
+        const next = await request(productAuditDetailPath(activeAudit.audit_id)).then((r) => r.json());
         setActiveAudit(next);
       }
     } catch (error) {
@@ -128,7 +130,7 @@ export default function App() {
 
   const openAudit = async (id: string) => {
     try {
-      const audit = await request(`/api/v1/audits/${encodeURIComponent(id)}`).then((r) => r.json());
+      const audit = await request(productAuditDetailPath(id)).then((r) => r.json());
       setActiveAudit(audit);
     } catch (error) {
       Alert.alert("Unable to open audit", String(error));
@@ -166,7 +168,7 @@ export default function App() {
         body: JSON.stringify({ message: text }),
       });
       await response.text();
-      const next = await request(`/api/v1/audits/${encodeURIComponent(activeAudit.audit_id)}`).then((r) => r.json());
+      const next = await request(productAuditDetailPath(activeAudit.audit_id)).then((r) => r.json());
       setActiveAudit(next);
       await load();
     } catch (error) {

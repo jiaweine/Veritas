@@ -17,10 +17,33 @@ def run(base_url: str, output_dir: Path) -> None:
         audit_id, _ = _seed_contradiction_audit(client)
         audit = client.get(f"/api/v1/audits/{audit_id}").json()
         audit_title = audit["title"]
+        # Build a history longer than the product detail tail. The browser must
+        # still request only the bounded product projection.
+        for _ in range(16):
+            response = client.post(
+                f"/api/v1/audits/{audit_id}/messages",
+                json={"message": "What needs attention?"},
+            )
+            response.raise_for_status()
+            _ = response.read()
+        assert len(client.get(f"/api/v1/audits/{audit_id}").json()["events"]) > 24
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1536, "height": 960})
+        detail_gets: list[str] = []
+        legacy_detail_gets: list[str] = []
+
+        def observe_request(request) -> None:
+            if request.method != "GET" or f"/api/v1/audits/{audit_id}" not in request.url:
+                return
+            if "/product-detail" in request.url:
+                detail_gets.append(request.url)
+                return
+            if request.url.split("?", 1)[0].rstrip("/").endswith(f"/api/v1/audits/{audit_id}"):
+                legacy_detail_gets.append(request.url)
+
+        page.on("request", observe_request)
         page.goto(f"{base_url}/", wait_until="networkidle")
         page.wait_for_function("document.body.classList.contains('agent-open')", timeout=20_000)
 
@@ -35,6 +58,12 @@ def run(base_url: str, output_dir: Path) -> None:
         composer = page.locator("#agent-message")
         if composer.is_disabled():
             raise AssertionError("Conversation composer stayed disabled with an active audit")
+        if not detail_gets or any("event_limit=24" not in url for url in detail_gets):
+            raise AssertionError(f"Conversation did not use bounded audit detail: {detail_gets!r}")
+        if legacy_detail_gets:
+            raise AssertionError(f"Browser hydrated legacy full audit detail: {legacy_detail_gets!r}")
+        if page.locator("#agent-timeline .trace").count() > 24:
+            raise AssertionError("Conversation rendered more than the bounded event tail")
 
         failed_once = {"value": False}
 
@@ -88,6 +117,10 @@ def run(base_url: str, output_dir: Path) -> None:
             timeout=20_000,
         )
         timeline = page.locator("#agent-timeline").inner_text()
+        if any("event_limit=24" not in url for url in detail_gets):
+            raise AssertionError(f"Refresh escaped bounded audit detail: {detail_gets!r}")
+        if legacy_detail_gets:
+            raise AssertionError(f"Refresh hydrated legacy full audit detail: {legacy_detail_gets!r}")
         if "What needs attention?" not in timeline:
             raise AssertionError("Persisted user message disappeared after refresh")
 
