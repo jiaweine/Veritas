@@ -1,16 +1,16 @@
 .pw-project-group { min-height: 0; }
 .pw-project-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.pw-project-label button { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: rgba(255,255,255,.04); color: #9aa4b6; cursor: pointer; font-size: 13px; line-height: 1; }
+.pw-project-label button { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: rgba(255,255,255,.04); color: #a3a3a3; cursor: pointer; font-size: 13px; line-height: 1; }
 .pw-project-label button:hover { background: rgba(255,255,255,.09); color: #fff; }
 .pw-project-list { display: grid; gap: 2px; max-height: 168px; overflow: auto; scrollbar-width: thin; }
 .pw-project-nav { min-height: 31px; font-size: 10px; }
 .pw-project-nav .nav-icon { font-size: 12px; }
 .pw-project-nav-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pw-nav-message { margin: 0 8px; padding: 7px 0; color: #778196; font-size: 9px; line-height: 1.45; }
-.pw-nav-message button { margin-left: 6px; padding: 0; border: 0; background: transparent; color: #a9b4ff; cursor: pointer; font-size: inherit; }
+.pw-nav-message { margin: 0 8px; padding: 7px 0; color: #808080; font-size: 9px; line-height: 1.45; }
+.pw-nav-message button { margin-left: 6px; padding: 0; border: 0; background: transparent; color: #b7b7b7; cursor: pointer; font-size: inherit; }
 
-.pw-dialog { width: min(430px, calc(100vw - 28px)); border: 1px solid var(--line); border-radius: 14px; padding: 0; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(15,22,38,.22); }
-.pw-dialog::backdrop { background: rgba(15,20,31,.42); backdrop-filter: blur(2px); }
+.pw-dialog { width: min(430px, calc(100vw - 28px)); border: 1px solid var(--line); border-radius: 14px; padding: 0; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(22,22,22,.22); }
+.pw-dialog::backdrop { background: rgba(20,20,20,.42); backdrop-filter: blur(2px); }
 .pw-dialog form { padding: 20px; }
 .pw-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .pw-dialog-head div { display: grid; gap: 3px; }
@@ -21,22 +21,22 @@
 .pw-dialog label { display: grid; gap: 7px; }
 .pw-dialog label span { color: var(--text-soft); font-size: 10px; font-weight: 650; }
 .pw-dialog input { width: 100%; height: 40px; border: 1px solid var(--line-strong); border-radius: 9px; padding: 0 11px; background: var(--surface-soft); color: var(--text); outline: none; }
-.pw-dialog input:focus { border-color: rgba(83,104,245,.55); box-shadow: 0 0 0 3px rgba(83,104,245,.09); }
+.pw-dialog input:focus { border-color: rgba(110,110,110,.55); box-shadow: 0 0 0 3px rgba(110,110,110,.09); }
 .pw-dialog-error { margin-top: 9px; padding: 8px 10px; border: 1px solid rgba(199,69,80,.2); border-radius: 8px; background: var(--bad-soft); color: var(--bad); font-size: 10px; }
 .pw-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .pw-dialog-actions button { min-height: 34px; border: 1px solid var(--line); border-radius: 8px; padding: 0 12px; background: var(--surface); color: var(--text-soft); cursor: pointer; font-size: 11px; font-weight: 650; }
 .pw-dialog-actions button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
 .pw-dialog-actions button:disabled { opacity: .5; cursor: default; }
 
-.pw-audit-project { border-bottom: 1px solid var(--ah-line, rgba(128,142,160,.16)); padding-bottom: 12px; }
-.pw-audit-project .ah-section-head button { border: 0; background: transparent; color: var(--ah-muted, #83909c); cursor: pointer; font-size: 10px; }
+.pw-audit-project { border-bottom: 1px solid var(--ah-line, rgba(140,140,140,.16)); padding-bottom: 12px; }
+.pw-audit-project .ah-section-head button { border: 0; background: transparent; color: var(--ah-muted, #8e8e8e); cursor: pointer; font-size: 10px; }
 .pw-audit-project .ah-section-head button:hover { color: var(--ah-text, #e9eef2); }
-.pw-audit-project select { width: 100%; height: 32px; border: 1px solid var(--ah-line, rgba(128,142,160,.18)); border-radius: 7px; padding: 0 8px; background: var(--ah-panel-strong, #111b20); color: var(--ah-text, #e9eef2); font-size: 10px; outline: none; }
-.pw-audit-project select:focus { border-color: rgba(102,126,242,.65); box-shadow: 0 0 0 2px rgba(83,104,245,.12); }
-.pw-audit-project > small { display: block; margin-top: 7px; color: var(--ah-faint, #63717b); font-size: 8px; line-height: 1.35; }
-.pw-assignment-status { min-height: 11px; margin-top: 5px; color: var(--ah-muted, #83909c); font-size: 8px; }
+.pw-audit-project select { width: 100%; height: 32px; border: 1px solid var(--ah-line, rgba(140,140,140,.18)); border-radius: 7px; padding: 0 8px; background: var(--ah-panel-strong, #191919); color: var(--ah-text, #e9eef2); font-size: 10px; outline: none; }
+.pw-audit-project select:focus { border-color: rgba(129,129,129,.65); box-shadow: 0 0 0 2px rgba(110,110,110,.12); }
+.pw-audit-project > small { display: block; margin-top: 7px; color: var(--ah-faint, #6f6f6f); font-size: 8px; line-height: 1.35; }
+.pw-assignment-status { min-height: 11px; margin-top: 5px; color: var(--ah-muted, #8e8e8e); font-size: 8px; }
 
-.pw-filter-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: -4px 0 14px; padding: 11px 13px; border: 1px solid rgba(83,104,245,.18); border-radius: 10px; background: linear-gradient(90deg, rgba(83,104,245,.08), rgba(83,104,245,.025)); }
+.pw-filter-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: -4px 0 14px; padding: 11px 13px; border: 1px solid rgba(110,110,110,.18); border-radius: 10px; background: linear-gradient(90deg, rgba(110,110,110,.08), rgba(110,110,110,.025)); }
 .pw-filter-banner > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .pw-filter-banner span { color: var(--accent-ink); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .pw-filter-banner strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
@@ -51,26 +51,26 @@
 /* The reference audit layout intentionally replaces the generic navigation and
    hides the legacy .ah-left rail. Surface project grouping in that same chrome
    rather than reviving duplicate navigation. */
-.pw-ref-projects { margin-top: -4px; padding-top: 4px; border-top: 1px solid #17272e; }
+.pw-ref-projects { margin-top: -4px; padding-top: 4px; border-top: 1px solid #242424; }
 .pw-ref-project-list { display: grid; gap: 1px; max-height: 134px; overflow: auto; scrollbar-width: thin; }
 .pw-ref-project-link.active { background: rgba(82,213,203,.08); color: #e5f4f3; box-shadow: inset 2px 0 0 #52d5cb; }
 .pw-ref-project-link.active > span { color: #73e2d9; }
-.pw-ref-current { display: grid; gap: 7px; margin: 9px 5px 0; padding: 9px; border: 1px solid #203139; border-radius: 7px; background: #0b171c; }
+.pw-ref-current { display: grid; gap: 7px; margin: 9px 5px 0; padding: 9px; border: 1px solid #2e2e2e; border-radius: 7px; background: #151515; }
 .pw-ref-current > div { display: grid; gap: 2px; }
 .pw-ref-current > div > span { color: #d8e4e6; font-size: 9px; font-weight: 700; }
-.pw-ref-current > div > small { color: #667b82; font-size: 7px; line-height: 1.35; }
-.pw-ref-current select { width: 100%; height: 29px; border: 1px solid #2a3c44; border-radius: 6px; padding: 0 7px; background: #101d22; color: #dce7e9; font-size: 8px; outline: none; }
+.pw-ref-current > div > small { color: #777777; font-size: 7px; line-height: 1.35; }
+.pw-ref-current select { width: 100%; height: 29px; border: 1px solid #393939; border-radius: 6px; padding: 0 7px; background: #1b1b1b; color: #dce7e9; font-size: 8px; outline: none; }
 .pw-ref-current select:focus { border-color: #3b7877; box-shadow: 0 0 0 2px rgba(82,213,203,.08); }
 .pw-ref-current select:disabled { opacity: .58; }
-.pw-ref-status { min-height: 9px; color: #71858c; font-size: 7px; }
+.pw-ref-status { min-height: 9px; color: #818181; font-size: 7px; }
 
-body.reference-audit-active .pw-dialog { border-color: #284048; background: #0c171c; color: #edf4f5; box-shadow: 0 24px 80px rgba(0,0,0,.45); }
+body.reference-audit-active .pw-dialog { border-color: #3b3b3b; background: #151515; color: #edf4f5; box-shadow: 0 24px 80px rgba(0,0,0,.45); }
 body.reference-audit-active .pw-dialog-head span,
 body.reference-audit-active .pw-dialog p,
-body.reference-audit-active .pw-dialog label span { color: #758b91; }
+body.reference-audit-active .pw-dialog label span { color: #878787; }
 body.reference-audit-active .pw-dialog-head button,
-body.reference-audit-active .pw-dialog-actions button { border-color: #283c44; background: #101e24; color: #aebfc3; }
-body.reference-audit-active .pw-dialog input { border-color: #2a4048; background: #101d23; color: #edf4f5; }
+body.reference-audit-active .pw-dialog-actions button { border-color: #383838; background: #1b1b1b; color: #aebfc3; }
+body.reference-audit-active .pw-dialog input { border-color: #3c3c3c; background: #1b1b1b; color: #edf4f5; }
 body.reference-audit-active .pw-dialog-actions button.primary { border-color: #397d79; background: #276864; color: #efffff; }
 body.reference-audit-active .pw-dialog-error { border-color: rgba(255,112,112,.25); background: rgba(255,112,112,.08); color: #ff9696; }
 

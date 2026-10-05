@@ -27,7 +27,7 @@
   padding: 10px 11px;
   border: 1px solid var(--ah-line);
   border-radius: 8px;
-  background: #0d181e;
+  background: #161616;
 }
 
 .ah-notes-copy span {
@@ -65,7 +65,7 @@
   border-radius: 9px;
   outline: none;
   padding: 12px 13px;
-  background: #091318;
+  background: #111111;
   color: #dce6e8;
   caret-color: var(--ah-accent);
   font: 400 9px/1.62 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
@@ -74,7 +74,7 @@
 
 #ah-notes-editor::placeholder { color: var(--ah-faint); }
 #ah-notes-editor:focus {
-  border-color: #31585b;
+  border-color: #505050;
   box-shadow: 0 0 0 2px rgba(79, 209, 197, .08);
 }
 
@@ -97,9 +97,9 @@
   flex: 0 0 auto;
   height: 30px;
   min-width: 82px;
-  border: 1px solid #275556;
+  border: 1px solid #4b4b4b;
   border-radius: 7px;
-  background: #123031;
+  background: #2a2a2a;
   color: #a2f4ec;
   padding: 0 11px;
   font-size: 8px;
@@ -107,10 +107,10 @@
   cursor: pointer;
 }
 
-#ah-notes-save:hover:not(:disabled) { background: #173a3b; }
+#ah-notes-save:hover:not(:disabled) { background: #333333; }
 #ah-notes-save:disabled {
   border-color: var(--ah-line);
-  background: #101a20;
+  background: #181818;
   color: var(--ah-faint);
   cursor: default;
 }

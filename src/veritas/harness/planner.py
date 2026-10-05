@@ -13,15 +13,60 @@ class AuditCommand:
     expected_page: int | None = None
 
 
+_SUMMARY_REQUESTS = {
+    "summary",
+    "summarize",
+    "summarise",
+    "summarize this paper",
+    "summarise this paper",
+    "summarize this audit",
+    "summarise this audit",
+    "what needs attention",
+    "what should i review",
+    "show findings",
+    "show me the findings",
+    "what are the findings",
+    "current result",
+    "audit result",
+    "总结",
+    "总结一下",
+    "总结这篇论文",
+    "总结这次审计",
+    "有哪些问题",
+    "有什么问题",
+    "需要关注什么",
+    "审计结果",
+    "当前结果",
+}
+
+_INSPECT_REQUESTS = {
+    "/inspect",
+    "inspect",
+    "inspect this paper",
+    "show paper structure",
+    "paper structure",
+    "查看论文",
+    "查看",
+    "论文结构",
+    "看看论文结构",
+}
+
+
+def _normalize_prompt(text: str) -> str:
+    return re.sub(r"[?.!。！？]+$", "", text.strip().casefold()).strip()
+
+
 def parse_command(message: str) -> AuditCommand:
     text = message.strip()
     if not text:
         raise ValueError("message is empty")
 
-    lowered = text.casefold()
+    lowered = _normalize_prompt(text)
     if lowered in {"/help", "help", "帮助"}:
         return AuditCommand("help")
-    if lowered in {"/inspect", "inspect", "查看论文", "查看"}:
+    if lowered in _SUMMARY_REQUESTS:
+        return AuditCommand("summary")
+    if lowered in _INSPECT_REQUESTS:
         return AuditCommand("inspect")
 
     if lowered.startswith("/audit"):
@@ -39,9 +84,9 @@ def parse_command(message: str) -> AuditCommand:
 
 def help_text() -> str:
     return (
-        "Use `/inspect` to review detected paper structure, or run a regression audit with "
-        '`/audit row="Treatment" table=2 page=1`. Table and page are optional when the '
-        "row label is unique."
+        'Ask “What needs attention?” for a summary grounded in the latest persisted audit, '
+        'or “inspect this paper” to review detected structure. For a specific regression row, '
+        'run `/audit row="Treatment" table=2 page=1`; table and page are optional when the row label is unique.'
     )
 
 

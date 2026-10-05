@@ -14,8 +14,8 @@
 .benchmark-card p { min-height: 34px; margin: 8px 0 10px; color: var(--text-soft); font-size: 8px; line-height: 1.5; }
 .benchmark-command, .benchmark-source { display: grid; gap: 4px; margin-top: 7px; }
 .benchmark-command > span, .benchmark-source > span:first-child { color: var(--text-faint); font-size: 6.8px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
-.benchmark-command code { display: block; padding: 7px; border-radius: 7px; background: #f1f3f6; color: #576172; font: 7px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: normal; overflow-wrap: anywhere; }
-.benchmark-source > span:last-child { color: #737d8d; font-size: 7px; overflow-wrap: anywhere; }
+.benchmark-command code { display: block; padding: 7px; border-radius: 7px; background: #f1f3f6; color: #606060; font: 7px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: normal; overflow-wrap: anywhere; }
+.benchmark-source > span:last-child { color: #7c7c7c; font-size: 7px; overflow-wrap: anywhere; }
 .benchmark-result-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--line); }
 .benchmark-result-head > span { color: var(--text-faint); font-size: 6.8px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
 .benchmark-result { margin-top: 7px; display: grid; gap: 5px; }

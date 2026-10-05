@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#071116" />
+  <meta name="theme-color" content="#0b0b0a" />
   <meta name="color-scheme" content="dark light" />
   <meta name="description" content="Evidence-first research auditing with inspectable provenance." />
-  <meta name="application-name" content="Research Audit Workbench" />
-  <title>Veritas · Research Audit Harness · Workbench</title>
+  <meta name="application-name" content="Veritas Research Conversation" />
+  <title>Veritas · Evidence-grounded research conversation</title>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/static/styles.css" />
@@ -43,17 +43,18 @@
         <div class="brand-mark" aria-hidden="true">V</div>
         <div class="brand-copy">
           <div class="brand-name">Veritas</div>
-          <div class="brand-tagline">Research audit system</div>
+          <div class="brand-tagline">Evidence-grounded research</div>
         </div>
       </div>
 
-      <button id="new-audit" class="primary-button sidebar-primary">＋ New audit</button>
+      <button id="new-audit" class="primary-button sidebar-primary">＋ New paper</button>
       <input id="file-input" type="file" accept="application/pdf,.pdf" hidden />
 
       <nav class="nav-groups">
         <div class="nav-group">
           <div class="nav-label">Workspace</div>
-          <button class="nav-item active" data-view="overview"><span class="nav-icon">⌂</span><span>Overview</span></button>
+          <button id="conversation-nav" class="nav-item active" type="button"><span class="nav-icon">✦</span><span>Conversation</span></button>
+          <button class="nav-item" data-view="overview"><span class="nav-icon">⌂</span><span>Workspace</span></button>
           <button class="nav-item" data-view="audits"><span class="nav-icon">▤</span><span>Audits</span><span id="audit-count" class="nav-count">0</span></button>
           <button class="nav-item" data-view="findings"><span class="nav-icon">◇</span><span>Findings</span><span id="finding-count" class="nav-count">0</span></button>
           <button class="nav-item" data-view="runs"><span class="nav-icon">⌁</span><span>Agent runs</span></button>
@@ -86,8 +87,7 @@
         </div>
         <div class="topbar-actions">
           <span id="sync-status" class="sync-status"><i></i><span>System ready</span></span>
-          <a class="ghost-button desktop-only" href="/api/docs" target="_blank" rel="noreferrer">API</a>
-          <button id="agent-toggle" class="ghost-button">Agent <span class="agent-indicator"></span></button>
+          <button id="agent-toggle" class="ghost-button" aria-pressed="false">Conversation <span class="agent-indicator"></span></button>
           <button class="avatar-button" aria-label="Workspace profile">V</button>
         </div>
       </header>
@@ -95,43 +95,43 @@
       <main id="main-content" class="main-content" tabindex="-1"></main>
     </section>
 
-    <aside id="agent-sidecar" class="agent-sidecar" aria-label="Audit agent">
+    <aside id="agent-sidecar" class="agent-sidecar" aria-label="Research conversation">
       <div class="sidecar-header">
         <div>
-          <strong>Audit Agent</strong>
-          <span class="online-label"><i></i> deterministic tools</span>
+          <strong>Research conversation</strong>
+          <span class="online-label"><i></i> evidence-grounded</span>
         </div>
-        <button id="agent-close" class="icon-button" aria-label="Close agent">×</button>
+        <button id="agent-close" class="icon-button" aria-label="Close conversation">×</button>
       </div>
       <div id="agent-context" class="agent-context"></div>
       <div id="agent-timeline" class="agent-timeline"></div>
       <div class="agent-composer">
         <div class="command-chips">
-          <button data-agent-command="/inspect">Inspect</button>
+          <button data-agent-command="What needs attention?">Summarize</button>
+          <button data-agent-command="inspect this paper">Inspect</button>
           <button data-agent-command="/audit ">Audit row</button>
-          <button data-agent-command="/help">Help</button>
         </div>
         <div class="composer-box">
-          <textarea id="agent-message" rows="2" placeholder="Ask about the selected paper…" disabled></textarea>
+          <textarea id="agent-message" rows="2" placeholder="Ask from this paper’s evidence…" disabled></textarea>
           <button id="agent-send" aria-label="Send" disabled>↑</button>
         </div>
-        <small>Commands are executed by Veritas' deterministic audit harness.</small>
+        <small>Answers stay attached to persisted audit evidence and deterministic tools.</small>
       </div>
     </aside>
   </div>
 
   <nav class="mobile-nav" aria-label="Mobile navigation">
-    <button class="mobile-nav-item active" data-view="overview"><span>⌂</span><small>Overview</small></button>
+    <button class="mobile-nav-item" data-view="overview"><span>⌂</span><small>Workspace</small></button>
     <button class="mobile-nav-item" data-view="audits"><span>▤</span><small>Audits</small></button>
-    <button id="mobile-new" class="mobile-create" aria-label="New audit">＋</button>
+    <button id="mobile-new" class="mobile-create" aria-label="New paper">＋</button>
     <button class="mobile-nav-item" data-view="findings"><span>◇</span><small>Findings</small></button>
-    <button id="mobile-agent" class="mobile-nav-item"><span>⌁</span><small>Agent</small></button>
+    <button id="mobile-agent" class="mobile-nav-item active"><span>✦</span><small>Chat</small></button>
   </nav>
 
   <dialog id="upload-dialog" class="modal">
     <form id="upload-form" method="dialog">
       <div class="modal-head">
-        <div><span class="eyebrow">New audit</span><h2>Upload a research paper</h2></div>
+        <div><span class="eyebrow">New paper</span><h2>Add evidence to the conversation</h2></div>
         <button id="upload-close" type="button" class="icon-button" aria-label="Close">×</button>
       </div>
       <p class="modal-copy">Veritas keeps the PDF immutable, parses it with independent engines, and links every detector result back to inspectable evidence.</p>
@@ -141,7 +141,7 @@
         <strong id="drop-title">Choose a PDF</strong>
         <small id="drop-copy">PDF · up to 80 MiB</small>
       </button>
-      <div class="modal-actions"><button id="upload-cancel" type="button" class="secondary-button">Cancel</button><button id="upload-submit" type="submit" class="primary-button" disabled>Parse & create audit</button></div>
+      <div class="modal-actions"><button id="upload-cancel" type="button" class="secondary-button">Cancel</button><button id="upload-submit" type="submit" class="primary-button" disabled>Parse & start conversation</button></div>
     </form>
   </dialog>
 
