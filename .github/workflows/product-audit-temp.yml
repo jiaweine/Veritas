@@ -19,6 +19,14 @@ jobs:
           ref: product/conversation-neutral-shell
       - name: Apply conversation-first neutral product migration
         run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/product_conversation_patch_temp.py')
+          text = path.read_text()
+          start = text.index("app_text = app_text.replace(\n    '  $$(")
+          end = text.index("old_boot = '''", start)
+          path.write_text(text[:start] + text[end:])
+          PY
           python scripts/product_conversation_patch_temp.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
