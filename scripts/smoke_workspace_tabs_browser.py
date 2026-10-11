@@ -29,15 +29,23 @@ def main() -> None:
         page.locator('[data-audit-harness="true"]').wait_for(state="visible", timeout=20_000)
 
         def select_tab(key: str) -> None:
-            tab = page.locator(f'.ah-workspace-tabs [data-ah-tab="{key}"]')
+            tab = page.locator(
+                f'.ah-workspace-tabs [data-ah-workspace-tab="{key}"]'
+                if key == "source"
+                else f'.ah-workspace-tabs [data-ah-tab="{key}"]'
+            )
             tab.click()
-            tab = page.locator(f'.ah-workspace-tabs [data-ah-tab="{key}"]')
+            tab = page.locator(
+                f'.ah-workspace-tabs [data-ah-workspace-tab="{key}"]'
+                if key == "source"
+                else f'.ah-workspace-tabs [data-ah-tab="{key}"]'
+            )
             tab.wait_for(state="visible")
             assert tab.get_attribute("aria-selected") == "true"
             assert "active" in (tab.get_attribute("class") or "").split()
 
         select_tab("structure")
-        assert page.locator('.ah-workspace-tabs [data-ah-tab="source"]').get_attribute("aria-selected") == "false"
+        assert page.locator('.ah-workspace-tabs [data-ah-workspace-tab="source"]').get_attribute("aria-selected") == "false"
         select_tab("findings")
         select_tab("source")
 
