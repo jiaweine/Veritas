@@ -273,3 +273,23 @@ a:focus-visible, [tabindex]:focus-visible { outline-color: var(--accent); }
 @media (max-width: 1100px) and (min-width: 881px) {
   :root { --sidebar-width: 220px; }
 }
+
+/* The dedicated Audit Workbench sidebar now contains the same destinations. */
+.ref-sidebar-shell {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #353535 transparent;
+}
+.ref-sidebar-link.active {
+  background: linear-gradient(90deg, rgba(82, 213, 203, .12), rgba(82, 213, 203, .045));
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.ref-sidebar-link.active > span { color: var(--accent-ink); }
+.ref-sidebar-link.active em { color: var(--text-soft); }
+.ref-sidebar-shell .ref-recent-list { max-height: min(33vh, 275px); }
+@media (max-width: 880px) {
+  /* Native/compact navigation remains the same dark palette. */
+  .sidebar { width: min(280px, 86vw); }
+  .mobile-nav-item.active { color: var(--accent-ink); }
+}
