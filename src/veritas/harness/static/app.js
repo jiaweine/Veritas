@@ -531,6 +531,21 @@ function activateCommand(index = state.commandIndex) {
   if (auditId) openAudit(auditId);
 }
 
+function syncRouteFromHash() {
+  const hash = location.hash.slice(1);
+  if (hash.startsWith("audit=")) {
+    const encoded = hash.slice("audit=".length);
+    let auditId;
+    try { auditId = decodeURIComponent(encoded); } catch { auditId = encoded; }
+    if (auditId && (state.view !== "audit" || state.activeAudit?.audit_id !== auditId)) {
+      void openAudit(auditId);
+    }
+    return;
+  }
+  const routes = ["overview", "audits", "findings", "runs", "evidence", "reproduction", "benchmarks", "settings"];
+  if (routes.includes(hash) && state.view !== hash) setView(hash, { push: false });
+}
+
 function bindGlobal() {
   $$('[data-view]').forEach((node) => node.addEventListener("click", () => setView(node.dataset.view)));
   $("#new-audit").addEventListener("click", openUpload);
@@ -557,6 +572,9 @@ function bindGlobal() {
   $("#sidebar-open").addEventListener("click", () => document.body.classList.add("sidebar-open"));
   $("#sidebar-close").addEventListener("click", () => document.body.classList.remove("sidebar-open"));
   $("#sidebar-backdrop").addEventListener("click", () => document.body.classList.remove("sidebar-open"));
+  // Native sidebar clicks call setView(); hash-only navigation from feature
+  // modules and browser history must also update the rendered SPA view.
+  window.addEventListener("hashchange", syncRouteFromHash);
   document.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); els.command.open ? els.command.close() : openCommand(); }
   });
