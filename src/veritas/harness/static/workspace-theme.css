@@ -366,7 +366,7 @@ a:focus-visible, [tabindex]:focus-visible { outline-color: var(--accent); }
   gap: 18px;
   margin: 12px 0 16px;
   padding: 13px 16px;
-  border: 1px solid var(--warn-line);
+  border: 1px solid rgba(231, 180, 74, .48);
   border-radius: 9px;
   background: var(--warn-soft);
   color: var(--text);
