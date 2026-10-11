@@ -397,16 +397,36 @@ function renderWorkbench() {
   bindMainActions();
 }
 
+function bindKeyboardAction(node, action) {
+  node.addEventListener("click", action);
+  if (!["BUTTON", "A"].includes(node.tagName)) {
+    node.tabIndex = 0;
+    if (node.tagName !== "TR") node.setAttribute("role", "link");
+    node.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        action();
+      }
+    });
+  }
+}
+
 function bindMainActions() {
-  $$('[data-action="new-audit"]', els.main).forEach((node) => node.addEventListener("click", openUpload));
+  $('[data-action="new-audit"]', els.main).forEach((node) => node.addEventListener("click", openUpload));
   $$('[data-action="refresh"]', els.main).forEach((node) => node.addEventListener("click", async () => { await loadProductData(); renderMain(); renderAgent(); }));
   $$('[data-action="agent-open"]', els.main).forEach((node) => node.addEventListener("click", () => setAgent(true)));
   $$('[data-action="open-pdf"]', els.main).forEach((node) => node.addEventListener("click", () => state.activeAudit && window.open(`/api/v1/audits/${encodeURIComponent(state.activeAudit.audit_id)}/paper`, "_blank", "noopener")));
   $$('[data-view]', els.main).forEach((node) => node.addEventListener("click", () => setView(node.dataset.view)));
-  $$('[data-audit-id]', els.main).forEach((node) => node.addEventListener("click", () => openAudit(node.dataset.auditId)));
-  $$('[data-table-page]', els.main).forEach((node) => node.addEventListener("click", () => {
-    const frame = $(".pdf-frame", els.main); if (frame && state.activeAudit) frame.src = `/api/v1/audits/${encodeURIComponent(state.activeAudit.audit_id)}/paper#page=${encodeURIComponent(node.dataset.tablePage)}`;
-  }));
+  $('[data-audit-id]', els.main).forEach((node) => bindKeyboardAction(node, () => openAudit(node.dataset.auditId)));
+  $('[data-table-page]', els.main).forEach((node) => {
+    node.setAttribute("role", "button");
+    bindKeyboardAction(node, () => {
+      const frame = $(".pdf-frame", els.main);
+      if (frame && state.activeAudit) {
+        frame.src = `/api/v1/audits/${encodeURIComponent(state.activeAudit.audit_id)}/paper#page=${encodeURIComponent(node.dataset.tablePage)}`;
+      }
+    });
+  });
 }
 
 const MAX_PDF_UPLOAD_BYTES = 80 * 1024 * 1024;
