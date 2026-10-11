@@ -17,6 +17,8 @@ const repState = {
   selectedFileRequest: 0,
   inspectorTab: "changes",
   streaming: false,
+  livePrompt: "",
+  liveEvents: [],
   recoveryRunId: "",
   connectionWarning: "",
   maxAttachmentBytes: 80 * 1024 * 1024,
@@ -144,6 +146,25 @@ function replicationRuns() {
   return repState.runs.filter((run) => run.run_kind === "replication" && (!repState.selectedAuditId || run.audit_id === repState.selectedAuditId));
 }
 
+function renderLiveThread() {
+  const text = `<article class="rep-message user"><div class="rep-avatar user">You</div><div class="rep-message-body"><div class="rep-message-label">Reproduction goal</div><div class="rep-message-text">${escapeHtml(repState.livePrompt)}</div></div></article>`;
+  // If a later event resolves an approval request, do not resurface an older
+  // pending approval button when the running view is reconstructed.
+  const resolved = new Set(repState.liveEvents.flatMap((event) => {
+    const agent = event.payload?.agent_event || {};
+    const payload = agent.payload || {};
+    return agent.kind === "permission" && payload.request_id && payload.decision !== "pending"
+      ? [String(payload.request_id)] : [];
+  }));
+  const history = repState.liveEvents.filter((event) => {
+    const agent = event.payload?.agent_event || {};
+    const payload = agent.payload || {};
+    return !(agent.kind === "permission" && payload.decision === "pending"
+      && resolved.has(String(payload.request_id || "")));
+  }).map((event) => eventCard(event, repState.selectedRunId)).join("");
+  return text + history;
+}
+
 function renderShell() {
   // A delayed stream/read must never repaint the user's newer SPA route.
   if (location.hash !== "#reproduction") return;
@@ -212,7 +233,7 @@ function renderShell() {
           <div class="rep-run-actions"><span id="rep-live-state" class="rep-live-state ${repState.streaming ? "running" : ""}"><i></i>${repState.streaming ? "running" : repState.connectionWarning ? "unconfirmed" : "ready"}</span><button id="rep-cancel" class="rep-cancel" ${repState.streaming && repState.selectedRunId ? "" : "disabled"}>Stop</button></div>
         </div>
         ${renderFindingContext()}
-        <div id="rep-thread" class="rep-thread">${renderPersistedThread(repState.selectedRun)}</div>
+        <div id="rep-thread" class="rep-thread">${repState.streaming ? renderLiveThread() : renderPersistedThread(repState.selectedRun)}</div>
         <div class="rep-composer-wrap">
           ${interactive ? `<div class="rep-approval-note">Tool permissions pause here until you choose <b>Allow once</b> or <b>Reject</b>. Permanent approval is never offered by Veritas.</div>` : ""}
           <div class="rep-composer">
@@ -246,7 +267,7 @@ function renderArtifactList() {
 
 function renderRunList(runs) {
   if (!runs.length) return `<div class="rep-mini-empty">No replication runs for this paper.</div>`;
-  return runs.map((run) => `<button class="rep-run-row ${run.run_id === repState.selectedRunId ? "selected" : ""}" data-run-id="${escapeHtml(run.run_id)}">
+  return runs.map((run) => `<button class="rep-run-row ${run.run_id === repState.selectedRunId ? "selected" : ""}" data-run-id="${escapeHtml(run.run_id)}" ${repState.streaming ? "disabled" : ""}>
     <span class="rep-run-glyph ${escapeHtml(run.status || "")}">↻</span>
     <span><strong>${escapeHtml(run.phase === "cancelled" ? "Cancelled run" : run.task || "Replication run")}</strong><small>${formatTime(run.created_at)} · ${formatDuration(run.duration_ms)}</small></span>
     <em>${escapeHtml(run.phase || run.status || "done")}</em>
@@ -422,7 +443,11 @@ function bindSurface() {
   }));
   document.querySelectorAll("[data-run-id]").forEach((button) => {
     if (button.dataset.permissionDecision) return;
-    button.addEventListener("click", async () => { await selectRun(button.dataset.runId); renderShell(); });
+    button.addEventListener("click", async () => {
+      if (repState.streaming) return;
+      await selectRun(button.dataset.runId);
+      renderShell();
+    });
   });
   document.querySelectorAll("[data-rep-tab]").forEach((button) => button.addEventListener("click", () => {
     repState.inspectorTab = button.dataset.repTab;
@@ -546,6 +571,8 @@ async function runAgent() {
   repState.draftPrompt = prompt;
 
   repState.streaming = true;
+  repState.livePrompt = prompt;
+  repState.liveEvents = [];
   repState.recoveryRunId = "";
   repState.connectionWarning = "";
   repState.selectedRunId = "";
@@ -565,7 +592,7 @@ async function runAgent() {
     const observed = [];
     await consumeNdjson(response, (event) => {
       observed.push(event);
-      consumeLiveEvent(event, thread);
+      consumeLiveEvent(event);
     });
     const finalRunId = repState.selectedRunId || [...observed].reverse().map((event) => event.payload?.run_id).find(Boolean);
     repState.streaming = false;
@@ -628,7 +655,9 @@ async function refreshPersistedRun() {
   }
 }
 
-function consumeLiveEvent(event, thread) {
+function consumeLiveEvent(event) {
+  repState.liveEvents.push(event);
+  const thread = location.hash === "#reproduction" ? document.querySelector("#rep-thread") : null;
   const runId = event.payload?.run_id;
   if (runId && !repState.selectedRunId) {
     repState.selectedRunId = runId;
