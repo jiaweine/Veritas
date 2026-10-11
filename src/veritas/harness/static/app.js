@@ -467,13 +467,19 @@ async function sendAgentMessage() {
     });
     await consumeNdjson(response, (event) => {
       receivedServerEvent = true;
+      // The stream belongs to the audit that initiated it, not whichever
+      // audit the user may have opened while the response was in flight.
+      if (state.activeAudit?.audit_id !== audit.audit_id) return;
       state.activeAudit.events = [...(state.activeAudit.events || []), event];
       if (event.payload?.result) state.activeAudit.latest_result = event.payload.result;
       renderAgent();
       if (state.view === "audit") renderWorkbench();
     });
     await loadProductData();
-    if (state.activeAudit) state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(audit.audit_id)}`).then((r) => r.json());
+    if (state.activeAudit?.audit_id === audit.audit_id) {
+      const updatedAudit = await api(`/api/v1/audits/${encodeURIComponent(audit.audit_id)}`).then((r) => r.json());
+      if (state.activeAudit?.audit_id === audit.audit_id) state.activeAudit = updatedAudit;
+    }
     renderAgent(); renderMain();
   } catch (error) {
     // An already-persisted partial stream must not silently be replayed.
