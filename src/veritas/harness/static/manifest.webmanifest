@@ -4,7 +4,7 @@
   "description": "Evidence-first research auditing with inspectable provenance.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f4f3ef",
+  "background_color": "#0e0e0e",
   "theme_color": "#0b0b0a",
   "icons": [
     {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
