@@ -270,14 +270,16 @@ async function sendMessage() {
   const input = document.querySelector("#ah-message");
   const message = input?.value.trim() || "";
   if (!message || ahState.sending || !ahState.auditId) return;
+  const targetAuditId = ahState.auditId;
   ahState.sending = true;
   ahState.audit.events = [...events(), { kind: "user_message", title: message, detail: message, status: "running", created_at: new Date().toISOString(), payload: { optimistic: true } }];
   renderHarness();
   try {
-    const response = await fetch(`/api/v1/audits/${encodeURIComponent(ahState.auditId)}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });
+    const response = await fetch(`/api/v1/audits/${encodeURIComponent(targetAuditId)}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     let first = true;
     await consumeNdjson(response, (event) => {
+      if (targetAuditId !== ahState.auditId || auditIdFromLocation() !== targetAuditId) return;
       if (first) {
         ahState.audit.events = events().filter((item) => !item.payload?.optimistic);
         first = false;
@@ -290,9 +292,13 @@ async function sendMessage() {
       }
       renderHarness();
     });
-    await hydrate(ahState.auditId, { preserveTab: true, preservePage: true });
+    if (targetAuditId === ahState.auditId && auditIdFromLocation() === targetAuditId) {
+      await hydrate(targetAuditId, { preserveTab: true, preservePage: true });
+    }
   } catch (error) {
-    ahState.audit.events = [...events().filter((item) => !item.payload?.optimistic), { kind: "tool", title: "Audit command failed", detail: error.message, status: "danger", created_at: new Date().toISOString(), payload: { phase: "error" } }];
+    if (targetAuditId === ahState.auditId && auditIdFromLocation() === targetAuditId && ahState.audit) {
+      ahState.audit.events = [...events().filter((item) => !item.payload?.optimistic), { kind: "tool", title: "Audit command failed", detail: error.message, status: "danger", created_at: new Date().toISOString(), payload: { phase: "error" } }];
+    }
   } finally {
     ahState.sending = false;
     renderHarness();
