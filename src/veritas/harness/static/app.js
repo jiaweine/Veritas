@@ -106,6 +106,7 @@ function publishProductPage(kind, page) {
 }
 
 async function loadProductData({ keepAudit = true } = {}) {
+  const requestToken = ++state.productDataRequest;
   setSync("loading", "Refreshing…");
   try {
     const [overview, auditPage, findingPage, runPage] = await Promise.all([
@@ -114,6 +115,7 @@ async function loadProductData({ keepAudit = true } = {}) {
       api(PRODUCT_BOOT_PAGE_PATHS.findings).then((r) => r.json()),
       api(PRODUCT_BOOT_PAGE_PATHS.runs).then((r) => r.json()),
     ]);
+    if (requestToken !== state.productDataRequest) return false;
     const audits = pageItems(auditPage);
     const findings = pageItems(findingPage);
     const runs = pageItems(runPage);
@@ -126,13 +128,22 @@ async function loadProductData({ keepAudit = true } = {}) {
     publishProductPage("audit", auditPage);
     publishProductPage("finding", findingPage);
     if (keepAudit && state.activeAudit) {
-      const current = audits.find((item) => item.audit_id === state.activeAudit.audit_id);
-      if (current) state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(current.audit_id)}`).then((r) => r.json());
+      const auditId = state.activeAudit.audit_id;
+      const current = audits.find((item) => item.audit_id === auditId);
+      if (current) {
+        const fresh = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+        if (requestToken !== state.productDataRequest) return false;
+        if (state.activeAudit?.audit_id === auditId) state.activeAudit = fresh;
+      }
     }
+    if (requestToken !== state.productDataRequest) return false;
     setSync("ready", "System ready");
+    return true;
   } catch (error) {
+    if (requestToken !== state.productDataRequest) return false;
     setSync("error", "Offline");
     showToast(error.message);
+    return false;
   }
 }
 
@@ -152,6 +163,8 @@ function pageHead(eyebrow, title, subtitle, actions = "") {
 }
 
 function setView(view, { push = true } = {}) {
+  // A pending paper read must not replace a newer view.
+  state.activeAuditRequest += 1;
   if (state.agentOpen) setAgent(false);
   state.view = view;
   $$('[data-view]').forEach((node) => node.classList.toggle("active", node.dataset.view === view));
@@ -311,14 +324,19 @@ function renderSettings() {
 }
 
 async function openAudit(auditId) {
+  const requestToken = ++state.activeAuditRequest;
   try {
-    state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+    const audit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+    if (requestToken !== state.activeAuditRequest) return;
+    state.activeAudit = audit;
     state.view = "audit";
     history.replaceState(null, "", `#audit=${encodeURIComponent(auditId)}`);
-    $$('[data-view]').forEach((node) => node.classList.remove("active"));
+    $('[data-view]').forEach((node) => node.classList.remove("active"));
     renderMain();
     renderAgent();
-  } catch (error) { showToast(error.message); }
+  } catch (error) {
+    if (requestToken === state.activeAuditRequest) showToast(error.message);
+  }
 }
 
 function renderWorkbench() {
@@ -410,7 +428,10 @@ async function openConversation({ autoSelect = true } = {}) {
   if (!state.activeAudit && autoSelect && state.audits.length) {
     try {
       const auditId = state.audits[0].audit_id;
-      state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+      const requestToken = ++state.activeAuditRequest;
+      const audit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+      if (requestToken !== state.activeAuditRequest) return;
+      if (!state.activeAudit) state.activeAudit = audit;
     } catch (error) {
       showToast(error.message);
     }
