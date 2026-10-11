@@ -17,6 +17,37 @@ def main() -> None:
         page = browser.new_page(viewport={"width": 1440, "height": 960})
         page.goto(args.base_url.rstrip("/") + "/#overview", wait_until="networkidle")
 
+        # GitHub Primer / Atlassian guidance: a failed read is a persistent
+        # alert with an accessible action, not a transient success-like toast.
+        page.evaluate(
+            """() => {
+              const original = window.fetch.bind(window);
+              let rejected = false;
+              window.__restoreFailureFetch = () => { window.fetch = original; };
+              window.fetch = (input, options) => {
+                const url = String(typeof input === "string" ? input : input.url);
+                if (!rejected && url.endsWith("/api/v1/overview")) {
+                  rejected = true;
+                  return Promise.resolve(new Response('{"detail":"Synthetic read failure"}', {
+                    status: 503, headers: { "Content-Type": "application/json" }
+                  }));
+                }
+                return original(input, options);
+              };
+            }"""
+        )
+        page.locator("[data-action='refresh']").click()
+        page.locator("#toast.show[role='alert'] .toast-action").wait_for(state="visible")
+        assert "Synthetic read failure" in page.locator("#toast").inner_text()
+        page.wait_for_timeout(4750)
+        assert page.locator("#toast.show").count() == 1, "Error vanished without dismissal"
+        page.locator(".toast-action").click()
+        page.wait_for_function(
+            "() => !document.querySelector('#toast.show')",
+            timeout=15_000,
+        )
+        page.evaluate("() => window.__restoreFailureFetch()")
+
         # Navigation must preserve browser Back/Forward semantics.
         page.locator(".sidebar [data-view='runs']").click()
         page.wait_for_function("() => location.hash === '#runs'")
