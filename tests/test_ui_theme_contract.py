@@ -37,8 +37,9 @@ def test_dark_theme_loads_last_and_is_cached_offline() -> None:
     assert style_links[-1] == "/static/workspace-theme.css"
     sw = (STATIC / "sw.js").read_text(encoding="utf-8")
     assert '"/static/workspace-theme.css"' in sw
-    assert 'const CACHE = "veritas-shell-v30";' in sw
+    assert 'const CACHE = "veritas-shell-v31";' in sw
     assert (STATIC / "workspace-theme.css").is_file()
+    assert '"/static/ndjson-stream.js"' in sw
     manifest = json.loads((STATIC / "manifest.webmanifest").read_text(encoding="utf-8"))
     assert manifest["background_color"] == "#0e0e0e"
     assert manifest["theme_color"] == "#0e0e0e"
