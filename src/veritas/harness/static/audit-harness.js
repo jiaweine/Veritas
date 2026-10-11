@@ -276,7 +276,10 @@ async function sendMessage() {
   renderHarness();
   try {
     const response = await fetch(`/api/v1/audits/${encodeURIComponent(targetAuditId)}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(String(payload.detail || `${response.status} ${response.statusText}`));
+    }
     let first = true;
     await consumeNdjson(response, (event) => {
       if (targetAuditId !== ahState.auditId || auditIdFromLocation() !== targetAuditId) return;
