@@ -1,4 +1,4 @@
-const CACHE = "veritas-shell-v29";
+const CACHE = "veritas-shell-v30";
 const CACHE_REVISION = "direct-bounded-boot-1";
 const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`;
 const FINDING_CACHE_REVISION = "finding-pagination-1";
@@ -33,6 +33,7 @@ const SHELL = [
   "/static/claim-graph.css",
   "/static/finding-navigation.css",
   "/static/mobile-polish.css",
+  "/static/workspace-theme.css",
   "/static/app.js",
   "/static/command-search.js",
   "/static/audit-pagination.js",
