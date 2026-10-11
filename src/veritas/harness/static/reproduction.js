@@ -19,6 +19,8 @@ const repState = {
   streaming: false,
   livePrompt: "",
   liveEvents: [],
+  submittedPermissionIds: [],
+  uploadingArtifacts: false,
   recoveryRunId: "",
   connectionWarning: "",
   maxAttachmentBytes: 80 * 1024 * 1024,
@@ -160,7 +162,8 @@ function renderLiveThread() {
     const agent = event.payload?.agent_event || {};
     const payload = agent.payload || {};
     return !(agent.kind === "permission" && payload.decision === "pending"
-      && resolved.has(String(payload.request_id || "")));
+      && (resolved.has(String(payload.request_id || ""))
+        || repState.submittedPermissionIds.includes(String(payload.request_id || ""))));
   }).map((event) => eventCard(event, repState.selectedRunId)).join("");
   return text + history;
 }
@@ -208,7 +211,7 @@ function renderShell() {
         <section class="rep-section">
           <div class="rep-section-head"><span>Project</span><span class="rep-dot ${configured ? "online" : ""}"></span></div>
           <label class="rep-label" for="rep-audit-select">Paper</label>
-          <select id="rep-audit-select" class="rep-select" ${repState.streaming ? "disabled" : ""}>${auditOptions}</select>
+          <select id="rep-audit-select" class="rep-select" ${repState.streaming || repState.uploadingArtifacts ? "disabled" : ""}>${auditOptions}</select>
           <div class="rep-project-meta">
             <span class="mono">${escapeHtml(repState.selectedAuditId)}</span>
             <small>${selected ? escapeHtml(selected.filename || "paper.pdf") : ""}</small>
@@ -216,7 +219,7 @@ function renderShell() {
         </section>
 
         <section class="rep-section rep-artifact-section">
-          <div class="rep-section-head"><span>Artifacts</span><button id="rep-add-artifact" class="rep-icon-action" title="Attach immutable files" ${repState.streaming ? "disabled" : ""}>＋</button></div>
+          <div class="rep-section-head"><span>Artifacts</span><button id="rep-add-artifact" class="rep-icon-action" title="Attach immutable files" ${repState.streaming || repState.uploadingArtifacts ? "disabled" : ""}>＋</button></div>
           <input id="rep-artifact-input" type="file" multiple hidden />
           <div id="rep-artifact-list" class="rep-artifact-list">${renderArtifactList()}</div>
         </section>
@@ -238,7 +241,7 @@ function renderShell() {
           ${interactive ? `<div class="rep-approval-note">Tool permissions pause here until you choose <b>Allow once</b> or <b>Reject</b>. Permanent approval is never offered by Veritas.</div>` : ""}
           <div class="rep-composer">
             <textarea id="rep-prompt" rows="3" ${configured && !repState.streaming ? "" : "disabled"} placeholder="Ask the replication agent to inspect code, run the project, reproduce a table or figure, compare outputs, or explain a discrepancy…">${escapeHtml(repState.draftPrompt)}</textarea>
-            <div class="rep-composer-foot"><span>⌘/Ctrl + Enter to run · natural-language goal only</span><button id="rep-run" class="primary-button" ${configured && !repState.streaming ? "" : "disabled"}>Run agent ↑</button></div>
+            <div class="rep-composer-foot"><span>⌘/Ctrl + Enter to run · natural-language goal only</span><button id="rep-run" class="primary-button" ${configured && !repState.streaming && !repState.uploadingArtifacts ? "" : "disabled"}>Run agent ↑</button></div>
           </div>
         </div>
       </section>
@@ -400,8 +403,9 @@ function renderFileInspector(file) {
 
 function bindSurface() {
   document.querySelector("#rep-audit-select")?.addEventListener("change", async (event) => {
-    if (repState.streaming) return;
-    repState.selectedAuditId = event.target.value;
+    if (repState.streaming || repState.uploadingArtifacts) return;
+    const auditId = event.target.value;
+    repState.selectedAuditId = auditId;
     repState.selectedRunId = "";
     repState.selectedRun = null;
     repState.workspace = null;
@@ -411,15 +415,26 @@ function bindSurface() {
     repState.recoveryRunId = "";
     repState.connectionWarning = "";
     try { sessionStorage.removeItem(REPLICATION_CONTEXT_KEY); } catch {}
-    await Promise.all([loadAttachments(), loadRuns()]);
-    const first = replicationRuns()[0];
-    if (first) await selectRun(first.run_id, false);
-    renderShell();
+    try {
+      await Promise.all([loadAttachments(), loadRuns()]);
+      if (repState.selectedAuditId !== auditId) return;
+      const first = replicationRuns()[0];
+      if (first) await selectRun(first.run_id, false);
+      if (repState.selectedAuditId === auditId) renderShell();
+    } catch (error) {
+      if (repState.selectedAuditId === auditId) {
+        renderShell();
+        showInlineError(`Unable to load paper workspace: ${error.message}`);
+      }
+    }
   });
 
   document.querySelector("#rep-add-artifact")?.addEventListener("click", () => document.querySelector("#rep-artifact-input")?.click());
   document.querySelector("#rep-artifact-input")?.addEventListener("change", uploadArtifacts);
-  document.querySelector("#rep-refresh-runs")?.addEventListener("click", async () => { await loadRuns(); renderShell(); });
+  document.querySelector("#rep-refresh-runs")?.addEventListener("click", async () => {
+    try { await loadRuns(); renderShell(); }
+    catch (error) { showInlineError(`Unable to refresh runs: ${error.message}`); }
+  });
   document.querySelector("#rep-run")?.addEventListener("click", runAgent);
   document.querySelector("[data-rep-recover]")?.addEventListener("click", refreshPersistedRun);
   document.querySelector("[data-rep-recover-history]")?.addEventListener("click", async () => {
@@ -427,7 +442,15 @@ function bindSurface() {
     catch (error) { showInlineError(`Unable to check run history: ${error.message}`); }
   });
   document.querySelector("#rep-cancel")?.addEventListener("click", cancelRun);
-  document.querySelector("#rep-refresh-workspace")?.addEventListener("click", async () => { await loadWorkspace(repState.selectedRunId); renderShell(); });
+  document.querySelector("#rep-refresh-workspace")?.addEventListener("click", async () => {
+    const runId = repState.selectedRunId;
+    try {
+      await loadWorkspace(runId);
+      if (repState.selectedRunId === runId) renderShell();
+    } catch (error) {
+      showInlineError(`Unable to refresh workspace: ${error.message}`);
+    }
+  });
   document.querySelectorAll("[data-rep-return-finding]").forEach((button) => button.addEventListener("click", () => returnToFinding()));
 
   document.querySelector("#rep-prompt")?.addEventListener("input", (event) => { repState.draftPrompt = event.target.value; });
@@ -455,8 +478,8 @@ function bindSurface() {
     renderShell();
   }));
   document.querySelectorAll("[data-workspace-file]").forEach((button) => button.addEventListener("click", async () => {
-    await openWorkspaceFile(button.dataset.workspaceFile);
-    renderShell();
+    try { await openWorkspaceFile(button.dataset.workspaceFile); renderShell(); }
+    catch (error) { showInlineError(`File preview unavailable: ${error.message}`); }
   }));
   document.querySelector("#rep-file-back")?.addEventListener("click", () => { repState.selectedFile = null; renderShell(); });
   bindPermissionButtons();
@@ -464,26 +487,33 @@ function bindSurface() {
 
 function bindPermissionButtons(root = document) {
   root.querySelectorAll("[data-permission-decision]").forEach((button) => button.addEventListener("click", async () => {
-    button.disabled = true;
+    const card = button.closest(".rep-permission");
+    if (card?.dataset.permissionBusy === "true") return;
     const runId = button.dataset.runId;
     const requestId = button.dataset.requestId;
     const decision = button.dataset.permissionDecision;
     const optionId = button.dataset.optionId || null;
     if (!repState.streaming || runId !== repState.selectedRunId) {
-      button.disabled = false;
       showInlineError("The live permission session is no longer available. Refresh the run; do not authorize saved events.");
       return;
     }
+    if (card) card.dataset.permissionBusy = "true";
+    const buttons = [...(card?.querySelectorAll("[data-permission-decision]") || [button])];
+    buttons.forEach((control) => { control.disabled = true; });
     try {
       await request(`/api/v1/replication/runs/${encodeURIComponent(runId)}/permissions/${encodeURIComponent(requestId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision, option_id: optionId }),
       });
-      const card = button.closest(".rep-permission");
-      if (card) card.querySelector(".rep-permission-actions").innerHTML = `<span class="rep-decision-sent">${decision === "allow_once" ? "Allow-once sent" : "Rejected"}</span>`;
+      if (!repState.submittedPermissionIds.includes(requestId)) {
+        repState.submittedPermissionIds.push(requestId);
+      }
+      const actions = card?.querySelector(".rep-permission-actions");
+      if (actions) actions.innerHTML = `<span class="rep-decision-sent">${decision === "allow_once" ? "Allow-once sent" : "Rejected"}</span>`;
     } catch (error) {
-      button.disabled = false;
+      if (card) delete card.dataset.permissionBusy;
+      buttons.forEach((control) => { control.disabled = false; });
       showInlineError(error.message);
     }
   }));
@@ -549,22 +579,36 @@ async function openWorkspaceFile(path) {
 async function uploadArtifacts(event) {
   const files = [...(event.target.files || [])];
   event.target.value = "";
-  if (!files.length || !repState.selectedAuditId || repState.streaming) return;
+  if (!files.length || !repState.selectedAuditId || repState.streaming || repState.uploadingArtifacts) return;
   const oversized = files.find((file) => file.size > repState.maxAttachmentBytes);
   if (oversized) { showInlineError(`${oversized.name} exceeds ${formatBytes(repState.maxAttachmentBytes)}.`); return; }
+  const auditId = repState.selectedAuditId;
+  repState.uploadingArtifacts = true;
+  renderShell();
+  let uploaded = 0;
+  let failure = "";
   try {
     for (const file of files) {
       const body = new FormData();
       body.append("file", file, file.name);
-      await request(`/api/v1/audits/${encodeURIComponent(repState.selectedAuditId)}/attachments`, { method: "POST", body });
+      await request(`/api/v1/audits/${encodeURIComponent(auditId)}/attachments`, { method: "POST", body });
+      uploaded += 1;
     }
-    await loadAttachments();
+  } catch (error) {
+    failure = `${uploaded} of ${files.length} files uploaded. Remaining upload stopped: ${error.message}`;
+  } finally {
+    try { await loadAttachments(); }
+    catch (error) {
+      failure += `${failure ? " " : ""}Unable to refresh attached files: ${error.message}`;
+    }
+    repState.uploadingArtifacts = false;
     renderShell();
-  } catch (error) { showInlineError(error.message); }
+    if (failure) showInlineError(failure);
+  }
 }
 
 async function runAgent() {
-  if (repState.streaming || !repState.selectedAuditId) return;
+  if (repState.streaming || repState.uploadingArtifacts || !repState.selectedAuditId) return;
   const promptNode = document.querySelector("#rep-prompt");
   const prompt = promptNode?.value.trim();
   if (!prompt) { showInlineError("Describe a reproduction goal first."); return; }
@@ -573,6 +617,7 @@ async function runAgent() {
   repState.streaming = true;
   repState.livePrompt = prompt;
   repState.liveEvents = [];
+  repState.submittedPermissionIds = [];
   repState.recoveryRunId = "";
   repState.connectionWarning = "";
   repState.selectedRunId = "";
