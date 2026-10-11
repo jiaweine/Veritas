@@ -17,6 +17,15 @@ def main() -> None:
         page = browser.new_page(viewport={"width": 1440, "height": 960})
         page.goto(args.base_url.rstrip("/") + "/#overview", wait_until="networkidle")
 
+        # Navigation must preserve browser Back/Forward semantics.
+        page.locator(".sidebar [data-view='runs']").click()
+        page.wait_for_function("() => location.hash === '#runs'")
+        page.go_back(wait_until="domcontentloaded")
+        page.wait_for_function(
+            "() => location.hash === '#overview' && document.querySelector('.page-title')?.textContent?.trim() === 'Overview'",
+            timeout=15_000,
+        )
+
         # Only command-search.js should own the palette, not a second copy in app.js.
         page.evaluate(
             """() => {
