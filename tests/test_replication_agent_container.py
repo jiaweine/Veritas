@@ -68,11 +68,12 @@ def test_opt_in_network_is_bridge_only(tmp_path: Path) -> None:
         ("busybox:latest", "none"),
         ("-untrusted@sha256:" + "a" * 64, "none"),
         ("repo@sha256:" + "z" * 64, "none"),
+        (None, "bridge"),
         (IMAGE, "host"),
         (IMAGE, "container:danger"),
     ],
 )
-def test_container_config_rejects_unpinned_or_privileged_values(image: str, network: str) -> None:
+def test_container_config_rejects_unpinned_or_privileged_values(image: str | None, network: str) -> None:
     with pytest.raises(ValueError):
         AgentCommand(argv=("agent",), container_image=image, container_network=network)
 
