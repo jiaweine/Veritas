@@ -1,3 +1,5 @@
+import { consumeNdjson } from "./ndjson-stream.js";
+
 const state = {
   view: "overview",
   audits: [],
@@ -458,31 +460,26 @@ async function sendAgentMessage() {
   els.agentMessage.disabled = true;
   els.agentSend.disabled = true;
   hideToast();
+  let receivedServerEvent = false;
   try {
     const response = await api(`/api/v1/audits/${encodeURIComponent(audit.audit_id)}/messages`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }),
     });
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n"); buffer = lines.pop() || "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line);
-        state.activeAudit.events = [...(state.activeAudit.events || []), event];
-        if (event.payload?.result) state.activeAudit.latest_result = event.payload.result;
-        renderAgent();
-        if (state.view === "audit") renderWorkbench();
-      }
-    }
+    await consumeNdjson(response, (event) => {
+      receivedServerEvent = true;
+      state.activeAudit.events = [...(state.activeAudit.events || []), event];
+      if (event.payload?.result) state.activeAudit.latest_result = event.payload.result;
+      renderAgent();
+      if (state.view === "audit") renderWorkbench();
+    });
     await loadProductData();
     if (state.activeAudit) state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(audit.audit_id)}`).then((r) => r.json());
     renderAgent(); renderMain();
-  } catch (error) { els.agentMessage.value = message; showToast(`Conversation failed · ${error.message}`); }
+  } catch (error) {
+    // An already-persisted partial stream must not silently be replayed.
+    if (!receivedServerEvent) els.agentMessage.value = message;
+    showToast(`Conversation failed · ${error.message}`);
+  }
   finally { state.sending = false; els.agentMessage.disabled = !state.activeAudit; els.agentSend.disabled = !state.activeAudit; }
 }
 
