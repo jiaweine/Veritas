@@ -22,7 +22,7 @@ def main() -> None:
         page.wait_for_function("() => location.hash === '#runs'")
         page.go_back(wait_until="domcontentloaded")
         page.wait_for_function(
-            "() => location.hash === '#overview' && document.querySelector('.page-title')?.textContent?.trim() === 'Overview'",
+            "() => location.hash === '#overview' && document.querySelector('.page-title')?.textContent?.trim() === 'Evidence, findings, and runs'",
             timeout=15_000,
         )
 
@@ -100,7 +100,7 @@ def main() -> None:
         page.evaluate("() => window.__resetAuditFetch()")
         page.goto(args.base_url.rstrip("/") + "/#overview", wait_until="domcontentloaded")
         page.wait_for_function(
-            "() => document.querySelector('.page-title')?.textContent?.trim() === 'Overview'",
+            "() => document.querySelector('.page-title')?.textContent?.trim() === 'Evidence, findings, and runs'",
             timeout=15_000,
         )
 
