@@ -412,13 +412,13 @@ function bindKeyboardAction(node, action) {
 }
 
 function bindMainActions() {
-  $('[data-action="new-audit"]', els.main).forEach((node) => node.addEventListener("click", openUpload));
+  $$('[data-action="new-audit"]', els.main).forEach((node) => node.addEventListener("click", openUpload));
   $$('[data-action="refresh"]', els.main).forEach((node) => node.addEventListener("click", async () => { await loadProductData(); renderMain(); renderAgent(); }));
   $$('[data-action="agent-open"]', els.main).forEach((node) => node.addEventListener("click", () => setAgent(true)));
   $$('[data-action="open-pdf"]', els.main).forEach((node) => node.addEventListener("click", () => state.activeAudit && window.open(`/api/v1/audits/${encodeURIComponent(state.activeAudit.audit_id)}/paper`, "_blank", "noopener")));
   $$('[data-view]', els.main).forEach((node) => node.addEventListener("click", () => setView(node.dataset.view)));
-  $('[data-audit-id]', els.main).forEach((node) => bindKeyboardAction(node, () => openAudit(node.dataset.auditId)));
-  $('[data-table-page]', els.main).forEach((node) => {
+  $$('[data-audit-id]', els.main).forEach((node) => bindKeyboardAction(node, () => openAudit(node.dataset.auditId)));
+  $$('[data-table-page]', els.main).forEach((node) => {
     node.setAttribute("role", "button");
     bindKeyboardAction(node, () => {
       const frame = $(".pdf-frame", els.main);
