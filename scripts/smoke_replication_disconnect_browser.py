@@ -40,6 +40,14 @@ def main() -> None:
                     run_id: "run_mock_disconnected", run_kind: "replication",
                     phase: "start"
                   }
+                }, {
+                  kind: "replication", title: "Permission", status: "review",
+                  payload: {run_id:"run_mock_disconnected",
+                    agent_event: {kind:"permission",payload:{
+                      decision:"pending",request_id:"request_replayed",
+                      tool_call:{title:"Read local project"},
+                      options:[{kind:"allow_once",optionId:"allow_one",name:"Allow once"}]
+                    }}}
                 }]
               });
               window.fetch = (input, init) => {
@@ -81,11 +89,19 @@ def main() -> None:
                       run_id: "run_mock_disconnected", phase: "start",
                       run_kind: "replication"
                     }
+                  () + "\n" + JSON.stringify({
+                    kind:"replication",title:"Permission",status:"review",
+                    payload:{run_id:"run_mock_disconnected",
+                      agent_event:{kind:"permission",payload:{
+                        decision:"pending",request_id:"request_replayed",
+                        tool_call:{title:"Read local project"},
+                        options:[{kind:"allow_once",optionId:"allow_one",name:"Allow once"}]
+                      }}}
                   }) + "\n");
                   const stream = new ReadableStream({
                     start(controller) {
                       controller.enqueue(bytes);
-                      setTimeout(() => controller.error(new Error("Fixture stream disconnected")), 30);
+                      setTimeout(() => controller.error(new Error("Fixture stream disconnected")), 2500);
                     }
                   });
                   return Promise.resolve(new Response(stream, {
@@ -101,9 +117,19 @@ def main() -> None:
         page.locator("#rep-run").wait_for(state="visible", timeout=20_000)
         page.locator("#rep-prompt").fill("Inspect the staged paper, do not change files.")
         page.locator("#rep-run").click()
+        page.locator(".rep-permission.pending").wait_for(state="visible", timeout=15_000)
+        # Changing an inspector tab and refreshing run history must not
+        # detach the live event stream from its visible message surface.
+        page.locator('[data-rep-tab="files"]').click()
+        assert page.locator(".rep-permission.pending").is_visible()
+        page.locator("#rep-refresh-runs").click()
+        assert page.locator(".rep-permission.pending").is_visible()
         warning = page.locator(".rep-connection-warning")
         warning.wait_for(state="visible", timeout=20_000)
         assert "may still be active" in warning.inner_text().lower()
+        assert page.locator("[data-permission-decision]").count() == 0, (
+            "Replayed permission requests must never remain actionable"
+        )
         assert page.evaluate("() => window.__replicationPostCount") == 1
         page.locator("[data-rep-recover]").wait_for(state="visible")
         page.evaluate("() => { window.__replicationTerminal = true; }")
