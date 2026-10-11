@@ -1,3 +1,5 @@
+import { consumeNdjson } from "./ndjson-stream.js";
+
 const main = document.querySelector("#main-content");
 
 const ahState = {
@@ -274,32 +276,20 @@ async function sendMessage() {
   try {
     const response = await fetch(`/api/v1/audits/${encodeURIComponent(ahState.auditId)}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
     let first = true;
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line);
-        if (first) {
-          ahState.audit.events = events().filter((item) => !item.payload?.optimistic);
-          first = false;
-        }
-        ahState.audit.events = [...events(), event];
-        if (event.payload?.result) {
-          ahState.audit.latest_result = event.payload.result;
-          const page = event.payload.result?.source?.page;
-          if (page) ahState.selectedPage = page;
-        }
-        renderHarness();
+    await consumeNdjson(response, (event) => {
+      if (first) {
+        ahState.audit.events = events().filter((item) => !item.payload?.optimistic);
+        first = false;
       }
-    }
+      ahState.audit.events = [...events(), event];
+      if (event.payload?.result) {
+        ahState.audit.latest_result = event.payload.result;
+        const page = event.payload.result?.source?.page;
+        if (page) ahState.selectedPage = page;
+      }
+      renderHarness();
+    });
     await hydrate(ahState.auditId, { preserveTab: true, preservePage: true });
   } catch (error) {
     ahState.audit.events = [...events().filter((item) => !item.payload?.optimistic), { kind: "tool", title: "Audit command failed", detail: error.message, status: "danger", created_at: new Date().toISOString(), payload: { phase: "error" } }];
