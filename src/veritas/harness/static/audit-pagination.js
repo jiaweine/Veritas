@@ -138,7 +138,15 @@ function openPagedAudit(auditId) {
 function bindAuditRows(root) {
   root.querySelectorAll("[data-audit-page-id]:not([data-audit-page-bound])").forEach((row) => {
     row.dataset.auditPageBound = "true";
+    row.tabIndex = 0;
+    row.setAttribute("aria-label", `Open audit: ${row.querySelector(".row-title")?.textContent || row.dataset.auditPageId}`);
     row.addEventListener("click", () => openPagedAudit(row.dataset.auditPageId));
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openPagedAudit(row.dataset.auditPageId);
+      }
+    });
   });
 }
 
