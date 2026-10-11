@@ -118,6 +118,8 @@ function ensureNotesTab(root) {
     if (!provenance) return null;
     button = document.createElement("button");
     button.type = "button";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", "false");
     button.dataset.ahNotesTab = "true";
     button.textContent = "Notes";
     provenance.replaceWith(button);
@@ -138,14 +140,21 @@ function ensureAuditExit(root) {
     const auditId = activeAuditId(root);
     notesState.active = false;
     saveSessionPatch(auditId, { tab: "source" });
-    root.querySelector("[data-ah-tab='source']")?.click();
+    // Audit is itself a real source tab now. Its handler already rendered it.
+    if (button.dataset.ahTab !== "source") root.querySelector("[data-ah-tab='source']")?.click();
   });
 }
 
 function setTopTabState(root, active) {
   const workspaceTabs = root.querySelectorAll(".ah-workspace-tabs button");
-  if (active) workspaceTabs.forEach((node) => node.classList.remove("active"));
+  if (active) {
+    workspaceTabs.forEach((node) => {
+      node.classList.remove("active");
+      if (node.getAttribute("role") === "tab") node.setAttribute("aria-selected", "false");
+    });
+  }
   notesButton(root)?.classList.toggle("active", active);
+  notesButton(root)?.setAttribute("aria-selected", String(active));
 }
 
 function noteValue(auditId) {
@@ -393,6 +402,8 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (target.closest("[data-ah-tab], [data-ah-page], [data-ah-nav]")) {
+    const tab = target.closest("[data-ah-tab]")?.dataset.ahTab || "source";
+    saveSessionPatch(activeAuditId(root), { tab });
     deactivateNotes();
   }
 }, true);
