@@ -68,6 +68,11 @@ run-specific files and server-computed diffs, including changes to staged
 inputs. Tool permissions and execution remain server-controlled. The
 workspace inspector is **not** an isolation or security boundary.
 
+For terminal, code editing and other OS-tool operations, Veritas reuses its
+ACP coding-agent integration. See the [Code Agent runtime guide](docs/CODE_AGENT_RUNTIME.md)
+for optional Docker execution, explicit permission policies, network controls,
+and the limits of host-process access.
+
 <p align="center">
   <img src="docs/assets/product/reproduction.png" alt="Veritas reproduction workspace showing a finished agent run, execution trace, and color-coded workspace file changes" width="100%" />
 </p>
