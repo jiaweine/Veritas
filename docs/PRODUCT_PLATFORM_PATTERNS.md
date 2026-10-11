@@ -14,6 +14,7 @@ that Veritas has feature parity with GitHub, Linear, Notion or Atlassian.
 | [Linear: Search](https://linear.app/docs/search) — unified workspace search, shortcuts, recent work and resource navigation | One owner for the command palette; handle stale responses, server search and keyboard navigation in one place | Removed app.js duplicate; `command-search.js` owns search |
 | [Atlassian Design: Flag](https://atlassian.design/components/flag) — error messages must not auto-dismiss, show a remedy | Failure notice remains until dismissed; optional Retry is keyboard-focusable | `showToast` role=alert / action, dark-theme action styles |
 | [Notion: Offline pages](https://www.notion.com/help/use-pages-offline) — offline availability is explicit and limited; offline edits can conflict | Never describe the PWA's cached HTML as saved offline research; prevent silent last-writer-wins for notes | Documented PWA limits and Notes revision check |
+| [Apple HIG: Buttons](https://developer.apple.com/design/human-interface-guidelines/buttons) — at least 44×44 pt touch targets; [Feedback](https://developer.apple.com/design/human-interface-guidelines/feedback) — clear state and consequences | Prioritize reachable primary mobile controls and readable labels, with distinct loading/error states | Enlarged native upload/back/send hit areas and bottom navigation text |
 
 ## Veritas-specific design decisions
 
