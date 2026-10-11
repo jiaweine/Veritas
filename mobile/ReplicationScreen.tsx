@@ -12,6 +12,7 @@ import {
 } from "react-native";
 
 import { workspaceColors } from "./theme";
+import { consumeNdjson } from "./stream";
 
 const API_BASE = (process.env.EXPO_PUBLIC_VERITAS_API_URL || "http://127.0.0.1:8765").replace(/\/$/, "");
 
@@ -146,16 +147,6 @@ type WorkspaceFileDetail = {
 
 type InspectorTab = "changes" | "files" | "run";
 
-type Reader = {
-  read: () => Promise<{ value?: Uint8Array; done: boolean }>;
-  cancel?: () => Promise<void>;
-};
-
-type ReadableResponseBody = {
-  getReader?: () => Reader;
-  cancel?: () => Promise<void>;
-};
-
 async function request(path: string, init?: RequestInit) {
   const response = await fetch(`${API_BASE}${path}`, init);
   if (!response.ok) {
@@ -278,40 +269,6 @@ function RunDetailCard({ detail, loading }: { detail: RunDetail | null; loading:
     <View style={styles.traceHead}><Text style={styles.cardTitle}>Persisted events</Text><Text style={styles.traceCount}>{detail.events?.length || 0}</Text></View>
     {(detail.events || []).map((event) => <EventRow key={event.event_id} event={event} />)}
   </View>;
-}
-
-async function consumeNdjson(
-  response: Response,
-  onEvent: (event: HarnessEvent) => void,
-  requireStreaming: boolean,
-) {
-  const body = response.body as unknown as ReadableResponseBody | null;
-  if (!body?.getReader || typeof TextDecoder === "undefined") {
-    if (requireStreaming) {
-      try { await body?.cancel?.(); } catch {}
-      throw new Error("Interactive approval requires streaming fetch support in this mobile runtime.");
-    }
-    const text = await response.text();
-    text.split("\n").filter(Boolean).forEach((line) => onEvent(JSON.parse(line) as HarnessEvent));
-    return;
-  }
-
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      if (line.trim()) onEvent(JSON.parse(line) as HarnessEvent);
-    }
-  }
-  buffer += decoder.decode();
-  if (buffer.trim()) onEvent(JSON.parse(buffer) as HarnessEvent);
 }
 
 export default function ReplicationScreen({ audits }: { audits: AuditOption[] }) {
@@ -538,7 +495,7 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
         body: JSON.stringify({ prompt: goal }),
         signal: controller.signal,
       });
-      await consumeNdjson(response, (event) => {
+      await consumeNdjson<HarnessEvent>(response, (event) => {
         const runId = event.payload?.run_id;
         if (runId) {
           discoveredRunId = runId;
