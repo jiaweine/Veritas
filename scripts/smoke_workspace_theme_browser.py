@@ -110,9 +110,8 @@ def main() -> None:
             )
 
         if audit_id:
-            # The app consumes initial #audit= on boot; changing only the
-            # fragment on an already-loaded SPA does not open a new paper.
-            page.goto("about:blank", wait_until="load")
+            # Exercise hash-only SPA navigation from a different view. This
+            # guards the route-sync fix and the audit-specific theme together.
             page.goto(f"{base_url}/#audit={audit_id}", wait_until="networkidle")
             page.wait_for_function(
                 "document.body.classList.contains('reference-audit-active')",
@@ -125,8 +124,9 @@ def main() -> None:
                 full_page=True,
             )
 
-        page.goto("about:blank", wait_until="load")
+        # Navigate back without a full reload: the app must leave audit mode.
         page.goto(f"{base_url}/#overview", wait_until="networkidle")
+        page.locator(".page-title").first.wait_for(state="visible", timeout=20_000)
         _close_conversation(page)
         page.locator("#command-trigger").click()
         _assert_dark(page, "#command-dialog", "command search")
