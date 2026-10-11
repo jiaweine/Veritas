@@ -322,10 +322,24 @@ async function saveNotes(root, auditId) {
   }
 }
 
+function selectNotesAudit(auditId) {
+  if (notesState.auditId === auditId) return;
+  // Never display A's server note text or revision while opening B.
+  // Per-paper drafts are retained separately in localStorage.
+  notesState.requestToken += 1;
+  notesState.auditId = auditId;
+  notesState.loadedAuditId = "";
+  notesState.serverText = "";
+  notesState.serverUpdatedAt = null;
+  notesState.loading = false;
+  notesState.error = "";
+  notesState.conflict = false;
+}
+
 function openNotes(root = auditRoot()) {
   const auditId = activeAuditId(root);
   if (!root || !auditId) return;
-  notesState.auditId = auditId;
+  selectNotesAudit(auditId);
   notesState.active = true;
   notesState.error = "";
   notesState.conflict = false;
@@ -354,7 +368,7 @@ function enhance() {
   }
   if (session.tab === "notes") {
     if (!notesState.active || notesState.auditId !== auditId) {
-      notesState.auditId = auditId;
+      selectNotesAudit(auditId);
       notesState.active = true;
     }
     if (!root.querySelector("[data-ah-notes-pane]") && !notesState.loading) {
