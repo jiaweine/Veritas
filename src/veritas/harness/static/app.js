@@ -614,6 +614,12 @@ function bindGlobal() {
   // modules and browser history must also update the rendered SPA view.
   window.addEventListener("hashchange", syncRouteFromHash);
   window.addEventListener("popstate", syncRouteFromHash);
+  // Feature surfaces delegate visible errors to the shared accessible
+  // notification owner rather than manipulating #toast independently.
+  window.addEventListener("veritas:notice", (event) => {
+    const detail = event.detail || {};
+    if (detail.message) showToast(detail.message, { kind: detail.kind === "success" ? "success" : "error" });
+  });
   document.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); els.command.open ? els.command.close() : openCommand(); }
   });
