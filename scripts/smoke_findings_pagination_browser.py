@@ -199,7 +199,8 @@ def main() -> None:
             timeout=20_000,
         )
         page.wait_for_function(
-            f"""() => document.querySelector('.workbench-title')?.textContent?.trim() === '{target["audit_title"]}'""",
+            f"""() => (document.querySelector('[data-audit-harness="true"] .ah-header h1')
+              || document.querySelector('.workbench-title'))?.textContent?.trim() === '{target["audit_title"]}'""",
             timeout=20_000,
         )
         assert str(target["audit_id"]) in detail_requests
