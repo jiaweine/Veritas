@@ -225,11 +225,11 @@ function replaceHistorySection() {
   window.scrollTo(0, previousScrollY);
 }
 
-async function enhanceBenchmarks() {
+async function enhanceBenchmarks({ force = false } = {}) {
   if (!main) return;
   const phase = main.dataset.benchmarksEnhanced;
-  if (phase === "loading" || phase === "true") return;
-  if (!benchmarkTitleIsActive()) return;
+  if (!force && (phase === "loading" || phase === "true")) return;
+  if (!force && !benchmarkTitleIsActive()) return;
 
   const generation = ++enhancementGeneration;
   main.dataset.benchmarksEnhanced = "loading";
@@ -242,7 +242,7 @@ async function enhanceBenchmarks() {
     main.dataset.benchmarksEnhanced = "true";
   } catch (error) {
     if (generation !== enhancementGeneration || !benchmarkTitleIsActive()) return;
-    main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Benchmark inventory unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
+    main.innerHTML = `<div class="page" data-benchmark-error="true"><div class="empty-state" role="alert"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Benchmark inventory unavailable</h2><p>${escapeHtml(error.message)}</p><button type="button" class="secondary-button" data-benchmark-retry>Retry benchmarks</button></div></div></div>`;
     main.dataset.benchmarksEnhanced = "true";
   }
 }
@@ -279,6 +279,8 @@ const observer = new MutationObserver(() => {
 
 if (main) {
   main.addEventListener("click", (event) => {
+    const retry = event.target.closest?.("[data-benchmark-retry]");
+    if (retry) { void enhanceBenchmarks({ force: true }); return; }
     const button = event.target.closest?.("[data-benchmark-load-more]");
     if (button) void loadMoreBenchmarkHistory();
   });
