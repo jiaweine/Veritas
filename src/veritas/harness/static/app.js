@@ -359,7 +359,7 @@ async function openAudit(auditId, { push = true } = {}) {
     state.view = "audit";
     const targetHash = `#audit=${encodeURIComponent(auditId)}`;
     if (push && location.hash !== targetHash) history.pushState(null, "", targetHash);
-    $('[data-view]').forEach((node) => node.classList.remove("active"));
+    $$('[data-view]').forEach((node) => node.classList.remove("active"));
     renderMain();
     renderAgent();
   } catch (error) {
