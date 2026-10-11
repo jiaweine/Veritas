@@ -596,16 +596,23 @@ function showInlineError(message) {
   }
 }
 
+let reproductionLoadSequence = 0;
+
 async function enhanceReproduction() {
   if (!main || main.dataset.reproductionEnhanced === "true") return;
   if (!main.textContent.includes("Reproduction workflow")) return;
   main.dataset.reproductionEnhanced = "true";
+  const loadSequence = ++reproductionLoadSequence;
+  const isCurrent = () => loadSequence === reproductionLoadSequence
+    && location.hash === "#reproduction"
+    && main.dataset.reproductionEnhanced === "true";
   try {
     const [capabilities, audits, runs] = await Promise.all([
       getJson("/api/v1/capabilities"),
       getJson("/api/v1/audits"),
       getJson("/api/v1/runs"),
     ]);
+    if (!isCurrent()) return;
     repState.capabilities = capabilities;
     repState.audits = audits;
     repState.runs = runs;
@@ -626,12 +633,15 @@ async function enhanceReproduction() {
       repState.selectedAuditId = repState.selectedAuditId && audits.some((audit) => audit.audit_id === repState.selectedAuditId) ? repState.selectedAuditId : audits[0]?.audit_id || "";
     }
     if (repState.selectedAuditId) await loadAttachments();
+    if (!isCurrent()) return;
     if (!pendingIsValid) {
       const first = replicationRuns()[0];
       if (first) await selectRun(first.run_id, false);
     }
+    if (!isCurrent()) return;
     renderShell();
   } catch (error) {
+    if (!isCurrent()) return;
     main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Replication workspace unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
   }
 }
