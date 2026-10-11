@@ -18,6 +18,7 @@ import {
 } from "react-native";
 
 import { workspaceColors } from "./theme";
+import { consumeNdjson } from "./stream";
 import ReplicationScreen from "./ReplicationScreen";
 
 const API_BASE = (process.env.EXPO_PUBLIC_VERITAS_API_URL || "http://127.0.0.1:8765").replace(/\/$/, "");
@@ -37,6 +38,10 @@ type Audit = {
     source?: { page?: number; table?: string; row?: string };
   } | null;
   events?: Array<{ event_id: string; kind: string; title: string; detail?: string; status?: string; created_at?: string }>;
+};
+
+type AuditEvent = NonNullable<Audit["events"]>[number] & {
+  payload?: { result?: Audit["latest_result"] };
 };
 
 type Overview = {
@@ -158,20 +163,32 @@ export default function App() {
   const send = async () => {
     const text = message.trim();
     if (!activeAudit || !text || sending) return;
+    const targetAuditId = activeAudit.audit_id;
+    let receivedServerEvent = false;
     setSending(true);
     setMessage("");
     try {
-      const response = await request(`/api/v1/audits/${encodeURIComponent(activeAudit.audit_id)}/messages`, {
+      const response = await request(`/api/v1/audits/${encodeURIComponent(targetAuditId)}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
         body: JSON.stringify({ message: text }),
       });
-      await response.text();
-      const next = await request(`/api/v1/audits/${encodeURIComponent(activeAudit.audit_id)}`).then((r) => r.json());
-      setActiveAudit(next);
+      await consumeNdjson<AuditEvent>(response, (event) => {
+        receivedServerEvent = true;
+        setActiveAudit((current) => current?.audit_id === targetAuditId
+          ? {
+              ...current,
+              events: [...(current.events || []), event],
+              latest_result: event.payload?.result || current.latest_result,
+            }
+          : current);
+      });
       await load();
+      const next = await request(`/api/v1/audits/${encodeURIComponent(targetAuditId)}`).then((r) => r.json()) as Audit;
+      setActiveAudit((current) => current?.audit_id === targetAuditId ? next : current);
     } catch (error) {
-      Alert.alert("Audit command failed", String(error));
+      if (!receivedServerEvent) setMessage(text);
+      Alert.alert("Audit command failed", error instanceof Error ? error.message : String(error));
     } finally {
       setSending(false);
     }
