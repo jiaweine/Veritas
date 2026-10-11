@@ -381,8 +381,12 @@ function bindMainActions() {
   }));
 }
 
+const MAX_PDF_UPLOAD_BYTES = 80 * 1024 * 1024;
+
 function openUpload() {
+  if (els.upload.open) return;
   state.selectedFile = null;
+  els.file.value = "";
   els.uploadTitle.value = "";
   els.dropTitle.textContent = "Choose a PDF";
   els.dropCopy.textContent = "PDF · up to 80 MiB";
@@ -391,10 +395,26 @@ function openUpload() {
   els.upload.showModal();
 }
 
-function chooseFile() { els.file.click(); }
+function chooseFile() { if (!state.uploading) els.file.click(); }
 function setSelectedFile(file) {
-  if (!file) return;
-  if (!file.name.toLowerCase().endsWith(".pdf")) { showToast("Please choose a PDF file."); return; }
+  if (state.uploading || !file) return;
+  state.selectedFile = null;
+  els.uploadSubmit.disabled = true;
+  els.drop.classList.remove("selected");
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    els.dropTitle.textContent = "Choose a PDF";
+    els.dropCopy.textContent = "Only PDF files are supported";
+    els.file.value = "";
+    showToast("Please choose a PDF file.");
+    return;
+  }
+  if (!file.size || file.size > MAX_PDF_UPLOAD_BYTES) {
+    els.dropTitle.textContent = "Choose a PDF";
+    els.dropCopy.textContent = file.size ? "File exceeds the 80 MiB limit" : "Empty PDF files are not supported";
+    els.file.value = "";
+    showToast(file.size ? "PDF exceeds the 80 MiB upload limit." : "Please choose a non-empty PDF.");
+    return;
+  }
   state.selectedFile = file;
   els.dropTitle.textContent = file.name;
   els.dropCopy.textContent = `${(file.size / 1024 / 1024).toFixed(1)} MiB · ready to parse`;
@@ -405,8 +425,9 @@ function setSelectedFile(file) {
 
 async function submitUpload(event) {
   event.preventDefault();
-  if (!state.selectedFile || state.sending) return;
-  state.sending = true;
+  if (!state.selectedFile || state.uploading) return;
+  state.uploading = true;
+  els.uploadForm.setAttribute("aria-busy", "true");
   els.uploadSubmit.disabled = true;
   els.uploadSubmit.textContent = "Parsing…";
   const data = new FormData();
@@ -415,13 +436,20 @@ async function submitUpload(event) {
   try {
     const audit = await api("/api/v1/audits", { method: "POST", body: data }).then((r) => r.json());
     els.upload.close();
-    await loadProductData({ keepAudit: false });
     state.activeAudit = audit;
-    showToast("Paper parsed and evidence workspace created.");
+    const refreshed = await loadProductData({ keepAudit: false });
     await openAudit(audit.audit_id);
     await openConversation({ autoSelect: false });
-  } catch (error) { showToast(error.message); }
-  finally { state.sending = false; els.uploadSubmit.textContent = "Parse & start conversation"; els.uploadSubmit.disabled = !state.selectedFile; els.file.value = ""; }
+    if (refreshed) showToast("Paper parsed and evidence workspace created.");
+    else showToast("Paper saved; workspace list could not refresh. Use Refresh to retry.");
+  } catch (error) { showToast(`Upload failed · ${error.message}`); }
+  finally {
+    state.uploading = false;
+    els.uploadForm.removeAttribute("aria-busy");
+    els.uploadSubmit.textContent = "Parse & start conversation";
+    els.uploadSubmit.disabled = !state.selectedFile;
+    els.file.value = "";
+  }
 }
 
 async function openConversation({ autoSelect = true } = {}) {
