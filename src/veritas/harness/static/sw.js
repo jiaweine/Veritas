@@ -1,4 +1,4 @@
-const CACHE = "veritas-shell-v33";
+const CACHE = "veritas-shell-v34";
 const CACHE_REVISION = "direct-bounded-boot-1";
 const ACTIVE_CACHE = `${CACHE}-${CACHE_REVISION}`;
 const FINDING_CACHE_REVISION = "finding-pagination-1";
