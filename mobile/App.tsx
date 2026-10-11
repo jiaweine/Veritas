@@ -19,9 +19,8 @@ import {
 
 import { workspaceColors } from "./theme";
 import { consumeNdjson } from "./stream";
+import { request } from "./api";
 import ReplicationScreen from "./ReplicationScreen";
-
-const API_BASE = (process.env.EXPO_PUBLIC_VERITAS_API_URL || "http://127.0.0.1:8765").replace(/\/$/, "");
 
 type Audit = {
   audit_id: string;
@@ -65,15 +64,6 @@ type Finding = {
 
 type Tab = "overview" | "audits" | "findings" | "reproduction";
 
-async function request(path: string, init?: RequestInit) {
-  const response = await fetch(`${API_BASE}${path}`, init);
-  if (!response.ok) {
-    let message = `${response.status} ${response.statusText}`;
-    try { message = (await response.json()).detail || message; } catch {}
-    throw new Error(message);
-  }
-  return response;
-}
 
 const percent = (value?: number) => `${Math.round((value || 0) * 100)}%`;
 const number = (value?: number) => new Intl.NumberFormat().format(value || 0);
