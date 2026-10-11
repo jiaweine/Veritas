@@ -27,6 +27,8 @@ type ReplicationCapability = {
   permission_policy?: string;
   permission_policy_valid?: boolean;
   workspace_is_security_boundary?: boolean;
+  execution_runtime?: "container" | "host_process";
+  container_network?: "none" | "bridge" | null;
   client_supplied_commands?: boolean;
   immutable_artifact_intake?: boolean;
   workspace_per_run?: boolean;
@@ -541,7 +543,9 @@ export default function ReplicationScreen({ audits }: { audits: AuditOption[] })
       <CapabilityRow label="Interactive approval" value={capability?.interactive_approval_enabled ? "enabled" : "off"} />
       <CapabilityRow label="Client shell commands" value={capability?.client_supplied_commands ? "allowed" : "disabled"} />
       <CapabilityRow label="Workspace inspector" value={capability?.workspace_inspector ? "server-side" : "unavailable"} />
-      <CapabilityRow label="Workspace sandbox" value={capability?.workspace_is_security_boundary ? "yes" : "agent-owned"} />
+      <CapabilityRow label="Agent runtime" value={capability?.execution_runtime === "container" ? "Docker container" : "host process"} />
+      <CapabilityRow label="Container network" value={capability?.execution_runtime === "container" ? (capability?.container_network || "none") : "host-controlled"} />
+      <CapabilityRow label="Workspace sandbox" value={capability?.workspace_is_security_boundary ? "yes" : "directory only"} />
       {capability && capability.permission_policy_valid === false ? <Text style={styles.warning}>Invalid server policy detected; Veritas has fallen back to deny.</Text> : null}
       <Text style={styles.boundaryCopy}>The run directory is inspectable but is not a security boundary. Process, filesystem and network isolation remain the configured agent runtime's responsibility.</Text>
     </View>
