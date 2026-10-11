@@ -9,7 +9,7 @@ Turn papers, reported results, source evidence, findings, and reproduction work 
 </div>
 
 <p align="center">
-  <img src="docs/assets/product/overview.png" alt="Veritas research audit overview" width="100%" />
+  <img src="docs/assets/product/overview.png" alt="Veritas Overview in the dark Audit Workbench palette, showing live audit metrics, verification coverage, recent activity, and findings" width="100%" />
 </p>
 
 ## From paper to review, without losing context
@@ -25,7 +25,7 @@ Veritas brings the full research-review workflow into a single workspace. Start 
 The **Audit Workbench** keeps the paper, review timeline, selected result, and evidence inspector together. The **Evidence Lens** lets you focus on a reported value while preserving the surrounding table and review context, so the path from “this looks unusual” to “show me exactly where it came from” stays short.
 
 <p align="center">
-  <img src="docs/assets/product/audit-workbench.png" alt="Veritas Audit Workbench showing a selected reported result beside its source evidence" width="100%" />
+  <img src="docs/assets/product/audit-workbench.png" alt="Dark Veritas Audit Workbench with the selected evidence cell highlighted in its original document context and linked analysis in the inspector" width="100%" />
 </p>
 
 ## One review, many connected views
@@ -48,7 +48,28 @@ Veritas is designed as a workspace rather than a collection of disconnected repo
 As the workspace grows, the command search gives you a fast way back to the paper, finding, run, or audit event you were thinking about. Search lives above the whole product, so navigation does not depend on remembering which screen contained the detail.
 
 <p align="center">
-  <img src="docs/assets/product/command-search.png" alt="Veritas command search across papers, findings, runs, and audit activity" width="100%" />
+  <img src="docs/assets/product/command-search.png" alt="Veritas search overlay showing authoritative matches from papers, audit events, and run activity" width="100%" />
+</p>
+
+## Follow every audit and reproduction run
+
+The run inspector keeps completed audit checks, their status, supporting
+evidence, and correlated events together. You can move from a run back to the
+paper that produced it.
+
+<p align="center">
+  <img src="docs/assets/product/runs.png" alt="Dark Veritas Agent Runs page displaying recorded detector runs, status, source evidence, and a correlated event timeline" width="100%" />
+</p>
+
+## Inspect what reproduction actually changed
+
+Reproduction is more than a progress indicator: the workspace surfaces
+run-specific files and server-computed diffs, including changes to staged
+inputs. Tool permissions and execution remain server-controlled. The
+workspace inspector is **not** an isolation or security boundary.
+
+<p align="center">
+  <img src="docs/assets/product/reproduction.png" alt="Veritas reproduction workspace showing a finished agent run, execution trace, and color-coded workspace file changes" width="100%" />
 </p>
 
 ## Follow the question all the way through
@@ -58,6 +79,10 @@ A useful research review rarely ends at a single warning. Veritas lets you move 
 **Paper → Reported result → Source evidence → Finding → Claim relationships → Reproduction → Review trail**
 
 That connected path is the core of Veritas: every important review action stays close to the research object that gave it meaning.
+
+<!-- Product images in docs/assets/product/ are captured by the Chromium
+     ui-visual-smoke workflow, not illustrative mockups. Refresh with
+     scripts/update_readme_screenshots.py against a successful workflow artifact. -->
 
 ## Made for serious research review
 
