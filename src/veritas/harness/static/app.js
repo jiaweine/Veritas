@@ -298,7 +298,7 @@ function emptyPanel(mark, title, copy, action = false) {
 
 function renderAudits() {
   els.main.innerHTML = `<div class="page">${pageHead("Workspace", "Audits", "Every paper has an immutable artifact, a parser record, evidence-linked detector results, and a replayable event history.", `<button class="primary-button" data-action="new-audit">＋ New audit</button>`)}
-    <div class="filter-row"><button class="filter-pill active">All ${state.audits.length}</button><button class="filter-pill">Ready ${state.audits.filter(a=>a.status==='ready').length}</button><button class="filter-pill">Running ${state.audits.filter(a=>a.status==='running').length}</button><button class="filter-pill">Error ${state.audits.filter(a=>a.status==='error').length}</button></div>
+    <div class="filter-row" role="group" aria-label="Filter audits by status"><button type="button" class="filter-pill active" data-audit-status="all" aria-pressed="true">All ${state.audits.length}</button><button type="button" class="filter-pill" data-audit-status="ready" aria-pressed="false">Ready ${state.audits.filter(a=>a.status==='ready').length}</button><button type="button" class="filter-pill" data-audit-status="running" aria-pressed="false">Running ${state.audits.filter(a=>a.status==='running').length}</button><button type="button" class="filter-pill" data-audit-status="error" aria-pressed="false">Error ${state.audits.filter(a=>a.status==='error').length}</button></div>
     <section class="panel">${state.audits.length ? auditTable(state.audits) : emptyPanel("V", "No audits in this workspace", "Start with a PDF. Veritas will preserve the artifact and build evidence-aware structure around it.", true)}</section>
   </div>`;
   bindMainActions();
@@ -608,6 +608,7 @@ function bindGlobal() {
   els.agentMessage.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendAgentMessage(); } });
   $$('[data-agent-command]').forEach((node) => node.addEventListener("click", () => { els.agentMessage.value = node.dataset.agentCommand; els.agentMessage.focus(); }));
   $("#sidebar-open").addEventListener("click", () => document.body.classList.add("sidebar-open"));
+  $(".avatar-button")?.addEventListener("click", () => setView("settings"));
   $("#sidebar-close").addEventListener("click", () => document.body.classList.remove("sidebar-open"));
   $("#sidebar-backdrop").addEventListener("click", () => document.body.classList.remove("sidebar-open"));
   // Native sidebar clicks call setView(); hash-only navigation from feature
