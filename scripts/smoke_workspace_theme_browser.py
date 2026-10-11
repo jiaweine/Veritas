@@ -69,16 +69,35 @@ def main() -> None:
             "overview", "audits", "findings", "runs",
             "evidence", "reproduction", "benchmarks", "settings",
         ):
-            page.goto(f"{base_url}/#{view}", wait_until="networkidle")
-            page.locator("#main-content > *").first.wait_for(
-                state="attached", timeout=20_000
-            )
+            # Exercise the same navigation path as users.  A hash alone is
+            # not sufficient when the application has already booted and
+            # asynchronous feature renderers are still initializing.
+            page.goto(f"{base_url}/#overview", wait_until="networkidle")
             _close_conversation(page)
+            if view != "overview":
+                page.locator(f".sidebar [data-view='{view}']").click()
+            page.wait_for_function(
+                "(expected) => location.hash === '#' + expected",
+                arg=view,
+                timeout=20_000,
+            )
+            page.locator("#main-content > *").first.wait_for(
+                state="visible", timeout=20_000
+            )
             _assert_dark(page, "html", view)
             _assert_dark(page, "#main-content", view)
             _assert_dark(page, ".topbar", view)
             if page.locator(".panel").count():
                 _assert_dark(page, ".panel", view)
+            for selector in {
+                "overview": (".kpi-card", ".data-table th"),
+                "audits": (".data-table th",),
+                "findings": (".finding-card",),
+                "runs": (".run-detail-shell",),
+                "benchmarks": (".benchmark-card",),
+            }.get(view, ()):
+                if page.locator(selector).count():
+                    _assert_dark(page, selector, view)
             if view == "benchmarks":
                 page.locator("[data-benchmark-surface='true']").wait_for(
                     state="visible", timeout=20_000
