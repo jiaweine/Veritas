@@ -58,14 +58,37 @@ const shortTime = (value) => {
 function hideToast() {
   clearTimeout(showToast.timer);
   els.toast.classList.remove("show");
-  els.toast.textContent = "";
+  els.toast.replaceChildren();
 }
 
-function showToast(message) {
+function showToast(message, { kind = "error", action = null } = {}) {
   hideToast();
-  els.toast.textContent = message;
+  els.toast.dataset.kind = kind;
+  els.toast.setAttribute("role", kind === "error" ? "alert" : "status");
+  els.toast.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
+  const label = document.createElement("span");
+  label.textContent = String(message);
+  els.toast.append(label);
+  if (action?.label && typeof action.onClick === "function") {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "toast-action";
+    button.textContent = action.label;
+    button.addEventListener("click", () => { hideToast(); action.onClick(); });
+    els.toast.append(button);
+  }
+  if (kind !== "success") {
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "toast-dismiss";
+    dismiss.textContent = "×";
+    dismiss.setAttribute("aria-label", "Dismiss message");
+    dismiss.addEventListener("click", hideToast);
+    els.toast.append(dismiss);
+  }
   els.toast.classList.add("show");
-  showToast.timer = setTimeout(hideToast, 2700);
+  // Errors are actionable or dismissible, never silently hidden.
+  if (kind === "success") showToast.timer = setTimeout(hideToast, 4500);
 }
 
 async function api(path, options = {}) {
@@ -141,8 +164,12 @@ async function loadProductData({ keepAudit = true } = {}) {
     return true;
   } catch (error) {
     if (requestToken !== state.productDataRequest) return false;
-    setSync("error", "Offline");
-    showToast(error.message);
+    setSync("error", navigator.onLine ? "Unavailable" : "Offline");
+    showToast(`Workspace data unavailable · ${error.message}`, {
+      action: { label: "Retry", onClick: async () => {
+        if (await loadProductData()) { renderMain(); renderAgent(); }
+      } },
+    });
     return false;
   }
 }
@@ -441,8 +468,12 @@ async function submitUpload(event) {
     const refreshed = await loadProductData({ keepAudit: false });
     await openAudit(audit.audit_id);
     await openConversation({ autoSelect: false });
-    if (refreshed) showToast("Paper parsed and evidence workspace created.");
-    else showToast("Paper saved; workspace list could not refresh. Use Refresh to retry.");
+    if (refreshed) showToast("Paper parsed and evidence workspace created.", { kind: "success" });
+    else showToast("Paper saved, but the workspace list could not refresh.", {
+      action: { label: "Retry", onClick: async () => {
+        if (await loadProductData()) { renderMain(); renderAgent(); }
+      } },
+    });
   } catch (error) { showToast(`Upload failed · ${error.message}`); }
   finally {
     state.uploading = false;
