@@ -232,10 +232,10 @@ function renderSettings(caps, modelProviders) {
 
 let settingsLoadSequence = 0;
 
-async function enhanceSettings() {
-  if (!main || main.dataset.settingsEnhanced === "true") return;
+async function enhanceSettings({ force = false } = {}) {
+  if (!main || (!force && main.dataset.settingsEnhanced === "true")) return;
   const title = main.querySelector(".page-title")?.textContent?.trim();
-  if (title !== "Settings") return;
+  if (!force && title !== "Settings") return;
   main.dataset.settingsEnhanced = "true";
   const loadSequence = ++settingsLoadSequence;
   main.innerHTML = `<div class="page" data-settings-loading="true"><div class="settings-loading"><span class="status-icon running">⌁</span><strong>Synchronizing control plane…</strong></div></div>`;
@@ -245,7 +245,7 @@ async function enhanceSettings() {
     main.innerHTML = renderSettings(caps, modelProviders);
   } catch (error) {
     if (loadSequence !== settingsLoadSequence || location.hash !== "#settings" || !main.querySelector("[data-settings-loading]")) return;
-    main.innerHTML = `<div class="page" data-settings-error="true"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Settings unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
+    main.innerHTML = `<div class="page" data-settings-error="true"><div class="empty-state" role="alert"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Settings unavailable</h2><p>${escapeHtml(error.message)}</p><button type="button" class="secondary-button" data-settings-retry>Retry settings</button></div></div></div>`;
   }
 }
 
@@ -267,6 +267,9 @@ const observer = new MutationObserver(() => {
 });
 
 if (main) {
+  main.addEventListener("click", (event) => {
+    if (event.target.closest?.("[data-settings-retry]")) void enhanceSettings({ force: true });
+  });
   observer.observe(main, { childList: true, subtree: true });
   queueMicrotask(enhanceSettings);
 }
