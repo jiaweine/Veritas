@@ -1,3 +1,5 @@
+import { consumeNdjson } from "./ndjson-stream.js";
+
 const main = document.querySelector("#main-content");
 const REPLICATION_CONTEXT_KEY = "veritas.replication.context.v1";
 const FINDING_FOCUS_KEY = "veritas.finding.focus.v1";
@@ -510,29 +512,11 @@ async function runAgent() {
       headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
       body: JSON.stringify({ prompt, finding_id: repState.findingContext?.findingId || null }),
     });
-    if (!response.body) throw new Error("Streaming response body is unavailable.");
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
     const observed = [];
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line);
-        observed.push(event);
-        consumeLiveEvent(event, thread);
-      }
-    }
-    if (buffer.trim()) {
-      const event = JSON.parse(buffer);
+    await consumeNdjson(response, (event) => {
       observed.push(event);
       consumeLiveEvent(event, thread);
-    }
+    });
     const finalRunId = repState.selectedRunId || [...observed].reverse().map((event) => event.payload?.run_id).find(Boolean);
     repState.streaming = false;
     await loadRuns();
