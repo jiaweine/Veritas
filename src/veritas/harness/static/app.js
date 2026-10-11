@@ -401,7 +401,7 @@ function bindKeyboardAction(node, action) {
   node.addEventListener("click", action);
   if (!["BUTTON", "A"].includes(node.tagName)) {
     node.tabIndex = 0;
-    if (node.tagName !== "TR") node.setAttribute("role", "link");
+    if (node.tagName !== "TR" && !node.hasAttribute("role")) node.setAttribute("role", "link");
     node.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
