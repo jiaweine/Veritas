@@ -70,10 +70,44 @@ def main() -> None:
         assert page.locator('[data-audit-status="all"]').get_attribute("aria-pressed") == "true"
         for audit_id in ("audit_filter_ready", "audit_filter_error", "audit_filter_running"):
             assert page.locator(f'tr[data-audit-page-id="{audit_id}"]').is_visible()
+        # The upload zone is a real drop target, not merely a file-picker
+        # button. During a pending POST, closing/Escape must not suggest a
+        # write was cancelled when the backend may still be processing it.
+        page.locator("#new-audit").click()
+        page.evaluate(
+            """() => {
+              const original = window.fetch.bind(window);
+              window.fetch = (input, init) => {
+                const url = String(typeof input === "string" ? input : input.url);
+                if (url === "/api/v1/audits" && init?.method === "POST") {
+                  return new Promise(() => {});
+                }
+                return original(input, init);
+              };
+              const files = new DataTransfer();
+              files.items.add(new File(["%PDF-1.4\\n"], "dropped.pdf", {
+                type: "application/pdf"
+              }));
+              const drop = document.querySelector("#drop-zone");
+              drop.dispatchEvent(new DragEvent("drop", {
+                bubbles: true, cancelable: true, dataTransfer: files
+              }));
+            }"""
+        )
+        assert page.locator("#upload-submit").is_enabled()
+        assert "dropped.pdf" in page.locator("#drop-title").inner_text()
+        page.locator("#upload-submit").click()
+        page.wait_for_function(
+            "() => document.querySelector('#upload-form')?.getAttribute('aria-busy') === 'true'"
+        )
+        assert page.locator("#upload-close").is_disabled()
+        assert page.locator("#upload-cancel").is_disabled()
+        page.keyboard.press("Escape")
+        assert page.locator("#upload-dialog").evaluate("(dialog) => dialog.open")
         browser.close()
 
         assert not errors, errors
-        print("Buttons passed: Workspace Settings, status pills, paged filtering and All reset")
+        print("Buttons passed: Settings, audit filter, pagination, file drop, upload busy/close protection")
 
 
 if __name__ == "__main__":
