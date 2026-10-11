@@ -301,7 +301,7 @@ async function sendMessage() {
     }
   } finally {
     ahState.sending = false;
-    renderHarness();
+    if (targetAuditId === ahState.auditId && auditIdFromLocation() === targetAuditId) renderHarness();
   }
 }
 
