@@ -77,3 +77,14 @@ def test_reproduction_status_panels_have_dark_background_fallbacks() -> None:
         ".rep-diff-state.unavailable", ".rep-integrity-warning",
     ):
         assert selector in css
+
+
+def test_audit_reference_sidebar_keeps_all_product_routes() -> None:
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    reference_js = (STATIC / "reference-workbench.js").read_text(encoding="utf-8")
+    primary = set(re.findall(r'data-view="([a-z]+)"', html))
+    reference = set(re.findall(r'data-ref-view="([a-z]+)"', reference_js))
+    assert {
+        "overview", "audits", "findings", "runs", "evidence",
+        "reproduction", "benchmarks", "settings",
+    }.issubset(primary & reference)
