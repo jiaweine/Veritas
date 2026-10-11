@@ -22,6 +22,9 @@ def main() -> None:
             r"""() => {
               const original = window.fetch.bind(window);
               window.__replicationPostCount = 0;
+              window.__permissionPostCount = 0;
+              window.__resolvePermissionPost = null;
+              window.__failStream = null;
               window.__replicationTerminal = false;
               const json = (value) => new Response(JSON.stringify(value), {
                 status: 200,
@@ -81,6 +84,13 @@ def main() -> None:
                 if (path === "/api/v1/runs/run_mock_disconnected/workspace") {
                   return Promise.resolve(json({ files: [], changed_files: [], staged_inputs_unchanged: true }));
                 }
+                if (path.includes("/api/v1/replication/runs/run_mock_disconnected/permissions/")
+                    && method === "POST") {
+                  window.__permissionPostCount += 1;
+                  return new Promise((resolve) => {
+                    window.__resolvePermissionPost = () => resolve(json({decision:"allow_once"}));
+                  });
+                }
                 if (path === "/api/v1/audits/audit_mock_disconnected/replication" && method === "POST") {
                   window.__replicationPostCount += 1;
                   const bytes = new TextEncoder().encode(JSON.stringify({
@@ -101,7 +111,7 @@ def main() -> None:
                   const stream = new ReadableStream({
                     start(controller) {
                       controller.enqueue(bytes);
-                      setTimeout(() => controller.error(new Error("Fixture stream disconnected")), 2500);
+                      window.__failStream = () => controller.error(new Error("Fixture stream disconnected"));
                     }
                   });
                   return Promise.resolve(new Response(stream, {
@@ -124,6 +134,17 @@ def main() -> None:
         assert page.locator(".rep-permission.pending").is_visible()
         page.locator("#rep-refresh-runs").click()
         assert page.locator(".rep-permission.pending").is_visible()
+
+        # Clicking Allow once starts one permission POST. A new inspector render
+        # must not recreate a second actionable approval while it is in flight.
+        page.locator('[data-permission-decision="allow_once"]').click()
+        page.wait_for_function("() => window.__permissionPostCount === 1")
+        page.locator('[data-rep-tab="run"]').click()
+        assert page.locator("[data-permission-decision]").count() == 0
+        page.evaluate("() => window.__resolvePermissionPost()")
+        page.wait_for_timeout(50)
+        assert page.evaluate("() => window.__permissionPostCount") == 1
+        page.evaluate("() => window.__failStream()")
         warning = page.locator(".rep-connection-warning")
         warning.wait_for(state="visible", timeout=20_000)
         assert "may still be active" in warning.inner_text().lower()
