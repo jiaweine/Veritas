@@ -113,11 +113,12 @@ export default function App() {
         didOpenInitialConversation.current = true;
         if (a[0]?.audit_id) {
           const first = await request(`/api/v1/audits/${encodeURIComponent(a[0].audit_id)}`).then((r) => r.json());
-          setActiveAudit(first);
+          setActiveAudit((current) => current ?? first);
         }
       } else if (activeAudit) {
-        const next = await request(`/api/v1/audits/${encodeURIComponent(activeAudit.audit_id)}`).then((r) => r.json());
-        setActiveAudit(next);
+        const targetAuditId = activeAudit.audit_id;
+        const next = await request(`/api/v1/audits/${encodeURIComponent(targetAuditId)}`).then((r) => r.json()) as Audit;
+        setActiveAudit((current) => current?.audit_id === targetAuditId ? next : current);
       }
     } catch (error) {
       Alert.alert("Cannot reach Veritas", error instanceof Error ? error.message : String(error));
