@@ -188,13 +188,17 @@ async function loadMoreRuns(detailNode) {
   }
 }
 
+let runsLoadSequence = 0;
+
 async function enhanceRuns() {
   if (!main || main.dataset.runsEnhanced === "true") return;
   if (!main.textContent.includes("Agent runs")) return;
   main.dataset.runsEnhanced = "true";
+  const loadSequence = ++runsLoadSequence;
 
   try {
     const page = await json(pagePath());
+    if (loadSequence !== runsLoadSequence || location.hash !== "#runs" || main.dataset.runsEnhanced !== "true") return;
     runFeed.items = [];
     runFeed.nextCursor = page.next_cursor || null;
     runFeed.hasMore = Boolean(page.has_more && runFeed.nextCursor);
@@ -220,6 +224,7 @@ async function enhanceRuns() {
       await selectRun(runFeed.selectedRunId, rows, detailNode);
     }
   } catch (error) {
+    if (loadSequence !== runsLoadSequence || location.hash !== "#runs" || main.dataset.runsEnhanced !== "true") return;
     main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Run inspector unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
   }
 }
