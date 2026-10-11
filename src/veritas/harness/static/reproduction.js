@@ -176,7 +176,9 @@ function renderShell() {
 
     ${repState.connectionWarning ? `<div class="rep-connection-warning" role="status" aria-live="polite">
       <div><strong>Live trace disconnected</strong><p>${escapeHtml(repState.connectionWarning)}</p></div>
-      ${repState.recoveryRunId ? `<button type="button" class="secondary-button" data-rep-recover>Refresh persisted status</button>` : ""}
+      ${repState.recoveryRunId
+        ? `<button type="button" class="secondary-button" data-rep-recover>Refresh persisted status</button>`
+        : `<button type="button" class="secondary-button" data-rep-recover-history>Check run history</button>`}
     </div>` : ""}
 
     ${!audits.length ? `<div class="empty-state rep-empty"><div class="empty-state-inner"><div class="empty-mark">↻</div><h2>No paper available</h2><p>Upload a research paper first, then attach code/data and open a replication workspace.</p></div></div>` : `
@@ -399,6 +401,10 @@ function bindSurface() {
   document.querySelector("#rep-refresh-runs")?.addEventListener("click", async () => { await loadRuns(); renderShell(); });
   document.querySelector("#rep-run")?.addEventListener("click", runAgent);
   document.querySelector("[data-rep-recover]")?.addEventListener("click", refreshPersistedRun);
+  document.querySelector("[data-rep-recover-history]")?.addEventListener("click", async () => {
+    try { await loadRuns(); renderShell(); }
+    catch (error) { showInlineError(`Unable to check run history: ${error.message}`); }
+  });
   document.querySelector("#rep-cancel")?.addEventListener("click", cancelRun);
   document.querySelector("#rep-refresh-workspace")?.addEventListener("click", async () => { await loadWorkspace(repState.selectedRunId); renderShell(); });
   document.querySelectorAll("[data-rep-return-finding]").forEach((button) => button.addEventListener("click", () => returnToFinding()));
@@ -567,7 +573,9 @@ async function runAgent() {
     if (finalRunId) await selectRun(finalRunId, false);
     // EOF is not a terminal agent state. Only a persisted finish/error/cancel
     // event proves that the job stopped.
-    if (finalRunId && !["finish", "error", "cancelled"].includes(repState.selectedRun?.phase)) {
+    if (!finalRunId) {
+      repState.connectionWarning = "The stream ended without a Run ID or confirmed result. Check run history before submitting another task; the server may have accepted the request.";
+    } else if (!["finish", "error", "cancelled"].includes(repState.selectedRun?.phase)) {
       repState.recoveryRunId = finalRunId;
       repState.connectionWarning = "The live stream ended without a confirmed terminal event. The run may still be active. Refresh its persisted status; do not re-submit the task.";
     }
