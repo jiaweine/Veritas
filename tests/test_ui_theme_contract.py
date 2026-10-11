@@ -39,6 +39,10 @@ def test_dark_theme_loads_last_and_is_cached_offline() -> None:
     assert '"/static/workspace-theme.css"' in sw
     assert 'const CACHE = "veritas-shell-v30";' in sw
     assert (STATIC / "workspace-theme.css").is_file()
+    manifest = json.loads((STATIC / "manifest.webmanifest").read_text(encoding="utf-8"))
+    assert manifest["background_color"] == "#0e0e0e"
+    assert manifest["theme_color"] == "#0e0e0e"
+    assert '<meta name="theme-color" content="#0e0e0e" />' in shell
 
 
 def test_mobile_native_theme_matches_web_and_uses_dark_appearance() -> None:
