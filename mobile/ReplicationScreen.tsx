@@ -13,8 +13,7 @@ import {
 
 import { workspaceColors } from "./theme";
 import { consumeNdjson } from "./stream";
-
-const API_BASE = (process.env.EXPO_PUBLIC_VERITAS_API_URL || "http://127.0.0.1:8765").replace(/\/$/, "");
+import { request } from "./api";
 
 type AuditOption = {
   audit_id: string;
@@ -149,15 +148,6 @@ type WorkspaceFileDetail = {
 
 type InspectorTab = "changes" | "files" | "run";
 
-async function request(path: string, init?: RequestInit) {
-  const response = await fetch(`${API_BASE}${path}`, init);
-  if (!response.ok) {
-    let message = `${response.status} ${response.statusText}`;
-    try { message = (await response.json()).detail || message; } catch {}
-    throw new Error(message);
-  }
-  return response;
-}
 
 function formatDuration(value?: number | null) {
   if (value == null || !Number.isFinite(Number(value))) return "—";
