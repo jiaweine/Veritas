@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0b0a" />
-  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#0e0e0e" />
+  <meta name="color-scheme" content="dark" />
   <meta name="description" content="Evidence-first research auditing with inspectable provenance." />
   <meta name="application-name" content="Veritas Research Conversation" />
   <title>Veritas · Evidence-grounded research conversation</title>
@@ -34,6 +34,7 @@
   <link rel="stylesheet" href="/static/finding-navigation.css" />
   <link rel="stylesheet" href="/static/finding-replication-review.css" />
   <link rel="stylesheet" href="/static/mobile-polish.css" />
+  <link rel="stylesheet" href="/static/workspace-theme.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -81,14 +82,14 @@
           <button id="sidebar-open" class="icon-button mobile-only" aria-label="Open navigation">☰</button>
           <button id="command-trigger" class="command-trigger" aria-label="Open command palette">
             <span class="search-icon">⌕</span>
-            <span class="command-placeholder">Search papers, findings, runs…</span>
+            <span class="command-placeholder">Search papers and audit activity…</span>
             <kbd>⌘ K</kbd>
           </button>
         </div>
         <div class="topbar-actions">
           <span id="sync-status" class="sync-status"><i></i><span>System ready</span></span>
           <button id="agent-toggle" class="ghost-button" aria-pressed="false">Conversation <span class="agent-indicator"></span></button>
-          <button class="avatar-button" aria-label="Workspace profile">V</button>
+          <button class="avatar-button" type="button" aria-label="Open workspace settings" title="Workspace settings">⚙</button>
         </div>
       </header>
 

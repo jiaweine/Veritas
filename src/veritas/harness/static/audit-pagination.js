@@ -8,6 +8,7 @@ const auditFeed = {
   hasMore: false,
   total: 0,
   statusCounts: {},
+  statusFilter: "all",
   loadingMore: false,
   loadMoreError: "",
   enhancementQueued: false,
@@ -137,7 +138,15 @@ function openPagedAudit(auditId) {
 function bindAuditRows(root) {
   root.querySelectorAll("[data-audit-page-id]:not([data-audit-page-bound])").forEach((row) => {
     row.dataset.auditPageBound = "true";
+    row.tabIndex = 0;
+    row.setAttribute("aria-label", `Open audit: ${row.querySelector(".row-title")?.textContent || row.dataset.auditPageId}`);
     row.addEventListener("click", () => openPagedAudit(row.dataset.auditPageId));
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openPagedAudit(row.dataset.auditPageId);
+      }
+    });
   });
 }
 
@@ -167,6 +176,45 @@ function footerMarkup(kind) {
     ? ""
     : `<button class="secondary-button" type="button" data-audit-load-more="${kind}" ${auditFeed.loadingMore ? "disabled" : ""}>${auditFeed.loadingMore ? "Loading…" : `Load ${AUDIT_PAGE_LIMIT} more`}</button>`;
   return `<div class="audit-page-footer" data-audit-page-footer="${kind}"><span>${esc(status)}</span>${error}${button}</div>`;
+}
+
+function applyAuditStatusFilter(page = main?.querySelector(".page")) {
+  if (!page || page.querySelector(".page-title")?.textContent?.trim() !== "Audits") return;
+  const status = auditFeed.statusFilter;
+  page.querySelectorAll("[data-audit-status]").forEach((button) => {
+    const active = button.dataset.auditStatus === status;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  const statusById = new Map(auditFeed.items.map((audit) => [
+    String(audit.audit_id), String(audit.status || "ready").toLowerCase(),
+  ]));
+  const rows = [...page.querySelectorAll("table.data-table tbody tr[data-audit-id]")];
+  let matches = 0;
+  for (const row of rows) {
+    const visible = status === "all" || statusById.get(row.dataset.auditId) === status;
+    // Preserve the Projects module's independent [hidden] row filtering.
+    row.style.display = visible ? "" : "none";
+    if (visible) matches += 1;
+  }
+  let notice = page.querySelector("[data-audit-filter-empty]");
+  if (rows.length && matches === 0 && status !== "all") {
+    if (!notice) {
+      notice = document.createElement("div");
+      notice.dataset.auditFilterEmpty = "true";
+      notice.className = "audit-filter-empty";
+      notice.setAttribute("role", "status");
+      page.querySelector(".panel")?.append(notice);
+    }
+    if (notice) {
+      const remaining = auditFeed.hasMore && statusCount(status) > 0;
+      notice.textContent = remaining
+        ? `No ${status} audits on loaded pages. Load more to search older history.`
+        : `No ${status} audits in the loaded history.`;
+    }
+  } else {
+    notice?.remove();
+  }
 }
 
 function enhanceAudits() {
@@ -206,6 +254,7 @@ function enhanceAudits() {
   panel.insertAdjacentHTML("beforeend", footerMarkup("audits"));
   bindFooter(panel);
   page.dataset.auditPageSignature = signature;
+  applyAuditStatusFilter(page);
 }
 
 function enhanceEvidence() {
@@ -291,7 +340,15 @@ window.addEventListener("veritas:audit-page-reset", (event) => {
 if (window.__veritasAuditPageFeed) adoptSnapshot(window.__veritasAuditPageFeed, { reset: true });
 
 const observer = new MutationObserver(queueEnhance);
-if (main) observer.observe(main, { childList: true, subtree: true });
+if (main) {
+  observer.observe(main, { childList: true, subtree: true });
+  main.addEventListener("click", (event) => {
+    const button = event.target.closest?.("[data-audit-status]");
+    if (!button || activeTitle() !== "Audits") return;
+    auditFeed.statusFilter = button.dataset.auditStatus || "all";
+    applyAuditStatusFilter();
+  });
+}
 if (sidebar) observer.observe(sidebar, { childList: true, subtree: true });
 window.addEventListener("hashchange", queueEnhance);
 queueEnhance();

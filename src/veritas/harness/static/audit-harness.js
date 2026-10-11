@@ -1,3 +1,5 @@
+import { consumeNdjson } from "./ndjson-stream.js";
+
 const main = document.querySelector("#main-content");
 
 const ahState = {
@@ -217,7 +219,7 @@ function renderHarness() {
   const status = result?.status || audit.status || "ready";
   main.innerHTML = `<div class="audit-harness" data-audit-harness="true" data-audit-id="${esc(audit.audit_id)}">
     <header class="ah-header"><div class="ah-header-main"><div class="ah-paper-mark">V</div><div><div class="ah-title-row"><h1>${esc(audit.title)}</h1>${badge(status)}</div><p>${esc(audit.filename || audit.audit_id)} · ${fmt(summary().pages)} pages · ${fmt(summary().tables_detected)} tables</p></div></div><div class="ah-header-actions"><button type="button" data-ah-nav="audits">All audits</button><button type="button" data-ah-nav="reproduction" class="primary">Replication workspace</button></div></header>
-    <div class="ah-workspace-tabs"><button class="active" type="button">Audit</button><button type="button" data-ah-tab="structure">Files <span>${attachments().length + 1}</span></button><button type="button" data-ah-tab="findings">Findings <span>${findings().length}</span></button><button type="button" data-ah-nav="reproduction">Reproduction <span>${ahState.runs.filter((run) => run.run_kind === "replication").length}</span></button><button type="button" data-ah-tab="provenance">Provenance</button></div>
+    <div class="ah-workspace-tabs" role="tablist" aria-label="Audit workspace panels"><button type="button" role="tab" data-ah-workspace-tab="source" aria-selected="${ahState.inspectorTab === "source"}" class="${ahState.inspectorTab === "source" ? "active" : ""}">Audit</button><button type="button" role="tab" data-ah-tab="structure" aria-selected="${ahState.inspectorTab === "structure"}" class="${ahState.inspectorTab === "structure" ? "active" : ""}">Files <span>${attachments().length + 1}</span></button><button type="button" role="tab" data-ah-tab="findings" aria-selected="${ahState.inspectorTab === "findings"}" class="${ahState.inspectorTab === "findings" ? "active" : ""}">Findings <span>${findings().length}</span></button><button type="button" data-ah-nav="reproduction">Reproduction <span>${ahState.runs.filter((run) => run.run_kind === "replication").length}</span></button><button type="button" role="tab" data-ah-tab="provenance" aria-selected="${ahState.inspectorTab === "provenance"}" class="${ahState.inspectorTab === "provenance" ? "active" : ""}">Provenance</button></div>
     <div class="ah-grid">${renderPaperRail()}${renderCenter()}${renderRight()}</div>
   </div>`;
   bindHarness();
@@ -244,6 +246,10 @@ function bindHarness() {
     const page = node.dataset.ahSourcePage;
     if (page) setPage(page);
   }));
+  document.querySelectorAll("[data-ah-workspace-tab]").forEach((node) => node.addEventListener("click", () => {
+    ahState.inspectorTab = node.dataset.ahWorkspaceTab;
+    renderHarness();
+  }));
   document.querySelectorAll("[data-ah-tab]").forEach((node) => node.addEventListener("click", () => {
     ahState.inspectorTab = node.dataset.ahTab;
     renderHarness();
@@ -268,44 +274,41 @@ async function sendMessage() {
   const input = document.querySelector("#ah-message");
   const message = input?.value.trim() || "";
   if (!message || ahState.sending || !ahState.auditId) return;
+  const targetAuditId = ahState.auditId;
   ahState.sending = true;
   ahState.audit.events = [...events(), { kind: "user_message", title: message, detail: message, status: "running", created_at: new Date().toISOString(), payload: { optimistic: true } }];
   renderHarness();
   try {
-    const response = await fetch(`/api/v1/audits/${encodeURIComponent(ahState.auditId)}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let first = true;
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line);
-        if (first) {
-          ahState.audit.events = events().filter((item) => !item.payload?.optimistic);
-          first = false;
-        }
-        ahState.audit.events = [...events(), event];
-        if (event.payload?.result) {
-          ahState.audit.latest_result = event.payload.result;
-          const page = event.payload.result?.source?.page;
-          if (page) ahState.selectedPage = page;
-        }
-        renderHarness();
-      }
+    const response = await fetch(`/api/v1/audits/${encodeURIComponent(targetAuditId)}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(String(payload.detail || `${response.status} ${response.statusText}`));
     }
-    await hydrate(ahState.auditId, { preserveTab: true, preservePage: true });
+    let first = true;
+    await consumeNdjson(response, (event) => {
+      if (targetAuditId !== ahState.auditId || auditIdFromLocation() !== targetAuditId) return;
+      if (first) {
+        ahState.audit.events = events().filter((item) => !item.payload?.optimistic);
+        first = false;
+      }
+      ahState.audit.events = [...events(), event];
+      if (event.payload?.result) {
+        ahState.audit.latest_result = event.payload.result;
+        const page = event.payload.result?.source?.page;
+        if (page) ahState.selectedPage = page;
+      }
+      renderHarness();
+    });
+    if (targetAuditId === ahState.auditId && auditIdFromLocation() === targetAuditId) {
+      await hydrate(targetAuditId, { preserveTab: true, preservePage: true });
+    }
   } catch (error) {
-    ahState.audit.events = [...events().filter((item) => !item.payload?.optimistic), { kind: "tool", title: "Audit command failed", detail: error.message, status: "danger", created_at: new Date().toISOString(), payload: { phase: "error" } }];
+    if (targetAuditId === ahState.auditId && auditIdFromLocation() === targetAuditId && ahState.audit) {
+      ahState.audit.events = [...events().filter((item) => !item.payload?.optimistic), { kind: "tool", title: "Audit command failed", detail: error.message, status: "danger", created_at: new Date().toISOString(), payload: { phase: "error" } }];
+    }
   } finally {
     ahState.sending = false;
-    renderHarness();
+    if (targetAuditId === ahState.auditId && auditIdFromLocation() === targetAuditId) renderHarness();
   }
 }
 

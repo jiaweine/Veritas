@@ -1,3 +1,5 @@
+import { consumeNdjson } from "./ndjson-stream.js";
+
 const main = document.querySelector("#main-content");
 const REPLICATION_CONTEXT_KEY = "veritas.replication.context.v1";
 const FINDING_FOCUS_KEY = "veritas.finding.focus.v1";
@@ -12,8 +14,16 @@ const repState = {
   selectedRun: null,
   workspace: null,
   selectedFile: null,
+  selectedFileRequest: 0,
   inspectorTab: "changes",
   streaming: false,
+  livePrompt: "",
+  liveEvents: [],
+  submittedPermissionIds: [],
+  pendingDecisionIds: [],
+  uploadingArtifacts: false,
+  recoveryRunId: "",
+  connectionWarning: "",
   maxAttachmentBytes: 80 * 1024 * 1024,
   findingContext: null,
   draftPrompt: "",
@@ -139,10 +149,36 @@ function replicationRuns() {
   return repState.runs.filter((run) => run.run_kind === "replication" && (!repState.selectedAuditId || run.audit_id === repState.selectedAuditId));
 }
 
+function renderLiveThread() {
+  const text = `<article class="rep-message user"><div class="rep-avatar user">You</div><div class="rep-message-body"><div class="rep-message-label">Reproduction goal</div><div class="rep-message-text">${escapeHtml(repState.livePrompt)}</div></div></article>`;
+  // If a later event resolves an approval request, do not resurface an older
+  // pending approval button when the running view is reconstructed.
+  const resolved = new Set(repState.liveEvents.flatMap((event) => {
+    const agent = event.payload?.agent_event || {};
+    const payload = agent.payload || {};
+    return agent.kind === "permission" && payload.request_id && payload.decision !== "pending"
+      ? [String(payload.request_id)] : [];
+  }));
+  const history = repState.liveEvents.filter((event) => {
+    const agent = event.payload?.agent_event || {};
+    const payload = agent.payload || {};
+    return !(agent.kind === "permission" && payload.decision === "pending"
+      && (resolved.has(String(payload.request_id || ""))
+        || repState.submittedPermissionIds.includes(String(payload.request_id || ""))));
+  }).map((event) => eventCard(event, repState.selectedRunId)).join("");
+  return text + history;
+}
+
 function renderShell() {
+  // A delayed stream/read must never repaint the user's newer SPA route.
+  if (location.hash !== "#reproduction") return;
   const capability = repState.capabilities?.replication || {};
   const configured = Boolean(capability.configured);
   const interactive = Boolean(capability.interactive_approval_enabled);
+  const runtime = capability.execution_runtime === "container" ? "Docker container" : "host process";
+  const network = capability.execution_runtime === "container"
+    ? ` · network: ${capability.container_network === "bridge" ? "bridge" : "off"}`
+    : " · host isolation not guaranteed";
   const audits = repState.audits;
   const selected = selectedAudit();
   const runs = replicationRuns();
@@ -158,9 +194,17 @@ function renderShell() {
       <div class="rep-boundary-pills">
         <span>Permission · <b>${escapeHtml(capability.permission_policy || "deny")}</b></span>
         <span>Approval UI · <b>${interactive ? "interactive" : "off"}</b></span>
-        <span>Sandbox · <b>agent-owned</b></span>
+        <span>Execution · <b>${escapeHtml(runtime)}</b></span>
+        <span>Network · <b>${escapeHtml(network.replace(" · network: ", "").replace(" · host isolation not guaranteed", "host-controlled"))}</b></span>
       </div>
     </div>
+
+    ${repState.connectionWarning ? `<div class="rep-connection-warning" role="status" aria-live="polite">
+      <div><strong>Live trace disconnected</strong><p>${escapeHtml(repState.connectionWarning)}</p></div>
+      ${repState.recoveryRunId
+        ? `<button type="button" class="secondary-button" data-rep-recover>Refresh persisted status</button>`
+        : `<button type="button" class="secondary-button" data-rep-recover-history>Check run history</button>`}
+    </div>` : ""}
 
     ${!audits.length ? `<div class="empty-state rep-empty"><div class="empty-state-inner"><div class="empty-mark">↻</div><h2>No paper available</h2><p>Upload a research paper first, then attach code/data and open a replication workspace.</p></div></div>` : `
     <div class="rep-grid">
@@ -168,7 +212,7 @@ function renderShell() {
         <section class="rep-section">
           <div class="rep-section-head"><span>Project</span><span class="rep-dot ${configured ? "online" : ""}"></span></div>
           <label class="rep-label" for="rep-audit-select">Paper</label>
-          <select id="rep-audit-select" class="rep-select" ${repState.streaming ? "disabled" : ""}>${auditOptions}</select>
+          <select id="rep-audit-select" class="rep-select" ${repState.streaming || repState.uploadingArtifacts ? "disabled" : ""}>${auditOptions}</select>
           <div class="rep-project-meta">
             <span class="mono">${escapeHtml(repState.selectedAuditId)}</span>
             <small>${selected ? escapeHtml(selected.filename || "paper.pdf") : ""}</small>
@@ -176,39 +220,39 @@ function renderShell() {
         </section>
 
         <section class="rep-section rep-artifact-section">
-          <div class="rep-section-head"><span>Artifacts</span><button id="rep-add-artifact" class="rep-icon-action" title="Attach immutable files" ${repState.streaming ? "disabled" : ""}>＋</button></div>
+          <div class="rep-section-head"><span>Artifacts</span><button id="rep-add-artifact" class="rep-icon-action" title="Attach immutable files" aria-label="Attach files" ${repState.streaming || repState.uploadingArtifacts ? "disabled" : ""}>＋</button></div>
           <input id="rep-artifact-input" type="file" multiple hidden />
           <div id="rep-artifact-list" class="rep-artifact-list">${renderArtifactList()}</div>
         </section>
 
         <section class="rep-section rep-history-section">
-          <div class="rep-section-head"><span>Runs</span><button id="rep-refresh-runs" class="rep-icon-action" title="Refresh runs">↻</button></div>
+          <div class="rep-section-head"><span>Runs</span><button id="rep-refresh-runs" class="rep-icon-action" title="Refresh runs" aria-label="Refresh runs">↻</button></div>
           <div id="rep-run-list" class="rep-run-list">${renderRunList(runs)}</div>
         </section>
       </aside>
 
       <section class="rep-center" aria-label="Agent conversation">
         <div class="rep-center-head">
-          <div><strong>${escapeHtml(capability.agent || "Replication agent")}</strong><small>${configured ? "ACP session · structured events" : "Configure VERITAS_REPLICATION_AGENT"}</small></div>
-          <div class="rep-run-actions"><span id="rep-live-state" class="rep-live-state ${repState.streaming ? "running" : ""}"><i></i>${repState.streaming ? "running" : "ready"}</span><button id="rep-cancel" class="rep-cancel" ${repState.streaming && repState.selectedRunId ? "" : "disabled"}>Stop</button></div>
+          <div><strong>${escapeHtml(capability.agent || "Replication agent")}</strong><small>${configured ? `ACP session · ${escapeHtml(runtime)}${escapeHtml(network)}` : "Configure VERITAS_REPLICATION_AGENT"}</small></div>
+          <div class="rep-run-actions"><span id="rep-live-state" class="rep-live-state ${repState.streaming ? "running" : ""}"><i></i>${repState.streaming ? "running" : repState.connectionWarning ? "unconfirmed" : "ready"}</span><button id="rep-cancel" class="rep-cancel" ${repState.streaming && repState.selectedRunId ? "" : "disabled"}>Stop</button></div>
         </div>
         ${renderFindingContext()}
-        <div id="rep-thread" class="rep-thread">${renderPersistedThread(repState.selectedRun)}</div>
+        <div id="rep-thread" class="rep-thread">${repState.streaming ? renderLiveThread() : renderPersistedThread(repState.selectedRun)}</div>
         <div class="rep-composer-wrap">
           ${interactive ? `<div class="rep-approval-note">Tool permissions pause here until you choose <b>Allow once</b> or <b>Reject</b>. Permanent approval is never offered by Veritas.</div>` : ""}
           <div class="rep-composer">
             <textarea id="rep-prompt" rows="3" ${configured && !repState.streaming ? "" : "disabled"} placeholder="Ask the replication agent to inspect code, run the project, reproduce a table or figure, compare outputs, or explain a discrepancy…">${escapeHtml(repState.draftPrompt)}</textarea>
-            <div class="rep-composer-foot"><span>⌘/Ctrl + Enter to run · natural-language goal only</span><button id="rep-run" class="primary-button" ${configured && !repState.streaming ? "" : "disabled"}>Run agent ↑</button></div>
+            <div class="rep-composer-foot"><span>⌘/Ctrl + Enter to run · natural-language goal only</span><button id="rep-run" class="primary-button" ${configured && !repState.streaming && !repState.uploadingArtifacts ? "" : "disabled"}>Run agent ↑</button></div>
           </div>
         </div>
       </section>
 
       <aside class="rep-right" aria-label="Workspace inspector">
         <div class="rep-tabs" role="tablist">
-          <button data-rep-tab="changes" class="${repState.inspectorTab === "changes" ? "active" : ""}">Changes</button>
-          <button data-rep-tab="files" class="${repState.inspectorTab === "files" ? "active" : ""}">Files</button>
-          <button data-rep-tab="run" class="${repState.inspectorTab === "run" ? "active" : ""}">Run</button>
-          <button id="rep-refresh-workspace" class="rep-tab-refresh" title="Refresh workspace">↻</button>
+          <button type="button" role="tab" aria-selected="${repState.inspectorTab === "changes"}" data-rep-tab="changes" class="${repState.inspectorTab === "changes" ? "active" : ""}">Changes</button>
+          <button type="button" role="tab" aria-selected="${repState.inspectorTab === "files"}" data-rep-tab="files" class="${repState.inspectorTab === "files" ? "active" : ""}">Files</button>
+          <button type="button" role="tab" aria-selected="${repState.inspectorTab === "run"}" data-rep-tab="run" class="${repState.inspectorTab === "run" ? "active" : ""}">Run</button>
+          <button id="rep-refresh-workspace" class="rep-tab-refresh" title="Refresh workspace" aria-label="Refresh workspace">↻</button>
         </div>
         <div id="rep-inspector" class="rep-inspector">${renderInspector()}</div>
       </aside>
@@ -227,7 +271,7 @@ function renderArtifactList() {
 
 function renderRunList(runs) {
   if (!runs.length) return `<div class="rep-mini-empty">No replication runs for this paper.</div>`;
-  return runs.map((run) => `<button class="rep-run-row ${run.run_id === repState.selectedRunId ? "selected" : ""}" data-run-id="${escapeHtml(run.run_id)}">
+  return runs.map((run) => `<button class="rep-run-row ${run.run_id === repState.selectedRunId ? "selected" : ""}" data-run-id="${escapeHtml(run.run_id)}" ${repState.streaming ? "disabled" : ""}>
     <span class="rep-run-glyph ${escapeHtml(run.status || "")}">↻</span>
     <span><strong>${escapeHtml(run.phase === "cancelled" ? "Cancelled run" : run.task || "Replication run")}</strong><small>${formatTime(run.created_at)} · ${formatDuration(run.duration_ms)}</small></span>
     <em>${escapeHtml(run.phase || run.status || "done")}</em>
@@ -295,13 +339,19 @@ function agentEventCard(agent, runId) {
 function permissionCard(agent, runId) {
   const payload = agent.payload || {};
   const pending = payload.decision === "pending";
+  // Persisted pending events aren't proof that their live permission request
+  // is still actionable. Never authorize from a replayed run transcript.
+  const requestId = String(payload.request_id || "");
+  const inFlight = repState.pendingDecisionIds.includes(requestId);
+  const submitted = repState.submittedPermissionIds.includes(requestId);
+  const actionable = pending && repState.streaming && runId === repState.selectedRunId && !inFlight && !submitted;
   const options = Array.isArray(payload.options) ? payload.options : [];
   const allowOptions = options.filter((item) => item.kind === "allow_once" && (item.optionId || item.option_id));
   const tool = payload.tool_call || {};
   const detail = tool.title || tool.name || agent.title || "Agent tool request";
   return `<div class="rep-permission ${pending ? "pending" : "resolved"}" data-permission-card="${escapeHtml(payload.request_id || "")}">
     <div class="rep-permission-icon">!</div><div class="rep-permission-copy"><div class="rep-card-kicker">PERMISSION</div><strong>${escapeHtml(detail)}</strong><p>${pending ? "This operation is paused. Review it before continuing." : escapeHtml(agent.detail || "Permission resolved.")}</p>${structuredPayload(tool)}</div>
-    ${pending ? `<div class="rep-permission-actions"><button class="rep-reject" data-permission-decision="reject" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}">Reject</button>${allowOptions.map((item) => `<button class="rep-allow" data-permission-decision="allow_once" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}" data-option-id="${escapeHtml(item.optionId || item.option_id)}">${escapeHtml(item.name || "Allow once")}</button>`).join("")}</div>` : `<div class="rep-permission-result">${badge(agent.status || "info", payload.decision || "resolved")}</div>`}
+    ${actionable ? `<div class="rep-permission-actions"><button class="rep-reject" data-permission-decision="reject" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}">Reject</button>${allowOptions.map((item) => `<button class="rep-allow" data-permission-decision="allow_once" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}" data-option-id="${escapeHtml(item.optionId || item.option_id)}">${escapeHtml(item.name || "Allow once")}</button>`).join("")}</div>` : `<div class="rep-permission-result">${pending ? `<small>${inFlight ? "Sending permission decision…" : submitted ? "Permission decision sent" : "Live approval session unavailable; do not approve from saved events."}</small>` : badge(agent.status || "info", payload.decision || "resolved")}</div>`}
   </div>`;
 }
 
@@ -352,32 +402,59 @@ function renderFileInspector(file) {
   const title = escapeHtml(file.path || "file");
   const mode = file.diff ? "Diff" : "Preview";
   const body = file.diff || file.content || (file.binary ? "Binary file preview is intentionally disabled." : "No text content.");
-  return `<div class="rep-file-detail"><div class="rep-file-detail-head"><button id="rep-file-back">←</button><div><strong>${title}</strong><small>${escapeHtml(file.change || "file")} · ${formatBytes(file.size_bytes)}</small></div><span>${mode}</span></div>${file.immutable_input && file.change !== "original" ? `<div class="rep-integrity-warning"><strong>Staged input changed inside the agent workspace</strong><span>The immutable source artifact stored by Veritas is unchanged; this copy drifted during the run.</span></div>` : ""}<pre class="rep-code ${file.diff ? "diff" : ""}">${escapeHtml(body)}</pre>${file.truncated ? `<div class="rep-truncated">Preview capped at 512 KiB.</div>` : ""}</div>`;
+  return `<div class="rep-file-detail"><div class="rep-file-detail-head"><button id="rep-file-back" type="button" aria-label="Back to workspace files">←</button><div><strong>${title}</strong><small>${escapeHtml(file.change || "file")} · ${formatBytes(file.size_bytes)}</small></div><span>${mode}</span></div>${file.immutable_input && file.change !== "original" ? `<div class="rep-integrity-warning"><strong>Staged input changed inside the agent workspace</strong><span>The immutable source artifact stored by Veritas is unchanged; this copy drifted during the run.</span></div>` : ""}<pre class="rep-code ${file.diff ? "diff" : ""}">${escapeHtml(body)}</pre>${file.truncated ? `<div class="rep-truncated">Preview capped at 512 KiB.</div>` : ""}</div>`;
 }
 
 function bindSurface() {
   document.querySelector("#rep-audit-select")?.addEventListener("change", async (event) => {
-    if (repState.streaming) return;
-    repState.selectedAuditId = event.target.value;
+    if (repState.streaming || repState.uploadingArtifacts) return;
+    const auditId = event.target.value;
+    repState.selectedAuditId = auditId;
     repState.selectedRunId = "";
     repState.selectedRun = null;
     repState.workspace = null;
     repState.selectedFile = null;
     repState.findingContext = null;
     repState.draftPrompt = "";
+    repState.recoveryRunId = "";
+    repState.connectionWarning = "";
     try { sessionStorage.removeItem(REPLICATION_CONTEXT_KEY); } catch {}
-    await Promise.all([loadAttachments(), loadRuns()]);
-    const first = replicationRuns()[0];
-    if (first) await selectRun(first.run_id, false);
-    renderShell();
+    try {
+      await Promise.all([loadAttachments(), loadRuns()]);
+      if (repState.selectedAuditId !== auditId) return;
+      const first = replicationRuns()[0];
+      if (first) await selectRun(first.run_id, false);
+      if (repState.selectedAuditId === auditId) renderShell();
+    } catch (error) {
+      if (repState.selectedAuditId === auditId) {
+        renderShell();
+        showInlineError(`Unable to load paper workspace: ${error.message}`);
+      }
+    }
   });
 
   document.querySelector("#rep-add-artifact")?.addEventListener("click", () => document.querySelector("#rep-artifact-input")?.click());
   document.querySelector("#rep-artifact-input")?.addEventListener("change", uploadArtifacts);
-  document.querySelector("#rep-refresh-runs")?.addEventListener("click", async () => { await loadRuns(); renderShell(); });
+  document.querySelector("#rep-refresh-runs")?.addEventListener("click", async () => {
+    try { await loadRuns(); renderShell(); }
+    catch (error) { showInlineError(`Unable to refresh runs: ${error.message}`); }
+  });
   document.querySelector("#rep-run")?.addEventListener("click", runAgent);
+  document.querySelector("[data-rep-recover]")?.addEventListener("click", refreshPersistedRun);
+  document.querySelector("[data-rep-recover-history]")?.addEventListener("click", async () => {
+    try { await loadRuns(); renderShell(); }
+    catch (error) { showInlineError(`Unable to check run history: ${error.message}`); }
+  });
   document.querySelector("#rep-cancel")?.addEventListener("click", cancelRun);
-  document.querySelector("#rep-refresh-workspace")?.addEventListener("click", async () => { await loadWorkspace(repState.selectedRunId); renderShell(); });
+  document.querySelector("#rep-refresh-workspace")?.addEventListener("click", async () => {
+    const runId = repState.selectedRunId;
+    try {
+      await loadWorkspace(runId);
+      if (repState.selectedRunId === runId) renderShell();
+    } catch (error) {
+      showInlineError(`Unable to refresh workspace: ${error.message}`);
+    }
+  });
   document.querySelectorAll("[data-rep-return-finding]").forEach((button) => button.addEventListener("click", () => returnToFinding()));
 
   document.querySelector("#rep-prompt")?.addEventListener("input", (event) => { repState.draftPrompt = event.target.value; });
@@ -393,7 +470,11 @@ function bindSurface() {
   }));
   document.querySelectorAll("[data-run-id]").forEach((button) => {
     if (button.dataset.permissionDecision) return;
-    button.addEventListener("click", async () => { await selectRun(button.dataset.runId); renderShell(); });
+    button.addEventListener("click", async () => {
+      if (repState.streaming) return;
+      await selectRun(button.dataset.runId);
+      renderShell();
+    });
   });
   document.querySelectorAll("[data-rep-tab]").forEach((button) => button.addEventListener("click", () => {
     repState.inspectorTab = button.dataset.repTab;
@@ -401,8 +482,8 @@ function bindSurface() {
     renderShell();
   }));
   document.querySelectorAll("[data-workspace-file]").forEach((button) => button.addEventListener("click", async () => {
-    await openWorkspaceFile(button.dataset.workspaceFile);
-    renderShell();
+    try { await openWorkspaceFile(button.dataset.workspaceFile); renderShell(); }
+    catch (error) { showInlineError(`File preview unavailable: ${error.message}`); }
   }));
   document.querySelector("#rep-file-back")?.addEventListener("click", () => { repState.selectedFile = null; renderShell(); });
   bindPermissionButtons();
@@ -410,21 +491,37 @@ function bindSurface() {
 
 function bindPermissionButtons(root = document) {
   root.querySelectorAll("[data-permission-decision]").forEach((button) => button.addEventListener("click", async () => {
-    button.disabled = true;
+    const card = button.closest(".rep-permission");
+    if (card?.dataset.permissionBusy === "true") return;
     const runId = button.dataset.runId;
     const requestId = button.dataset.requestId;
     const decision = button.dataset.permissionDecision;
     const optionId = button.dataset.optionId || null;
+    if (!repState.streaming || runId !== repState.selectedRunId) {
+      showInlineError("The live permission session is no longer available. Refresh the run; do not authorize saved events.");
+      return;
+    }
+    if (repState.pendingDecisionIds.includes(requestId) || repState.submittedPermissionIds.includes(requestId)) return;
+    repState.pendingDecisionIds.push(requestId);
+    if (card) card.dataset.permissionBusy = "true";
+    const buttons = [...(card?.querySelectorAll("[data-permission-decision]") || [button])];
+    buttons.forEach((control) => { control.disabled = true; });
     try {
       await request(`/api/v1/replication/runs/${encodeURIComponent(runId)}/permissions/${encodeURIComponent(requestId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision, option_id: optionId }),
       });
-      const card = button.closest(".rep-permission");
-      if (card) card.querySelector(".rep-permission-actions").innerHTML = `<span class="rep-decision-sent">${decision === "allow_once" ? "Allow-once sent" : "Rejected"}</span>`;
+      repState.pendingDecisionIds = repState.pendingDecisionIds.filter((id) => id !== requestId);
+      if (!repState.submittedPermissionIds.includes(requestId)) {
+        repState.submittedPermissionIds.push(requestId);
+      }
+      const actions = card?.querySelector(".rep-permission-actions");
+      if (actions) actions.innerHTML = `<span class="rep-decision-sent">${decision === "allow_once" ? "Allow-once sent" : "Rejected"}</span>`;
     } catch (error) {
-      button.disabled = false;
+      repState.pendingDecisionIds = repState.pendingDecisionIds.filter((id) => id !== requestId);
+      if (card) delete card.dataset.permissionBusy;
+      buttons.forEach((control) => { control.disabled = false; });
       showInlineError(error.message);
     }
   }));
@@ -432,7 +529,9 @@ function bindPermissionButtons(root = document) {
 
 async function loadAttachments() {
   if (!repState.selectedAuditId) { repState.attachments = []; return; }
-  repState.attachments = await getJson(`/api/v1/audits/${encodeURIComponent(repState.selectedAuditId)}/attachments`);
+  const auditId = repState.selectedAuditId;
+  const attachments = await getJson(`/api/v1/audits/${encodeURIComponent(auditId)}/attachments`);
+  if (repState.selectedAuditId === auditId) repState.attachments = attachments;
 }
 
 async function loadRuns() {
@@ -442,25 +541,34 @@ async function loadRuns() {
 async function selectRun(runId, refresh = true) {
   if (!runId) return;
   repState.selectedRunId = runId;
+  repState.selectedRun = null;
+  repState.workspace = null;
   repState.selectedFile = null;
+  repState.selectedFileRequest += 1;
+  const auditId = repState.selectedAuditId;
   try {
     const [detail] = await Promise.all([
       getJson(`/api/v1/runs/${encodeURIComponent(runId)}`),
       loadWorkspace(runId),
     ]);
+    if (repState.selectedRunId !== runId || repState.selectedAuditId !== auditId) return;
     repState.selectedRun = detail;
-    repState.findingContext = normalizeFindingContext(detail.origin_finding, detail.audit_id || repState.selectedAuditId);
+    repState.findingContext = normalizeFindingContext(detail.origin_finding, detail.audit_id || auditId);
     repState.draftPrompt = "";
   } catch (error) {
-    if (refresh) showInlineError(error.message);
+    if (refresh && repState.selectedRunId === runId && repState.selectedAuditId === auditId) {
+      showInlineError(error.message);
+    }
   }
 }
 
 async function loadWorkspace(runId) {
   if (!runId) { repState.workspace = null; return; }
   try {
-    repState.workspace = await getJson(`/api/v1/runs/${encodeURIComponent(runId)}/workspace`);
+    const workspace = await getJson(`/api/v1/runs/${encodeURIComponent(runId)}/workspace`);
+    if (repState.selectedRunId === runId) repState.workspace = workspace;
   } catch (error) {
+    if (repState.selectedRunId !== runId) return;
     repState.workspace = null;
     if (!repState.streaming && !String(error.message).includes("not found")) throw error;
   }
@@ -468,34 +576,59 @@ async function loadWorkspace(runId) {
 
 async function openWorkspaceFile(path) {
   if (!repState.selectedRunId || !path) return;
-  repState.selectedFile = await getJson(`/api/v1/runs/${encodeURIComponent(repState.selectedRunId)}/workspace/file?path=${encodeURIComponent(path)}`);
+  const runId = repState.selectedRunId;
+  const token = ++repState.selectedFileRequest;
+  const file = await getJson(`/api/v1/runs/${encodeURIComponent(runId)}/workspace/file?path=${encodeURIComponent(path)}`);
+  if (repState.selectedRunId === runId && repState.selectedFileRequest === token) {
+    repState.selectedFile = file;
+  }
 }
 
 async function uploadArtifacts(event) {
   const files = [...(event.target.files || [])];
   event.target.value = "";
-  if (!files.length || !repState.selectedAuditId || repState.streaming) return;
+  if (!files.length || !repState.selectedAuditId || repState.streaming || repState.uploadingArtifacts) return;
   const oversized = files.find((file) => file.size > repState.maxAttachmentBytes);
   if (oversized) { showInlineError(`${oversized.name} exceeds ${formatBytes(repState.maxAttachmentBytes)}.`); return; }
+  const auditId = repState.selectedAuditId;
+  repState.uploadingArtifacts = true;
+  renderShell();
+  let uploaded = 0;
+  let failure = "";
   try {
     for (const file of files) {
       const body = new FormData();
       body.append("file", file, file.name);
-      await request(`/api/v1/audits/${encodeURIComponent(repState.selectedAuditId)}/attachments`, { method: "POST", body });
+      await request(`/api/v1/audits/${encodeURIComponent(auditId)}/attachments`, { method: "POST", body });
+      uploaded += 1;
     }
-    await loadAttachments();
+  } catch (error) {
+    failure = `${uploaded} of ${files.length} files uploaded. Remaining upload stopped: ${error.message}`;
+  } finally {
+    try { await loadAttachments(); }
+    catch (error) {
+      failure += `${failure ? " " : ""}Unable to refresh attached files: ${error.message}`;
+    }
+    repState.uploadingArtifacts = false;
     renderShell();
-  } catch (error) { showInlineError(error.message); }
+    if (failure) showInlineError(failure);
+  }
 }
 
 async function runAgent() {
-  if (repState.streaming || !repState.selectedAuditId) return;
+  if (repState.streaming || repState.uploadingArtifacts || !repState.selectedAuditId) return;
   const promptNode = document.querySelector("#rep-prompt");
   const prompt = promptNode?.value.trim();
   if (!prompt) { showInlineError("Describe a reproduction goal first."); return; }
   repState.draftPrompt = prompt;
 
   repState.streaming = true;
+  repState.livePrompt = prompt;
+  repState.liveEvents = [];
+  repState.submittedPermissionIds = [];
+  repState.pendingDecisionIds = [];
+  repState.recoveryRunId = "";
+  repState.connectionWarning = "";
   repState.selectedRunId = "";
   repState.selectedRun = null;
   repState.workspace = null;
@@ -510,42 +643,75 @@ async function runAgent() {
       headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
       body: JSON.stringify({ prompt, finding_id: repState.findingContext?.findingId || null }),
     });
-    if (!response.body) throw new Error("Streaming response body is unavailable.");
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
     const observed = [];
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line);
-        observed.push(event);
-        consumeLiveEvent(event, thread);
-      }
-    }
-    if (buffer.trim()) {
-      const event = JSON.parse(buffer);
+    await consumeNdjson(response, (event) => {
       observed.push(event);
-      consumeLiveEvent(event, thread);
-    }
+      consumeLiveEvent(event);
+    });
     const finalRunId = repState.selectedRunId || [...observed].reverse().map((event) => event.payload?.run_id).find(Boolean);
     repState.streaming = false;
     await loadRuns();
     if (finalRunId) await selectRun(finalRunId, false);
+    // EOF is not a terminal agent state. Only a persisted finish/error/cancel
+    // event proves that the job stopped.
+    if (!finalRunId) {
+      repState.connectionWarning = "The stream ended without a Run ID or confirmed result. Check run history before submitting another task; the server may have accepted the request.";
+    } else if (!["finish", "error", "cancelled"].includes(repState.selectedRun?.phase)) {
+      repState.recoveryRunId = finalRunId;
+      repState.connectionWarning = "The live stream ended without a confirmed terminal event. The run may still be active. Refresh its persisted status; do not re-submit the task.";
+    }
     renderShell();
   } catch (error) {
     repState.streaming = false;
-    setRunningUi(false);
-    if (thread) thread.insertAdjacentHTML("beforeend", `<div class="rep-system-event"><span class="rep-system-icon danger">!</span><div><strong>Replication request failed</strong><small>${escapeHtml(error.message)}</small></div>${badge("danger", "error")}</div>`);
+    const runId = repState.selectedRunId || "";
+    repState.recoveryRunId = runId;
+    repState.connectionWarning = runId
+      ? `The connection ended before completion was confirmed (${error.message}). This run may still be active; refresh its persisted status instead of starting it again.`
+      : `The request outcome is unknown (${error.message}). Do not re-submit the same task until you have checked the run history.`;
+    if (runId) {
+      try {
+        await loadRuns();
+        await selectRun(runId, false);
+      } catch {
+        // A failed read is not proof of a failed or cancelled execution.
+      }
+    }
+    renderShell();
   }
 }
 
-function consumeLiveEvent(event, thread) {
+async function refreshPersistedRun() {
+  const runId = repState.recoveryRunId;
+  if (!runId) return;
+  const button = main.querySelector("[data-rep-recover]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Checking…";
+  }
+  try {
+    const detail = await getJson(`/api/v1/runs/${encodeURIComponent(runId)}`);
+    if (repState.recoveryRunId !== runId) return;
+    await loadRuns();
+    if (repState.recoveryRunId !== runId) return;
+    await selectRun(runId, false);
+    if (repState.recoveryRunId !== runId) return;
+    if (["finish", "error", "cancelled"].includes(detail.phase)) {
+      repState.recoveryRunId = "";
+      repState.connectionWarning = "";
+    } else {
+      repState.connectionWarning = "The server has no terminal record for this run yet. It may still be active. Check again later; never re-submit automatically.";
+    }
+    renderShell();
+  } catch (error) {
+    if (repState.recoveryRunId !== runId) return;
+    repState.connectionWarning = `Run status could not be checked (${error.message}). The execution outcome is still unknown.`;
+    renderShell();
+  }
+}
+
+function consumeLiveEvent(event) {
+  repState.liveEvents.push(event);
+  const thread = location.hash === "#reproduction" ? document.querySelector("#rep-thread") : null;
   const runId = event.payload?.run_id;
   if (runId && !repState.selectedRunId) {
     repState.selectedRunId = runId;
@@ -588,25 +754,28 @@ function setRunningUi(running) {
 }
 
 function showInlineError(message) {
-  let toast = document.querySelector("#toast");
-  if (toast) {
-    toast.textContent = message;
-    toast.classList.add("show");
-    clearTimeout(showInlineError.timer);
-    showInlineError.timer = setTimeout(() => toast.classList.remove("show"), 3200);
-  }
+  window.dispatchEvent(new CustomEvent("veritas:notice", {
+    detail: { kind: "error", message: String(message) },
+  }));
 }
+
+let reproductionLoadSequence = 0;
 
 async function enhanceReproduction() {
   if (!main || main.dataset.reproductionEnhanced === "true") return;
   if (!main.textContent.includes("Reproduction workflow")) return;
   main.dataset.reproductionEnhanced = "true";
+  const loadSequence = ++reproductionLoadSequence;
+  const isCurrent = () => loadSequence === reproductionLoadSequence
+    && location.hash === "#reproduction"
+    && main.dataset.reproductionEnhanced === "true";
   try {
     const [capabilities, audits, runs] = await Promise.all([
       getJson("/api/v1/capabilities"),
       getJson("/api/v1/audits"),
       getJson("/api/v1/runs"),
     ]);
+    if (!isCurrent()) return;
     repState.capabilities = capabilities;
     repState.audits = audits;
     repState.runs = runs;
@@ -627,12 +796,15 @@ async function enhanceReproduction() {
       repState.selectedAuditId = repState.selectedAuditId && audits.some((audit) => audit.audit_id === repState.selectedAuditId) ? repState.selectedAuditId : audits[0]?.audit_id || "";
     }
     if (repState.selectedAuditId) await loadAttachments();
+    if (!isCurrent()) return;
     if (!pendingIsValid) {
       const first = replicationRuns()[0];
       if (first) await selectRun(first.run_id, false);
     }
+    if (!isCurrent()) return;
     renderShell();
   } catch (error) {
+    if (!isCurrent()) return;
     main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Replication workspace unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
   }
 }

@@ -371,6 +371,12 @@ class AuditHarness:
         return {
             "configured": agent is not None,
             "agent": agent.name if agent is not None else None,
+            "execution_runtime": (
+                "container" if agent is not None and agent.container_image else "host_process"
+            ),
+            "container_network": (
+                agent.container_network if agent is not None and agent.container_image else None
+            ),
             "permission_policy": policy.value,
             "permission_policy_valid": policy_valid,
             "workspace_is_security_boundary": False,

@@ -2,6 +2,7 @@ const main = document.querySelector("#main-content");
 
 const SESSION_PREFIX = "veritas:audit-harness:session:v1:";
 const DRAFT_PREFIX = "veritas:audit-harness:notes-draft:v1:";
+const DRAFT_BASE_PREFIX = "veritas:audit-harness:notes-base:v1:";
 const MAX_NOTES_CHARS = 50000;
 
 const notesState = {
@@ -13,6 +14,7 @@ const notesState = {
   loading: false,
   saving: false,
   error: "",
+  conflict: false,
   requestToken: 0,
 };
 
@@ -64,12 +66,39 @@ function readDraft(auditId) {
   }
 }
 
+function draftBaseKey(auditId) {
+  return `${DRAFT_BASE_PREFIX}${auditId}`;
+}
+
+function readDraftBase(auditId) {
+  try {
+    const encoded = localStorage.getItem(draftBaseKey(auditId));
+    // Legacy drafts have no recorded base. Assume an empty revision instead of
+    // silently rebasing them onto possibly newer remote content.
+    return encoded === null ? null : JSON.parse(encoded);
+  } catch {
+    return null;
+  }
+}
+
+function updateDraftBase(auditId, version) {
+  try { localStorage.setItem(draftBaseKey(auditId), JSON.stringify(version)); } catch {}
+}
+
 function writeDraft(auditId, value) {
-  try { localStorage.setItem(draftKey(auditId), value); } catch {}
+  try {
+    if (localStorage.getItem(draftKey(auditId)) === null) {
+      updateDraftBase(auditId, notesState.serverUpdatedAt);
+    }
+    localStorage.setItem(draftKey(auditId), value);
+  } catch {}
 }
 
 function clearDraft(auditId) {
-  try { localStorage.removeItem(draftKey(auditId)); } catch {}
+  try {
+    localStorage.removeItem(draftKey(auditId));
+    localStorage.removeItem(draftBaseKey(auditId));
+  } catch {}
 }
 
 function formatTimestamp(value) {
@@ -89,6 +118,8 @@ function ensureNotesTab(root) {
     if (!provenance) return null;
     button = document.createElement("button");
     button.type = "button";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", "false");
     button.dataset.ahNotesTab = "true";
     button.textContent = "Notes";
     provenance.replaceWith(button);
@@ -109,14 +140,21 @@ function ensureAuditExit(root) {
     const auditId = activeAuditId(root);
     notesState.active = false;
     saveSessionPatch(auditId, { tab: "source" });
-    root.querySelector("[data-ah-tab='source']")?.click();
+    // Audit is itself a real source tab now. Its handler already rendered it.
+    if (button.dataset.ahTab !== "source") root.querySelector("[data-ah-tab='source']")?.click();
   });
 }
 
 function setTopTabState(root, active) {
   const workspaceTabs = root.querySelectorAll(".ah-workspace-tabs button");
-  if (active) workspaceTabs.forEach((node) => node.classList.remove("active"));
+  if (active) {
+    workspaceTabs.forEach((node) => {
+      node.classList.remove("active");
+      if (node.getAttribute("role") === "tab") node.setAttribute("aria-selected", "false");
+    });
+  }
   notesButton(root)?.classList.toggle("active", active);
+  notesButton(root)?.setAttribute("aria-selected", String(active));
 }
 
 function noteValue(auditId) {
@@ -149,6 +187,7 @@ function renderNotesSurface(root) {
   inspector.innerHTML = `<section class="ah-notes-pane" data-ah-notes-pane="true">
     <div class="ah-notes-copy"><span>Workspace notes</span><p>Capture review context, follow-ups, and handoff details here. Evidence stays in the linked Source and Provenance views.</p></div>
     ${notesState.error ? `<div class="ah-notes-error" role="alert">${esc(notesState.error)}</div>` : ""}
+    ${notesState.conflict ? `<div class="ah-notes-recovery" role="group" aria-label="Resolve notes conflict"><p>Another session saved newer notes. Your local draft is preserved. Copy it before reloading the server version.</p><button type="button" data-ah-notes-copy>Copy my draft</button><button type="button" data-ah-notes-reload>Reload latest notes</button></div>` : ""}
     <textarea id="ah-notes-editor" maxlength="${MAX_NOTES_CHARS}" spellcheck="true" placeholder="Write notes about this audit…">${esc(value)}</textarea>
     <div class="ah-notes-footer">
       <div><strong id="ah-notes-status">${esc(notesState.error || (dirty ? "Unsaved changes" : formatTimestamp(notesState.serverUpdatedAt)))}</strong><small><span id="ah-notes-count">${value.length.toLocaleString()}</span> / ${MAX_NOTES_CHARS.toLocaleString()} characters · plain text</small></div>
@@ -191,9 +230,27 @@ function bindNotesEditor(root, auditId) {
     }
   });
   save.addEventListener("click", () => saveNotes(root, auditId));
+  root.querySelector("[data-ah-notes-copy]")?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(root.querySelector("#ah-notes-editor")?.value || readDraft(auditId) || "");
+      const status = root.querySelector("#ah-notes-status");
+      if (status) status.textContent = "Draft copied";
+    } catch {
+      notesState.error = "Copy unavailable. Select the editor text and copy it manually.";
+      renderNotesSurface(root);
+    }
+  });
+  root.querySelector("[data-ah-notes-reload]")?.addEventListener("click", () => {
+    const draft = readDraft(auditId);
+    if (draft !== null && !window.confirm("Discard this local draft and load the latest saved notes?")) return;
+    // Do not erase the draft before the GET succeeds: the network may fail.
+    notesState.error = "";
+    notesState.loadedAuditId = "";
+    loadNotes(root, auditId, { discardDraftOnSuccess: true });
+  });
 }
 
-async function loadNotes(root, auditId) {
+async function loadNotes(root, auditId, { discardDraftOnSuccess = false } = {}) {
   if (!auditId || notesState.loading) return;
   const token = ++notesState.requestToken;
   notesState.loading = true;
@@ -209,10 +266,14 @@ async function loadNotes(root, auditId) {
     notesState.loadedAuditId = auditId;
     notesState.serverText = typeof audit.notes === "string" ? audit.notes : "";
     notesState.serverUpdatedAt = audit.notes_updated_at || null;
+    if (discardDraftOnSuccess) clearDraft(auditId);
+    notesState.conflict = false;
     const draft = readDraft(auditId);
     if (draft !== null && draft === notesState.serverText) clearDraft(auditId);
   } catch (error) {
-    notesState.error = `Unable to load notes: ${error.message}`;
+    if (token === notesState.requestToken && auditId === activeAuditId()) {
+      notesState.error = `Unable to load notes: ${error.message}`;
+    }
   } finally {
     if (token === notesState.requestToken) notesState.loading = false;
     const fresh = auditRoot();
@@ -232,18 +293,34 @@ async function saveNotes(root, auditId) {
     const response = await fetch(`/api/v1/audits/${encodeURIComponent(auditId)}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({
+        content,
+        expected_updated_at: readDraft(auditId) === null
+          ? notesState.serverUpdatedAt
+          : readDraftBase(auditId),
+      }),
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        notesState.conflict = true;
+        throw new Error("Notes changed in another session (409). Your draft has not been overwritten.");
+      }
       throw new Error(payload.detail || `${response.status} ${response.statusText}`);
     }
+    notesState.conflict = false;
     const saved = await response.json();
-    notesState.serverText = typeof saved.notes === "string" ? saved.notes : content;
-    notesState.serverUpdatedAt = saved.notes_updated_at || null;
-    clearDraft(auditId);
+    const persisted = typeof saved.notes === "string" ? saved.notes : content;
+    // The editor may have changed while this POST was in flight.
+    // Keep any newer draft instead of wiping it after the older save completes.
+    if (readDraft(auditId) === persisted) clearDraft(auditId);
+    else updateDraftBase(auditId, saved.notes_updated_at || null);
+    if (notesState.auditId === auditId) {
+      notesState.serverText = persisted;
+      notesState.serverUpdatedAt = saved.notes_updated_at || null;
+    }
   } catch (error) {
-    notesState.error = `Save failed: ${error.message}`;
+    if (notesState.auditId === auditId) notesState.error = `Save failed: ${error.message}`;
   } finally {
     notesState.saving = false;
     const fresh = auditRoot();
@@ -254,12 +331,27 @@ async function saveNotes(root, auditId) {
   }
 }
 
+function selectNotesAudit(auditId) {
+  if (notesState.auditId === auditId) return;
+  // Never display A's server note text or revision while opening B.
+  // Per-paper drafts are retained separately in localStorage.
+  notesState.requestToken += 1;
+  notesState.auditId = auditId;
+  notesState.loadedAuditId = "";
+  notesState.serverText = "";
+  notesState.serverUpdatedAt = null;
+  notesState.loading = false;
+  notesState.error = "";
+  notesState.conflict = false;
+}
+
 function openNotes(root = auditRoot()) {
   const auditId = activeAuditId(root);
   if (!root || !auditId) return;
-  notesState.auditId = auditId;
+  selectNotesAudit(auditId);
   notesState.active = true;
   notesState.error = "";
+  notesState.conflict = false;
   saveSessionPatch(auditId, { tab: "notes" });
   renderNotesSurface(root);
   if (notesState.loadedAuditId !== auditId) loadNotes(root, auditId);
@@ -285,7 +377,7 @@ function enhance() {
   }
   if (session.tab === "notes") {
     if (!notesState.active || notesState.auditId !== auditId) {
-      notesState.auditId = auditId;
+      selectNotesAudit(auditId);
       notesState.active = true;
     }
     if (!root.querySelector("[data-ah-notes-pane]") && !notesState.loading) {
@@ -310,6 +402,8 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (target.closest("[data-ah-tab], [data-ah-page], [data-ah-nav]")) {
+    const tab = target.closest("[data-ah-tab]")?.dataset.ahTab || "source";
+    saveSessionPatch(activeAuditId(root), { tab });
     deactivateNotes();
   }
 }, true);

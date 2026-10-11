@@ -4,7 +4,7 @@
     "slug": "veritas-audit",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {"supportsTablet": true, "bundleIdentifier": "org.veritas.audit"},
     "android": {"package": "org.veritas.audit", "edgeToEdgeEnabled": true},

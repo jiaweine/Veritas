@@ -78,10 +78,17 @@ function renderReferenceSidebar() {
     </button>
     <section class="ref-sidebar-group">
       <div class="ref-sidebar-heading"><span>Workspace</span><button type="button" data-ref-new>＋ New</button></div>
-      <button class="ref-sidebar-link" type="button" data-ref-view="audits"><span>▤</span><strong>All audits</strong><em>${auditCount}</em></button>
+      <button class="ref-sidebar-link" type="button" data-ref-view="overview"><span>⌂</span><strong>Overview</strong></button>
+      <button class="ref-sidebar-link active" type="button" data-ref-view="audits" aria-current="page"><span>▤</span><strong>All audits</strong><em>${auditCount}</em></button>
+      <button class="ref-sidebar-link" type="button" data-ref-view="findings"><span>◇</span><strong>Findings</strong></button>
       <button class="ref-sidebar-link" type="button" data-ref-view="runs"><span>⌁</span><strong>Runs</strong><em>${runCount}</em></button>
-      <button class="ref-sidebar-link" type="button" data-ref-view="reproduction"><span>↻</span><strong>Replication</strong></button>
-      <button class="ref-sidebar-link" type="button" data-ref-view="benchmarks"><span>⌗</span><strong>Benchmark</strong></button>
+    </section>
+    <section class="ref-sidebar-group">
+      <div class="ref-sidebar-heading"><span>Research system</span></div>
+      <button class="ref-sidebar-link" type="button" data-ref-view="evidence"><span>▦</span><strong>Evidence</strong></button>
+      <button class="ref-sidebar-link" type="button" data-ref-view="reproduction"><span>↻</span><strong>Reproduction</strong></button>
+      <button class="ref-sidebar-link" type="button" data-ref-view="benchmarks"><span>⌗</span><strong>Benchmarks</strong></button>
+      <button class="ref-sidebar-link" type="button" data-ref-view="settings"><span>⚙</span><strong>Settings</strong></button>
     </section>
     <section class="ref-sidebar-group ref-sidebar-recents">
       <div class="ref-sidebar-heading"><span>Recent Audits</span></div>

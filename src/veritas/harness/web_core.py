@@ -37,7 +37,7 @@ from .replication_workspace_product import (
 )
 from .run_views import project_run_detail
 from .service import AuditHarness
-from .store import MAX_AUDIT_NOTES_CHARS
+from .store import MAX_AUDIT_NOTES_CHARS, NotesConflictError
 from .telemetry import telemetry_capability
 
 MAX_UPLOAD_BYTES = 80 * 1024 * 1024
@@ -52,6 +52,7 @@ class MessageRequest(BaseModel):
 
 class NotesRequest(BaseModel):
     content: str
+    expected_updated_at: str | None = None
 
 
 class ProjectCreateRequest(BaseModel):
@@ -414,9 +415,16 @@ def create_app(
                 ),
             )
         try:
-            record = runtime.store.set_notes(audit_id, request.content)
+            kwargs = (
+                {"expected_updated_at": request.expected_updated_at}
+                if "expected_updated_at" in request.model_fields_set
+                else {}
+            )
+            record = runtime.store.set_notes(audit_id, request.content, **kwargs)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except NotesConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {

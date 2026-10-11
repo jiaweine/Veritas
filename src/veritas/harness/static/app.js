@@ -1,3 +1,5 @@
+import { consumeNdjson } from "./ndjson-stream.js";
+
 const state = {
   view: "overview",
   audits: [],
@@ -7,9 +9,10 @@ const state = {
   activeAudit: null,
   selectedFile: null,
   sending: false,
+  uploading: false,
   agentOpen: false,
-  commandIndex: 0,
-  commandItems: [],
+  activeAuditRequest: 0,
+  productDataRequest: 0,
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -28,8 +31,6 @@ const els = {
   dropTitle: $("#drop-title"),
   dropCopy: $("#drop-copy"),
   command: $("#command-dialog"),
-  commandInput: $("#command-input"),
-  commandResults: $("#command-results"),
   agentContext: $("#agent-context"),
   agentTimeline: $("#agent-timeline"),
   agentMessage: $("#agent-message"),
@@ -57,14 +58,37 @@ const shortTime = (value) => {
 function hideToast() {
   clearTimeout(showToast.timer);
   els.toast.classList.remove("show");
-  els.toast.textContent = "";
+  els.toast.replaceChildren();
 }
 
-function showToast(message) {
+function showToast(message, { kind = "error", action = null } = {}) {
   hideToast();
-  els.toast.textContent = message;
+  els.toast.dataset.kind = kind;
+  els.toast.setAttribute("role", kind === "error" ? "alert" : "status");
+  els.toast.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
+  const label = document.createElement("span");
+  label.textContent = String(message);
+  els.toast.append(label);
+  if (action?.label && typeof action.onClick === "function") {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "toast-action";
+    button.textContent = action.label;
+    button.addEventListener("click", () => { hideToast(); action.onClick(); });
+    els.toast.append(button);
+  }
+  if (kind !== "success") {
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "toast-dismiss";
+    dismiss.textContent = "×";
+    dismiss.setAttribute("aria-label", "Dismiss message");
+    dismiss.addEventListener("click", hideToast);
+    els.toast.append(dismiss);
+  }
   els.toast.classList.add("show");
-  showToast.timer = setTimeout(hideToast, 2700);
+  // Errors are actionable or dismissible, never silently hidden.
+  if (kind === "success") showToast.timer = setTimeout(hideToast, 4500);
 }
 
 async function api(path, options = {}) {
@@ -105,6 +129,7 @@ function publishProductPage(kind, page) {
 }
 
 async function loadProductData({ keepAudit = true } = {}) {
+  const requestToken = ++state.productDataRequest;
   setSync("loading", "Refreshing…");
   try {
     const [overview, auditPage, findingPage, runPage] = await Promise.all([
@@ -113,6 +138,7 @@ async function loadProductData({ keepAudit = true } = {}) {
       api(PRODUCT_BOOT_PAGE_PATHS.findings).then((r) => r.json()),
       api(PRODUCT_BOOT_PAGE_PATHS.runs).then((r) => r.json()),
     ]);
+    if (requestToken !== state.productDataRequest) return false;
     const audits = pageItems(auditPage);
     const findings = pageItems(findingPage);
     const runs = pageItems(runPage);
@@ -125,13 +151,26 @@ async function loadProductData({ keepAudit = true } = {}) {
     publishProductPage("audit", auditPage);
     publishProductPage("finding", findingPage);
     if (keepAudit && state.activeAudit) {
-      const current = audits.find((item) => item.audit_id === state.activeAudit.audit_id);
-      if (current) state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(current.audit_id)}`).then((r) => r.json());
+      const auditId = state.activeAudit.audit_id;
+      const current = audits.find((item) => item.audit_id === auditId);
+      if (current) {
+        const fresh = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+        if (requestToken !== state.productDataRequest) return false;
+        if (state.activeAudit?.audit_id === auditId) state.activeAudit = fresh;
+      }
     }
+    if (requestToken !== state.productDataRequest) return false;
     setSync("ready", "System ready");
+    return true;
   } catch (error) {
-    setSync("error", "Offline");
-    showToast(error.message);
+    if (requestToken !== state.productDataRequest) return false;
+    setSync("error", navigator.onLine ? "Unavailable" : "Offline");
+    showToast(`Workspace data unavailable · ${error.message}`, {
+      action: { label: "Retry", onClick: async () => {
+        if (await loadProductData()) { renderMain(); renderAgent(); }
+      } },
+    });
+    return false;
   }
 }
 
@@ -151,11 +190,13 @@ function pageHead(eyebrow, title, subtitle, actions = "") {
 }
 
 function setView(view, { push = true } = {}) {
+  // A pending paper read must not replace a newer view.
+  state.activeAuditRequest += 1;
   if (state.agentOpen) setAgent(false);
   state.view = view;
   $$('[data-view]').forEach((node) => node.classList.toggle("active", node.dataset.view === view));
   document.body.classList.remove("sidebar-open");
-  if (push) history.replaceState(null, "", `#${view}`);
+  if (push && location.hash !== `#${view}`) history.pushState(null, "", `#${view}`);
   renderMain();
   els.main.focus({ preventScroll: true });
 }
@@ -257,7 +298,7 @@ function emptyPanel(mark, title, copy, action = false) {
 
 function renderAudits() {
   els.main.innerHTML = `<div class="page">${pageHead("Workspace", "Audits", "Every paper has an immutable artifact, a parser record, evidence-linked detector results, and a replayable event history.", `<button class="primary-button" data-action="new-audit">＋ New audit</button>`)}
-    <div class="filter-row"><button class="filter-pill active">All ${state.audits.length}</button><button class="filter-pill">Ready ${state.audits.filter(a=>a.status==='ready').length}</button><button class="filter-pill">Running ${state.audits.filter(a=>a.status==='running').length}</button><button class="filter-pill">Error ${state.audits.filter(a=>a.status==='error').length}</button></div>
+    <div class="filter-row" role="group" aria-label="Filter audits by status"><button type="button" class="filter-pill active" data-audit-status="all" aria-pressed="true">All ${state.audits.length}</button><button type="button" class="filter-pill" data-audit-status="ready" aria-pressed="false">Ready ${state.audits.filter(a=>a.status==='ready').length}</button><button type="button" class="filter-pill" data-audit-status="running" aria-pressed="false">Running ${state.audits.filter(a=>a.status==='running').length}</button><button type="button" class="filter-pill" data-audit-status="error" aria-pressed="false">Error ${state.audits.filter(a=>a.status==='error').length}</button></div>
     <section class="panel">${state.audits.length ? auditTable(state.audits) : emptyPanel("V", "No audits in this workspace", "Start with a PDF. Veritas will preserve the artifact and build evidence-aware structure around it.", true)}</section>
   </div>`;
   bindMainActions();
@@ -309,15 +350,21 @@ function renderSettings() {
   </div>`;
 }
 
-async function openAudit(auditId) {
+async function openAudit(auditId, { push = true } = {}) {
+  const requestToken = ++state.activeAuditRequest;
   try {
-    state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+    const audit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+    if (requestToken !== state.activeAuditRequest) return;
+    state.activeAudit = audit;
     state.view = "audit";
-    history.replaceState(null, "", `#audit=${encodeURIComponent(auditId)}`);
+    const targetHash = `#audit=${encodeURIComponent(auditId)}`;
+    if (push && location.hash !== targetHash) history.pushState(null, "", targetHash);
     $$('[data-view]').forEach((node) => node.classList.remove("active"));
     renderMain();
     renderAgent();
-  } catch (error) { showToast(error.message); }
+  } catch (error) {
+    if (requestToken === state.activeAuditRequest) showToast(error.message);
+  }
 }
 
 function renderWorkbench() {
@@ -350,20 +397,44 @@ function renderWorkbench() {
   bindMainActions();
 }
 
+function bindKeyboardAction(node, action) {
+  node.addEventListener("click", action);
+  if (!["BUTTON", "A"].includes(node.tagName)) {
+    node.tabIndex = 0;
+    if (node.tagName !== "TR" && !node.hasAttribute("role")) node.setAttribute("role", "link");
+    node.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        action();
+      }
+    });
+  }
+}
+
 function bindMainActions() {
   $$('[data-action="new-audit"]', els.main).forEach((node) => node.addEventListener("click", openUpload));
   $$('[data-action="refresh"]', els.main).forEach((node) => node.addEventListener("click", async () => { await loadProductData(); renderMain(); renderAgent(); }));
   $$('[data-action="agent-open"]', els.main).forEach((node) => node.addEventListener("click", () => setAgent(true)));
   $$('[data-action="open-pdf"]', els.main).forEach((node) => node.addEventListener("click", () => state.activeAudit && window.open(`/api/v1/audits/${encodeURIComponent(state.activeAudit.audit_id)}/paper`, "_blank", "noopener")));
   $$('[data-view]', els.main).forEach((node) => node.addEventListener("click", () => setView(node.dataset.view)));
-  $$('[data-audit-id]', els.main).forEach((node) => node.addEventListener("click", () => openAudit(node.dataset.auditId)));
-  $$('[data-table-page]', els.main).forEach((node) => node.addEventListener("click", () => {
-    const frame = $(".pdf-frame", els.main); if (frame && state.activeAudit) frame.src = `/api/v1/audits/${encodeURIComponent(state.activeAudit.audit_id)}/paper#page=${encodeURIComponent(node.dataset.tablePage)}`;
-  }));
+  $$('[data-audit-id]', els.main).forEach((node) => bindKeyboardAction(node, () => openAudit(node.dataset.auditId)));
+  $$('[data-table-page]', els.main).forEach((node) => {
+    node.setAttribute("role", "button");
+    bindKeyboardAction(node, () => {
+      const frame = $(".pdf-frame", els.main);
+      if (frame && state.activeAudit) {
+        frame.src = `/api/v1/audits/${encodeURIComponent(state.activeAudit.audit_id)}/paper#page=${encodeURIComponent(node.dataset.tablePage)}`;
+      }
+    });
+  });
 }
 
+const MAX_PDF_UPLOAD_BYTES = 80 * 1024 * 1024;
+
 function openUpload() {
+  if (els.upload.open) return;
   state.selectedFile = null;
+  els.file.value = "";
   els.uploadTitle.value = "";
   els.dropTitle.textContent = "Choose a PDF";
   els.dropCopy.textContent = "PDF · up to 80 MiB";
@@ -372,10 +443,26 @@ function openUpload() {
   els.upload.showModal();
 }
 
-function chooseFile() { els.file.click(); }
+function chooseFile() { if (!state.uploading) els.file.click(); }
 function setSelectedFile(file) {
-  if (!file) return;
-  if (!file.name.toLowerCase().endsWith(".pdf")) { showToast("Please choose a PDF file."); return; }
+  if (state.uploading || !file) return;
+  state.selectedFile = null;
+  els.uploadSubmit.disabled = true;
+  els.drop.classList.remove("selected");
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    els.dropTitle.textContent = "Choose a PDF";
+    els.dropCopy.textContent = "Only PDF files are supported";
+    els.file.value = "";
+    showToast("Please choose a PDF file.");
+    return;
+  }
+  if (!file.size || file.size > MAX_PDF_UPLOAD_BYTES) {
+    els.dropTitle.textContent = "Choose a PDF";
+    els.dropCopy.textContent = file.size ? "File exceeds the 80 MiB limit" : "Empty PDF files are not supported";
+    els.file.value = "";
+    showToast(file.size ? "PDF exceeds the 80 MiB upload limit." : "Please choose a non-empty PDF.");
+    return;
+  }
   state.selectedFile = file;
   els.dropTitle.textContent = file.name;
   els.dropCopy.textContent = `${(file.size / 1024 / 1024).toFixed(1)} MiB · ready to parse`;
@@ -386,30 +473,51 @@ function setSelectedFile(file) {
 
 async function submitUpload(event) {
   event.preventDefault();
-  if (!state.selectedFile || state.sending) return;
-  state.sending = true;
+  if (!state.selectedFile || state.uploading) return;
+  state.uploading = true;
+  els.uploadForm.setAttribute("aria-busy", "true");
   els.uploadSubmit.disabled = true;
   els.uploadSubmit.textContent = "Parsing…";
+  $("#upload-close").disabled = true;
+  $("#upload-cancel").disabled = true;
+  els.drop.disabled = true;
   const data = new FormData();
   data.append("file", state.selectedFile);
   data.append("title", els.uploadTitle.value.trim());
   try {
     const audit = await api("/api/v1/audits", { method: "POST", body: data }).then((r) => r.json());
     els.upload.close();
-    await loadProductData({ keepAudit: false });
     state.activeAudit = audit;
-    showToast("Paper parsed and evidence workspace created.");
+    const refreshed = await loadProductData({ keepAudit: false });
     await openAudit(audit.audit_id);
     await openConversation({ autoSelect: false });
-  } catch (error) { showToast(error.message); }
-  finally { state.sending = false; els.uploadSubmit.textContent = "Parse & start conversation"; els.uploadSubmit.disabled = !state.selectedFile; els.file.value = ""; }
+    if (refreshed) showToast("Paper parsed and evidence workspace created.", { kind: "success" });
+    else showToast("Paper saved, but the workspace list could not refresh.", {
+      action: { label: "Retry", onClick: async () => {
+        if (await loadProductData()) { renderMain(); renderAgent(); }
+      } },
+    });
+  } catch (error) { showToast(`Upload failed · ${error.message}`); }
+  finally {
+    state.uploading = false;
+    els.uploadForm.removeAttribute("aria-busy");
+    els.uploadSubmit.textContent = "Parse & start conversation";
+    els.uploadSubmit.disabled = !state.selectedFile;
+    $("#upload-close").disabled = false;
+    $("#upload-cancel").disabled = false;
+    els.drop.disabled = false;
+    els.file.value = "";
+  }
 }
 
 async function openConversation({ autoSelect = true } = {}) {
   if (!state.activeAudit && autoSelect && state.audits.length) {
     try {
       const auditId = state.audits[0].audit_id;
-      state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+      const requestToken = ++state.activeAuditRequest;
+      const audit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
+      if (requestToken !== state.activeAuditRequest) return;
+      if (!state.activeAudit) state.activeAudit = audit;
     } catch (error) {
       showToast(error.message);
     }
@@ -458,77 +566,54 @@ async function sendAgentMessage() {
   els.agentMessage.disabled = true;
   els.agentSend.disabled = true;
   hideToast();
+  let receivedServerEvent = false;
   try {
     const response = await api(`/api/v1/audits/${encodeURIComponent(audit.audit_id)}/messages`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }),
     });
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n"); buffer = lines.pop() || "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line);
-        state.activeAudit.events = [...(state.activeAudit.events || []), event];
-        if (event.payload?.result) state.activeAudit.latest_result = event.payload.result;
-        renderAgent();
-        if (state.view === "audit") renderWorkbench();
-      }
-    }
+    await consumeNdjson(response, (event) => {
+      receivedServerEvent = true;
+      // The stream belongs to the audit that initiated it, not whichever
+      // audit the user may have opened while the response was in flight.
+      if (state.activeAudit?.audit_id !== audit.audit_id) return;
+      state.activeAudit.events = [...(state.activeAudit.events || []), event];
+      if (event.payload?.result) state.activeAudit.latest_result = event.payload.result;
+      renderAgent();
+      if (state.view === "audit") renderWorkbench();
+    });
     await loadProductData();
-    if (state.activeAudit) state.activeAudit = await api(`/api/v1/audits/${encodeURIComponent(audit.audit_id)}`).then((r) => r.json());
+    if (state.activeAudit?.audit_id === audit.audit_id) {
+      const updatedAudit = await api(`/api/v1/audits/${encodeURIComponent(audit.audit_id)}`).then((r) => r.json());
+      if (state.activeAudit?.audit_id === audit.audit_id) state.activeAudit = updatedAudit;
+    }
     renderAgent(); renderMain();
-  } catch (error) { els.agentMessage.value = message; showToast(`Conversation failed · ${error.message}`); }
+  } catch (error) {
+    // An already-persisted partial stream must not silently be replayed.
+    if (!receivedServerEvent) els.agentMessage.value = message;
+    showToast(`Conversation failed · ${error.message}`);
+  }
   finally { state.sending = false; els.agentMessage.disabled = !state.activeAudit; els.agentSend.disabled = !state.activeAudit; }
 }
 
-function commandDefaults() {
-  return [
-    { kind: "view", id: "overview", title: "Workspace", detail: "Evidence, findings, and audit state", icon: "⌂" },
-    { kind: "view", id: "audits", title: "Audits", detail: "Papers and evidence workspaces", icon: "▤" },
-    { kind: "view", id: "findings", title: "Findings", detail: "Contradictions requiring review", icon: "◇" },
-    { kind: "view", id: "runs", title: "Agent runs", detail: "Tool traces and evidence outcomes", icon: "⌁" },
-    ...state.audits.slice(0, 5).map((audit) => ({ kind: "audit", id: audit.audit_id, title: audit.title, detail: audit.filename, icon: "V" })),
-  ];
-}
-
+// The Search palette has one owner: command-search.js. It handles
+// debouncing, cancellation, result deduplication and keyboard navigation.
 function openCommand() {
-  state.commandIndex = 0;
-  state.commandItems = commandDefaults();
-  renderCommandResults();
-  els.commandInput.value = "";
-  els.command.showModal();
-  setTimeout(() => els.commandInput.focus(), 40);
+  if (!els.command.open) els.command.showModal();
 }
 
-async function searchCommand(value) {
-  const query = value.trim();
-  state.commandIndex = 0;
-  if (!query) { state.commandItems = commandDefaults(); renderCommandResults(); return; }
-  const local = commandDefaults().filter((item) => `${item.title} ${item.detail}`.toLowerCase().includes(query.toLowerCase()));
-  try {
-    const remote = await api(`/api/v1/search?q=${encodeURIComponent(query)}&limit=12`).then((r) => r.json());
-    state.commandItems = [...local.filter((x)=>x.kind==='view'), ...remote.map((item) => ({ kind: item.kind, id: item.id, audit_id: item.audit_id, title: item.title, detail: item.detail, icon: item.kind === "audit" ? "V" : "·" }))];
-  } catch { state.commandItems = local; }
-  renderCommandResults();
-}
-
-function renderCommandResults() {
-  const items = state.commandItems;
-  els.commandResults.innerHTML = `<div class="command-section-label">Navigate & search</div>${items.length ? items.map((item, index) => `<button class="command-result ${index === state.commandIndex ? "selected" : ""}" data-command-index="${index}"><span class="command-result-icon">${escapeHtml(item.icon || "·")}</span><span><strong>${escapeHtml(item.title || "Result")}</strong><small>${escapeHtml(item.detail || item.kind || "")}</small></span></button>`).join("") : `<div class="empty-state" style="min-height:150px"><div class="empty-state-inner"><p>No matching papers, findings, or runs.</p></div></div>`}`;
-  $$('[data-command-index]', els.commandResults).forEach((node) => node.addEventListener("click", () => activateCommand(Number(node.dataset.commandIndex))));
-}
-
-function activateCommand(index = state.commandIndex) {
-  const item = state.commandItems[index]; if (!item) return;
-  els.command.close();
-  if (item.kind === "view") return setView(item.id);
-  const auditId = item.audit_id || (item.kind === "audit" ? item.id : null);
-  if (auditId) openAudit(auditId);
+function syncRouteFromHash() {
+  const hash = location.hash.slice(1);
+  if (hash.startsWith("audit=")) {
+    const encoded = hash.slice("audit=".length);
+    let auditId;
+    try { auditId = decodeURIComponent(encoded); } catch { auditId = encoded; }
+    if (auditId && (state.view !== "audit" || state.activeAudit?.audit_id !== auditId)) {
+      void openAudit(auditId, { push: false });
+    }
+    return;
+  }
+  const routes = ["overview", "audits", "findings", "runs", "evidence", "reproduction", "benchmarks", "settings"];
+  if (routes.includes(hash) && state.view !== hash) setView(hash, { push: false });
 }
 
 function bindGlobal() {
@@ -536,17 +621,24 @@ function bindGlobal() {
   $("#new-audit").addEventListener("click", openUpload);
   $("#mobile-new").addEventListener("click", openUpload);
   $("#drop-zone").addEventListener("click", chooseFile);
+  els.drop.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    if (!state.uploading) els.drop.classList.add("drag-over");
+  });
+  els.drop.addEventListener("dragleave", () => els.drop.classList.remove("drag-over"));
+  els.drop.addEventListener("drop", (event) => {
+    event.preventDefault();
+    els.drop.classList.remove("drag-over");
+    if (!state.uploading) setSelectedFile(event.dataTransfer?.files?.[0]);
+  });
+  els.upload.addEventListener("cancel", (event) => {
+    if (state.uploading) event.preventDefault();
+  });
   els.file.addEventListener("change", () => setSelectedFile(els.file.files?.[0]));
   $("#upload-close").addEventListener("click", () => els.upload.close());
   $("#upload-cancel").addEventListener("click", () => els.upload.close());
   els.uploadForm.addEventListener("submit", submitUpload);
   $("#command-trigger").addEventListener("click", openCommand);
-  els.commandInput.addEventListener("input", (event) => searchCommand(event.target.value));
-  els.commandInput.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowDown") { event.preventDefault(); state.commandIndex = Math.min(state.commandItems.length - 1, state.commandIndex + 1); renderCommandResults(); }
-    if (event.key === "ArrowUp") { event.preventDefault(); state.commandIndex = Math.max(0, state.commandIndex - 1); renderCommandResults(); }
-    if (event.key === "Enter") { event.preventDefault(); activateCommand(); }
-  });
   $("#conversation-nav").addEventListener("click", () => openConversation());
   $("#agent-toggle").addEventListener("click", () => state.agentOpen ? setAgent(false) : openConversation());
   $("#mobile-agent").addEventListener("click", () => openConversation());
@@ -555,8 +647,19 @@ function bindGlobal() {
   els.agentMessage.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendAgentMessage(); } });
   $$('[data-agent-command]').forEach((node) => node.addEventListener("click", () => { els.agentMessage.value = node.dataset.agentCommand; els.agentMessage.focus(); }));
   $("#sidebar-open").addEventListener("click", () => document.body.classList.add("sidebar-open"));
+  $(".avatar-button")?.addEventListener("click", () => setView("settings"));
   $("#sidebar-close").addEventListener("click", () => document.body.classList.remove("sidebar-open"));
   $("#sidebar-backdrop").addEventListener("click", () => document.body.classList.remove("sidebar-open"));
+  // Native sidebar clicks call setView(); hash-only navigation from feature
+  // modules and browser history must also update the rendered SPA view.
+  window.addEventListener("hashchange", syncRouteFromHash);
+  window.addEventListener("popstate", syncRouteFromHash);
+  // Feature surfaces delegate visible errors to the shared accessible
+  // notification owner rather than manipulating #toast independently.
+  window.addEventListener("veritas:notice", (event) => {
+    const detail = event.detail || {};
+    if (detail.message) showToast(detail.message, { kind: detail.kind === "success" ? "success" : "error" });
+  });
   document.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); els.command.open ? els.command.close() : openCommand(); }
   });
@@ -567,7 +670,7 @@ async function boot() {
   await loadProductData({ keepAudit: false });
   const hash = location.hash.slice(1);
   if (hash.startsWith("audit=")) {
-    await openAudit(decodeURIComponent(hash.split("=").slice(1).join("=")));
+    await openAudit(decodeURIComponent(hash.split("=").slice(1).join("=")), { push: false });
   } else if (["overview","audits","findings","runs","evidence","reproduction","benchmarks","settings"].includes(hash)) {
     setView(hash, { push: false });
   } else {

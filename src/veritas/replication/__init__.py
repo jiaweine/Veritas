@@ -89,6 +89,8 @@ def agent_from_environment() -> AgentCommand | None:
         name=agent.name,
         forward_env=tuple(forwarded),
         env=tuple(sorted(derived_env.items())),
+        container_image=agent.container_image,
+        container_network=agent.container_network,
     )
 
 

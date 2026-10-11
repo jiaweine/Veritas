@@ -123,7 +123,9 @@ async function assignCurrentAudit(select) {
     if (status) status.textContent = "Saved";
     await refreshProjects();
   } catch (error) {
+    // The server rejected the assignment: restore the last persisted value.
     if (status) status.textContent = error.message;
+    select.value = assignments()[auditId] || "";
   } finally {
     select.disabled = false;
   }

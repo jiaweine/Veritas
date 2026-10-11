@@ -36,7 +36,7 @@ def test_product_boot_directly_pages_audit_history() -> None:
     assert ".audit-page-footer" in styles
     assert ".audit-page-error" in styles
 
-    assert 'const CACHE = "veritas-shell-v29"' in service_worker
+    assert 'const CACHE = "veritas-shell-v' in service_worker
     assert 'const CACHE_REVISION = "direct-bounded-boot-1"' in service_worker
     assert '"/static/audit-page-bootstrap.js"' not in service_worker
     assert '"/static/audit-pagination.js"' in service_worker

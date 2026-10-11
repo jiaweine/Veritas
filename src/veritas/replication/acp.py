@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import re
 import shlex
 import threading
 from collections.abc import AsyncIterator, Iterable, Mapping
@@ -19,6 +20,7 @@ _JSON_MAX_DEPTH = 8
 _JSON_MAX_STRING_CHARS = 32_768
 _JSON_MAX_COLLECTION_ITEMS = 256
 _JSON_MAX_KEY_CHARS = 256
+_CONTAINER_IMAGE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/@:-]{0,253}$")
 
 
 class PermissionPolicy(StrEnum):
@@ -44,12 +46,23 @@ class AgentCommand:
     name: str = "ACP agent"
     forward_env: tuple[str, ...] = ()
     env: tuple[tuple[str, str], ...] = ()
+    container_image: str | None = None
+    container_network: str = "none"
 
     def __post_init__(self) -> None:
         if not self.argv or any(not isinstance(value, str) or not value for value in self.argv):
             raise ValueError("agent argv must contain at least one non-empty string")
         if not isinstance(self.name, str) or not self.name.strip():
             raise ValueError("agent name must be non-empty")
+        if self.container_image is not None and (
+            not _CONTAINER_IMAGE_RE.fullmatch(self.container_image)
+            or not re.search(r"@sha256:[0-9a-f]{64}$", self.container_image)
+        ):
+            raise ValueError("container image must have a pinned sha256 digest")
+        if self.container_network not in {"none", "bridge"}:
+            raise ValueError("container network must be none or bridge")
+        if self.container_image is None and self.container_network != "none":
+            raise ValueError("container networking requires a configured container image")
         for key in self.forward_env:
             if not key or "=" in key or "\x00" in key:
                 raise ValueError(f"invalid forwarded environment name: {key!r}")
@@ -65,6 +78,8 @@ class AgentCommand:
         name: str = "ACP agent",
         forward_env: Iterable[str] = (),
         env: Mapping[str, str] | None = None,
+        container_image: str | None = None,
+        container_network: str = "none",
     ) -> AgentCommand:
         argv = tuple(shlex.split(command))
         return cls(
@@ -72,6 +87,8 @@ class AgentCommand:
             name=name,
             forward_env=tuple(forward_env),
             env=tuple(sorted((env or {}).items())),
+            container_image=container_image,
+            container_network=container_network,
         )
 
     def process_env(self, source: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -378,6 +395,42 @@ class AcpTurnRunner:
         self.agent = agent
         self.permission_policy = permission_policy
 
+    def _launch_spec(self, workspace: Path) -> tuple[tuple[str, ...], str, dict[str, str]]:
+        """Return process argv, ACP session cwd, and narrowly forwarded process env.
+
+        The container is opt-in. A working directory in host mode is NOT a
+        sandbox; container mode never mounts the host home or Docker socket.
+        """
+        process_env = self.agent.process_env()
+        if self.agent.container_image is None:
+            return self.agent.argv, str(workspace), process_env
+        if ":" in str(workspace) or "\n" in str(workspace):
+            raise ValueError("workspace path cannot be safely bound into the agent container")
+        if not hasattr(os, "getuid") or not hasattr(os, "getgid"):
+            raise RuntimeError("container runtime requires a POSIX host")
+        if os.getuid() == 0:
+            raise RuntimeError("container agent must be launched by a non-root server account")
+        argv = (
+            "docker", "run", "--rm", "--interactive", "--pull", "never",
+            "--read-only", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+            "--pids-limit", "128", "--memory", "1g", "--cpus", "1",
+            "--network", self.agent.container_network,
+            "--user", f"{os.getuid()}:{os.getgid()}",
+            "--tmpfs", "/tmp:rw,nosuid,nodev,size=128m",
+            "--volume", f"{workspace}:/workspace:rw",
+            "--workdir", "/workspace",
+            "--env", "HOME=/tmp",
+            "--env", "XDG_CACHE_HOME=/tmp/.cache",
+        )
+        # Names only: secret values stay in the child's environment, not argv,
+        # Docker command logs, or persistent run events.
+        names = sorted(set(self.agent.forward_env) | {key for key, _ in self.agent.env})
+        for key in names:
+            if key in process_env:
+                argv += ("--env", key)
+        return (*argv, self.agent.container_image, *self.agent.argv), "/workspace", process_env
+
     async def stream_turn(self, workspace: str | Path, prompt: str) -> AsyncIterator[dict[str, Any]]:
         workspace_path = Path(workspace).expanduser().resolve()
         if not workspace_path.is_dir():
@@ -541,13 +594,14 @@ class AcpTurnRunner:
         ).to_dict()
 
         client = StreamingClient()
+        argv, session_cwd, process_env = self._launch_spec(workspace_path)
         async with spawn_agent_process(
             client,
-            *self.agent.argv,
-            env=self.agent.process_env(),
+            *argv,
+            env=process_env,
         ) as (connection, process):
             initialized = await connection.initialize(protocol_version=PROTOCOL_VERSION)
-            session = await connection.new_session(cwd=str(workspace_path), mcp_servers=[])
+            session = await connection.new_session(cwd=session_cwd, mcp_servers=[])
             prompt_task = asyncio.create_task(
                 connection.prompt(
                     session_id=session.session_id,
@@ -649,7 +703,15 @@ def agent_from_environment() -> AgentCommand | None:
         for item in os.environ.get("VERITAS_REPLICATION_FORWARD_ENV", "").split(",")
         if item.strip()
     )
-    return AgentCommand.from_shell(raw, name=name, forward_env=forward)
+    image = os.environ.get("VERITAS_REPLICATION_CONTAINER_IMAGE", "").strip() or None
+    network = os.environ.get("VERITAS_REPLICATION_CONTAINER_NETWORK", "none").strip()
+    return AgentCommand.from_shell(
+        raw,
+        name=name,
+        forward_env=forward,
+        container_image=image,
+        container_network=network,
+    )
 
 
 def _select_allow_once(options: Iterable[object]) -> object | None:

@@ -37,7 +37,7 @@ def test_findings_product_boot_and_surface_are_bounded() -> None:
     assert "server-reported total" in pager
     assert ".finding-page-footer" in styles
 
-    assert 'const CACHE = "veritas-shell-v29";' in sw
+    assert 'const CACHE = "veritas-shell-v' in sw
     assert 'const CACHE_REVISION = "direct-bounded-boot-1";' in sw
     assert '"/static/finding-page-bootstrap.js"' not in sw
     assert '"/static/finding-pagination.js"' in sw

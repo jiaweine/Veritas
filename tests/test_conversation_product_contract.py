@@ -114,4 +114,5 @@ def test_conversation_is_the_default_product_entry_not_a_side_utility() -> None:
     assert "Research conversation" in html
     assert ">API</a>" not in html
     assert "await openConversation();" in app
-    assert "els.agentMessage.value = message; showToast(`Conversation failed · ${error.message}`);" in app
+    assert "if (!receivedServerEvent) els.agentMessage.value = message;" in app
+    assert "showToast(`Conversation failed · ${error.message}`);" in app
