@@ -146,6 +146,10 @@ function renderShell() {
   const capability = repState.capabilities?.replication || {};
   const configured = Boolean(capability.configured);
   const interactive = Boolean(capability.interactive_approval_enabled);
+  const runtime = capability.execution_runtime === "container" ? "Docker container" : "host process";
+  const network = capability.execution_runtime === "container"
+    ? ` · network: ${capability.container_network === "bridge" ? "bridge" : "off"}`
+    : " · host isolation not guaranteed";
   const audits = repState.audits;
   const selected = selectedAudit();
   const runs = replicationRuns();
@@ -161,7 +165,8 @@ function renderShell() {
       <div class="rep-boundary-pills">
         <span>Permission · <b>${escapeHtml(capability.permission_policy || "deny")}</b></span>
         <span>Approval UI · <b>${interactive ? "interactive" : "off"}</b></span>
-        <span>Sandbox · <b>agent-owned</b></span>
+        <span>Execution · <b>${escapeHtml(runtime)}</b></span>
+        <span>Network · <b>${escapeHtml(network.replace(" · network: ", "").replace(" · host isolation not guaranteed", "host-controlled"))}</b></span>
       </div>
     </div>
 
@@ -192,7 +197,7 @@ function renderShell() {
 
       <section class="rep-center" aria-label="Agent conversation">
         <div class="rep-center-head">
-          <div><strong>${escapeHtml(capability.agent || "Replication agent")}</strong><small>${configured ? "ACP session · structured events" : "Configure VERITAS_REPLICATION_AGENT"}</small></div>
+          <div><strong>${escapeHtml(capability.agent || "Replication agent")}</strong><small>${configured ? `ACP session · ${escapeHtml(runtime)}${escapeHtml(network)}` : "Configure VERITAS_REPLICATION_AGENT"}</small></div>
           <div class="rep-run-actions"><span id="rep-live-state" class="rep-live-state ${repState.streaming ? "running" : ""}"><i></i>${repState.streaming ? "running" : "ready"}</span><button id="rep-cancel" class="rep-cancel" ${repState.streaming && repState.selectedRunId ? "" : "disabled"}>Stop</button></div>
         </div>
         ${renderFindingContext()}
