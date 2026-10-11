@@ -9,9 +9,10 @@ const state = {
   activeAudit: null,
   selectedFile: null,
   sending: false,
+  uploading: false,
   agentOpen: false,
-  commandIndex: 0,
-  commandItems: [],
+  activeAuditRequest: 0,
+  productDataRequest: 0,
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -30,8 +31,6 @@ const els = {
   dropTitle: $("#drop-title"),
   dropCopy: $("#drop-copy"),
   command: $("#command-dialog"),
-  commandInput: $("#command-input"),
-  commandResults: $("#command-results"),
   agentContext: $("#agent-context"),
   agentTimeline: $("#agent-timeline"),
   agentMessage: $("#agent-message"),
@@ -489,49 +488,10 @@ async function sendAgentMessage() {
   finally { state.sending = false; els.agentMessage.disabled = !state.activeAudit; els.agentSend.disabled = !state.activeAudit; }
 }
 
-function commandDefaults() {
-  return [
-    { kind: "view", id: "overview", title: "Workspace", detail: "Evidence, findings, and audit state", icon: "⌂" },
-    { kind: "view", id: "audits", title: "Audits", detail: "Papers and evidence workspaces", icon: "▤" },
-    { kind: "view", id: "findings", title: "Findings", detail: "Contradictions requiring review", icon: "◇" },
-    { kind: "view", id: "runs", title: "Agent runs", detail: "Tool traces and evidence outcomes", icon: "⌁" },
-    ...state.audits.slice(0, 5).map((audit) => ({ kind: "audit", id: audit.audit_id, title: audit.title, detail: audit.filename, icon: "V" })),
-  ];
-}
-
+// The Search palette has one owner: command-search.js. It handles
+// debouncing, cancellation, result deduplication and keyboard navigation.
 function openCommand() {
-  state.commandIndex = 0;
-  state.commandItems = commandDefaults();
-  renderCommandResults();
-  els.commandInput.value = "";
-  els.command.showModal();
-  setTimeout(() => els.commandInput.focus(), 40);
-}
-
-async function searchCommand(value) {
-  const query = value.trim();
-  state.commandIndex = 0;
-  if (!query) { state.commandItems = commandDefaults(); renderCommandResults(); return; }
-  const local = commandDefaults().filter((item) => `${item.title} ${item.detail}`.toLowerCase().includes(query.toLowerCase()));
-  try {
-    const remote = await api(`/api/v1/search?q=${encodeURIComponent(query)}&limit=12`).then((r) => r.json());
-    state.commandItems = [...local.filter((x)=>x.kind==='view'), ...remote.map((item) => ({ kind: item.kind, id: item.id, audit_id: item.audit_id, title: item.title, detail: item.detail, icon: item.kind === "audit" ? "V" : "·" }))];
-  } catch { state.commandItems = local; }
-  renderCommandResults();
-}
-
-function renderCommandResults() {
-  const items = state.commandItems;
-  els.commandResults.innerHTML = `<div class="command-section-label">Navigate & search</div>${items.length ? items.map((item, index) => `<button class="command-result ${index === state.commandIndex ? "selected" : ""}" data-command-index="${index}"><span class="command-result-icon">${escapeHtml(item.icon || "·")}</span><span><strong>${escapeHtml(item.title || "Result")}</strong><small>${escapeHtml(item.detail || item.kind || "")}</small></span></button>`).join("") : `<div class="empty-state" style="min-height:150px"><div class="empty-state-inner"><p>No matching papers, findings, or runs.</p></div></div>`}`;
-  $$('[data-command-index]', els.commandResults).forEach((node) => node.addEventListener("click", () => activateCommand(Number(node.dataset.commandIndex))));
-}
-
-function activateCommand(index = state.commandIndex) {
-  const item = state.commandItems[index]; if (!item) return;
-  els.command.close();
-  if (item.kind === "view") return setView(item.id);
-  const auditId = item.audit_id || (item.kind === "audit" ? item.id : null);
-  if (auditId) openAudit(auditId);
+  if (!els.command.open) els.command.showModal();
 }
 
 function syncRouteFromHash() {
@@ -559,12 +519,6 @@ function bindGlobal() {
   $("#upload-cancel").addEventListener("click", () => els.upload.close());
   els.uploadForm.addEventListener("submit", submitUpload);
   $("#command-trigger").addEventListener("click", openCommand);
-  els.commandInput.addEventListener("input", (event) => searchCommand(event.target.value));
-  els.commandInput.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowDown") { event.preventDefault(); state.commandIndex = Math.min(state.commandItems.length - 1, state.commandIndex + 1); renderCommandResults(); }
-    if (event.key === "ArrowUp") { event.preventDefault(); state.commandIndex = Math.max(0, state.commandIndex - 1); renderCommandResults(); }
-    if (event.key === "Enter") { event.preventDefault(); activateCommand(); }
-  });
   $("#conversation-nav").addEventListener("click", () => openConversation());
   $("#agent-toggle").addEventListener("click", () => state.agentOpen ? setAgent(false) : openConversation());
   $("#mobile-agent").addEventListener("click", () => openConversation());
