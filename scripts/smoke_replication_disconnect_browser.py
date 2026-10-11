@@ -89,7 +89,7 @@ def main() -> None:
                       run_id: "run_mock_disconnected", phase: "start",
                       run_kind: "replication"
                     }
-                  () + "\n" + JSON.stringify({
+                  }) + "\n" + JSON.stringify({
                     kind:"replication",title:"Permission",status:"review",
                     payload:{run_id:"run_mock_disconnected",
                       agent_event:{kind:"permission",payload:{
