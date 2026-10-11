@@ -234,20 +234,18 @@ function bindNotesEditor(root, auditId) {
   root.querySelector("[data-ah-notes-reload]")?.addEventListener("click", () => {
     const draft = readDraft(auditId);
     if (draft !== null && !window.confirm("Discard this local draft and load the latest saved notes?")) return;
-    clearDraft(auditId);
+    // Do not erase the draft before the GET succeeds: the network may fail.
     notesState.error = "";
-    notesState.conflict = false;
     notesState.loadedAuditId = "";
-    loadNotes(root, auditId);
+    loadNotes(root, auditId, { discardDraftOnSuccess: true });
   });
 }
 
-async function loadNotes(root, auditId) {
+async function loadNotes(root, auditId, { discardDraftOnSuccess = false } = {}) {
   if (!auditId || notesState.loading) return;
   const token = ++notesState.requestToken;
   notesState.loading = true;
   notesState.error = "";
-  notesState.conflict = false;
   renderNotesSurface(root);
   try {
     const response = await fetch(`/api/v1/audits/${encodeURIComponent(auditId)}`, {
@@ -259,6 +257,8 @@ async function loadNotes(root, auditId) {
     notesState.loadedAuditId = auditId;
     notesState.serverText = typeof audit.notes === "string" ? audit.notes : "";
     notesState.serverUpdatedAt = audit.notes_updated_at || null;
+    if (discardDraftOnSuccess) clearDraft(auditId);
+    notesState.conflict = false;
     const draft = readDraft(auditId);
     if (draft !== null && draft === notesState.serverText) clearDraft(auditId);
   } catch (error) {
