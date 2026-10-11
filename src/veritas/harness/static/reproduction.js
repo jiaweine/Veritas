@@ -14,6 +14,7 @@ const repState = {
   selectedRun: null,
   workspace: null,
   selectedFile: null,
+  selectedFileRequest: 0,
   inspectorTab: "changes",
   streaming: false,
   maxAttachmentBytes: 80 * 1024 * 1024,
@@ -444,25 +445,34 @@ async function loadRuns() {
 async function selectRun(runId, refresh = true) {
   if (!runId) return;
   repState.selectedRunId = runId;
+  repState.selectedRun = null;
+  repState.workspace = null;
   repState.selectedFile = null;
+  repState.selectedFileRequest += 1;
+  const auditId = repState.selectedAuditId;
   try {
     const [detail] = await Promise.all([
       getJson(`/api/v1/runs/${encodeURIComponent(runId)}`),
       loadWorkspace(runId),
     ]);
+    if (repState.selectedRunId !== runId || repState.selectedAuditId !== auditId) return;
     repState.selectedRun = detail;
-    repState.findingContext = normalizeFindingContext(detail.origin_finding, detail.audit_id || repState.selectedAuditId);
+    repState.findingContext = normalizeFindingContext(detail.origin_finding, detail.audit_id || auditId);
     repState.draftPrompt = "";
   } catch (error) {
-    if (refresh) showInlineError(error.message);
+    if (refresh && repState.selectedRunId === runId && repState.selectedAuditId === auditId) {
+      showInlineError(error.message);
+    }
   }
 }
 
 async function loadWorkspace(runId) {
   if (!runId) { repState.workspace = null; return; }
   try {
-    repState.workspace = await getJson(`/api/v1/runs/${encodeURIComponent(runId)}/workspace`);
+    const workspace = await getJson(`/api/v1/runs/${encodeURIComponent(runId)}/workspace`);
+    if (repState.selectedRunId === runId) repState.workspace = workspace;
   } catch (error) {
+    if (repState.selectedRunId !== runId) return;
     repState.workspace = null;
     if (!repState.streaming && !String(error.message).includes("not found")) throw error;
   }
@@ -470,7 +480,12 @@ async function loadWorkspace(runId) {
 
 async function openWorkspaceFile(path) {
   if (!repState.selectedRunId || !path) return;
-  repState.selectedFile = await getJson(`/api/v1/runs/${encodeURIComponent(repState.selectedRunId)}/workspace/file?path=${encodeURIComponent(path)}`);
+  const runId = repState.selectedRunId;
+  const token = ++repState.selectedFileRequest;
+  const file = await getJson(`/api/v1/runs/${encodeURIComponent(runId)}/workspace/file?path=${encodeURIComponent(path)}`);
+  if (repState.selectedRunId === runId && repState.selectedFileRequest === token) {
+    repState.selectedFile = file;
+  }
 }
 
 async function uploadArtifacts(event) {
