@@ -85,9 +85,11 @@ export default function App() {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [activeAudit, setActiveAudit] = useState<Audit | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
   const didOpenInitialConversation = useRef(false);
+  const auditSelectionToken = useRef(0);
 
   const load = useCallback(async () => {
     try {
@@ -124,30 +126,46 @@ export default function App() {
   };
 
   const openAudit = async (id: string) => {
+    const token = ++auditSelectionToken.current;
     try {
-      const audit = await request(`/api/v1/audits/${encodeURIComponent(id)}`).then((r) => r.json());
-      setActiveAudit(audit);
+      const audit = await request(`/api/v1/audits/${encodeURIComponent(id)}`).then((r) => r.json()) as Audit;
+      if (token === auditSelectionToken.current) setActiveAudit(audit);
     } catch (error) {
-      Alert.alert("Unable to open audit", String(error));
+      if (token === auditSelectionToken.current) {
+        Alert.alert("Unable to open audit", String(error));
+      }
     }
   };
 
   const uploadPdf = async () => {
-    const result = await DocumentPicker.getDocumentAsync({ type: "application/pdf", copyToCacheDirectory: true });
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    const body = new FormData();
-    body.append("title", asset.name.replace(/\.pdf$/i, ""));
-    body.append("file", { uri: asset.uri, name: asset.name, type: asset.mimeType || "application/pdf" } as never);
+    if (uploading) return;
+    setUploading(true);
     try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "application/pdf", copyToCacheDirectory: true });
+      if (result.canceled || !result.assets[0]) return;
+      const asset = result.assets[0];
+      if (!asset.name.toLowerCase().endsWith(".pdf") || asset.size === 0) {
+        Alert.alert("Invalid PDF", "Select a non-empty PDF document.");
+        return;
+      }
+      if (asset.size != null && asset.size > 80 * 1024 * 1024) {
+        Alert.alert("PDF too large", "The maximum upload size is 80 MiB.");
+        return;
+      }
+      const body = new FormData();
+      body.append("title", asset.name.replace(/\.pdf$/i, ""));
+      body.append("file", { uri: asset.uri, name: asset.name, type: asset.mimeType || "application/pdf" } as never);
       setRefreshing(true);
-      const audit = await request("/api/v1/audits", { method: "POST", body }).then((r) => r.json());
-      await load();
+      const audit = await request("/api/v1/audits", { method: "POST", body }).then((r) => r.json()) as Audit;
+      const token = ++auditSelectionToken.current;
       setActiveAudit(audit);
+      await load();
+      if (token === auditSelectionToken.current) setActiveAudit(audit);
     } catch (error) {
-      Alert.alert("Upload failed", String(error));
+      Alert.alert("Upload failed", error instanceof Error ? error.message : String(error));
     } finally {
       setRefreshing(false);
+      setUploading(false);
     }
   };
 
@@ -188,7 +206,7 @@ export default function App() {
   if (activeAudit) {
     return <SafeAreaView style={styles.app}>
       <StatusBar barStyle="light-content" />
-      <AuditDetail audit={activeAudit} onBack={() => setActiveAudit(null)} message={message} setMessage={setMessage} send={send} sending={sending} />
+      <AuditDetail audit={activeAudit} onBack={() => { auditSelectionToken.current += 1; setActiveAudit(null); }} message={message} setMessage={setMessage} send={send} sending={sending} />
     </SafeAreaView>;
   }
 
@@ -203,7 +221,7 @@ export default function App() {
     <StatusBar barStyle="light-content" />
     <View style={styles.header}>
       <View><Text style={styles.brand}>Veritas</Text><Text style={styles.brandSub}>Research audit</Text></View>
-      <Pressable style={styles.uploadButton} onPress={uploadPdf}><Text style={styles.uploadButtonText}>＋ Paper</Text></Pressable>
+      <Pressable style={styles.uploadButton} onPress={uploadPdf} disabled={uploading} accessibilityState={{ disabled: uploading }}><Text style={styles.uploadButtonText}>{uploading ? "Uploading…" : "＋ Paper"}</Text></Pressable>
     </View>
     <View style={styles.body}>
       {tab === "overview" && <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />} contentContainerStyle={styles.scroll}>
