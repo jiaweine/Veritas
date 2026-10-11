@@ -220,13 +220,13 @@ function renderShell() {
         </section>
 
         <section class="rep-section rep-artifact-section">
-          <div class="rep-section-head"><span>Artifacts</span><button id="rep-add-artifact" class="rep-icon-action" title="Attach immutable files" ${repState.streaming || repState.uploadingArtifacts ? "disabled" : ""}>＋</button></div>
+          <div class="rep-section-head"><span>Artifacts</span><button id="rep-add-artifact" class="rep-icon-action" title="Attach immutable files" aria-label="Attach files" ${repState.streaming || repState.uploadingArtifacts ? "disabled" : ""}>＋</button></div>
           <input id="rep-artifact-input" type="file" multiple hidden />
           <div id="rep-artifact-list" class="rep-artifact-list">${renderArtifactList()}</div>
         </section>
 
         <section class="rep-section rep-history-section">
-          <div class="rep-section-head"><span>Runs</span><button id="rep-refresh-runs" class="rep-icon-action" title="Refresh runs">↻</button></div>
+          <div class="rep-section-head"><span>Runs</span><button id="rep-refresh-runs" class="rep-icon-action" title="Refresh runs" aria-label="Refresh runs">↻</button></div>
           <div id="rep-run-list" class="rep-run-list">${renderRunList(runs)}</div>
         </section>
       </aside>
@@ -249,10 +249,10 @@ function renderShell() {
 
       <aside class="rep-right" aria-label="Workspace inspector">
         <div class="rep-tabs" role="tablist">
-          <button data-rep-tab="changes" class="${repState.inspectorTab === "changes" ? "active" : ""}">Changes</button>
-          <button data-rep-tab="files" class="${repState.inspectorTab === "files" ? "active" : ""}">Files</button>
-          <button data-rep-tab="run" class="${repState.inspectorTab === "run" ? "active" : ""}">Run</button>
-          <button id="rep-refresh-workspace" class="rep-tab-refresh" title="Refresh workspace">↻</button>
+          <button type="button" role="tab" aria-selected="${repState.inspectorTab === "changes"}" data-rep-tab="changes" class="${repState.inspectorTab === "changes" ? "active" : ""}">Changes</button>
+          <button type="button" role="tab" aria-selected="${repState.inspectorTab === "files"}" data-rep-tab="files" class="${repState.inspectorTab === "files" ? "active" : ""}">Files</button>
+          <button type="button" role="tab" aria-selected="${repState.inspectorTab === "run"}" data-rep-tab="run" class="${repState.inspectorTab === "run" ? "active" : ""}">Run</button>
+          <button id="rep-refresh-workspace" class="rep-tab-refresh" title="Refresh workspace" aria-label="Refresh workspace">↻</button>
         </div>
         <div id="rep-inspector" class="rep-inspector">${renderInspector()}</div>
       </aside>
@@ -402,7 +402,7 @@ function renderFileInspector(file) {
   const title = escapeHtml(file.path || "file");
   const mode = file.diff ? "Diff" : "Preview";
   const body = file.diff || file.content || (file.binary ? "Binary file preview is intentionally disabled." : "No text content.");
-  return `<div class="rep-file-detail"><div class="rep-file-detail-head"><button id="rep-file-back">←</button><div><strong>${title}</strong><small>${escapeHtml(file.change || "file")} · ${formatBytes(file.size_bytes)}</small></div><span>${mode}</span></div>${file.immutable_input && file.change !== "original" ? `<div class="rep-integrity-warning"><strong>Staged input changed inside the agent workspace</strong><span>The immutable source artifact stored by Veritas is unchanged; this copy drifted during the run.</span></div>` : ""}<pre class="rep-code ${file.diff ? "diff" : ""}">${escapeHtml(body)}</pre>${file.truncated ? `<div class="rep-truncated">Preview capped at 512 KiB.</div>` : ""}</div>`;
+  return `<div class="rep-file-detail"><div class="rep-file-detail-head"><button id="rep-file-back" type="button" aria-label="Back to workspace files">←</button><div><strong>${title}</strong><small>${escapeHtml(file.change || "file")} · ${formatBytes(file.size_bytes)}</small></div><span>${mode}</span></div>${file.immutable_input && file.change !== "original" ? `<div class="rep-integrity-warning"><strong>Staged input changed inside the agent workspace</strong><span>The immutable source artifact stored by Veritas is unchanged; this copy drifted during the run.</span></div>` : ""}<pre class="rep-code ${file.diff ? "diff" : ""}">${escapeHtml(body)}</pre>${file.truncated ? `<div class="rep-truncated">Preview capped at 512 KiB.</div>` : ""}</div>`;
 }
 
 function bindSurface() {
