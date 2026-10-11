@@ -89,6 +89,11 @@ def main() -> None:
               document.querySelector('.workbench-title')?.textContent !== 'Stale paper A'"""
         ), "Slow audit response hijacked the selected paper"
         page.evaluate("() => window.__resetAuditFetch()")
+        page.goto(args.base_url.rstrip("/") + "/#overview", wait_until="domcontentloaded")
+        page.wait_for_function(
+            "() => document.querySelector('.page-title')?.textContent?.trim() === 'Overview'",
+            timeout=15_000,
+        )
 
         # Validate client-side failures before any POST reaches the backend.
         page.locator("#new-audit").click()
