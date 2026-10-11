@@ -47,6 +47,13 @@ not evidence of a multi-user production security review.
   client disconnects, use persisted audit and run details to reconcile state.
   Network disconnect should not be interpreted as a cancelled agent run; use
   the explicit cancel endpoint.
+- `GET /api/v1/replication/runs/{run_id}/control` currently exposes
+  pending permission IDs, option IDs, and timestamps, but does not include the
+  complete action context needed to safely re-authorize after reconnecting.
+  Neither client should reconstruct an approval UI from options alone. A
+  future resumable approval flow should preserve an explicit, human-readable
+  tool/action description in server-controlled state and provide a safe
+  reacquisition protocol, with automatic denial on loss of context.
 - Settings probes an existing server-side model provider configuration. The UI
   does **not** persist arbitrary runtime provider switches or credentials.
 - The Expo overview and reproduction modules still request some full
