@@ -190,11 +190,12 @@ async function loadMoreRuns(detailNode) {
 
 let runsLoadSequence = 0;
 
-async function enhanceRuns() {
-  if (!main || main.dataset.runsEnhanced === "true") return;
-  if (!main.textContent.includes("Agent runs")) return;
+async function enhanceRuns({ force = false } = {}) {
+  if (!main || (!force && main.dataset.runsEnhanced === "true")) return;
+  if (!force && !main.textContent.includes("Agent runs")) return;
   main.dataset.runsEnhanced = "true";
   const loadSequence = ++runsLoadSequence;
+  if (force) main.innerHTML = `<div class="page" data-runs-loading="true"><h1 class="page-title">Agent runs</h1><div class="run-detail-loading" role="status">Reloading run history…</div></div>`;
 
   try {
     const page = await json(pagePath());
@@ -225,7 +226,7 @@ async function enhanceRuns() {
     }
   } catch (error) {
     if (loadSequence !== runsLoadSequence || location.hash !== "#runs" || main.dataset.runsEnhanced !== "true") return;
-    main.innerHTML = `<div class="page"><div class="empty-state"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Run inspector unavailable</h2><p>${escapeHtml(error.message)}</p></div></div></div>`;
+    main.innerHTML = `<div class="page" data-runs-error="true"><div class="empty-state" role="alert"><div class="empty-state-inner"><div class="empty-mark">!</div><h2>Run inspector unavailable</h2><p>${escapeHtml(error.message)}</p><button type="button" class="secondary-button" data-runs-retry>Retry loading runs</button></div></div></div>`;
   }
 }
 
@@ -247,6 +248,9 @@ const observer = new MutationObserver(() => {
 });
 
 if (main) {
+  main.addEventListener("click", (event) => {
+    if (event.target.closest?.("[data-runs-retry]")) void enhanceRuns({ force: true });
+  });
   observer.observe(main, { childList: true, subtree: true });
   queueMicrotask(enhanceRuns);
 }
