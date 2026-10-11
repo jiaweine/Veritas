@@ -145,6 +145,8 @@ function replicationRuns() {
 }
 
 function renderShell() {
+  // A delayed stream/read must never repaint the user's newer SPA route.
+  if (location.hash !== "#reproduction") return;
   const capability = repState.capabilities?.replication || {};
   const configured = Boolean(capability.configured);
   const interactive = Boolean(capability.interactive_approval_enabled);
@@ -310,13 +312,16 @@ function agentEventCard(agent, runId) {
 function permissionCard(agent, runId) {
   const payload = agent.payload || {};
   const pending = payload.decision === "pending";
+  // Persisted pending events aren't proof that their live permission request
+  // is still actionable. Never authorize from a replayed run transcript.
+  const actionable = pending && repState.streaming && runId === repState.selectedRunId;
   const options = Array.isArray(payload.options) ? payload.options : [];
   const allowOptions = options.filter((item) => item.kind === "allow_once" && (item.optionId || item.option_id));
   const tool = payload.tool_call || {};
   const detail = tool.title || tool.name || agent.title || "Agent tool request";
   return `<div class="rep-permission ${pending ? "pending" : "resolved"}" data-permission-card="${escapeHtml(payload.request_id || "")}">
     <div class="rep-permission-icon">!</div><div class="rep-permission-copy"><div class="rep-card-kicker">PERMISSION</div><strong>${escapeHtml(detail)}</strong><p>${pending ? "This operation is paused. Review it before continuing." : escapeHtml(agent.detail || "Permission resolved.")}</p>${structuredPayload(tool)}</div>
-    ${pending ? `<div class="rep-permission-actions"><button class="rep-reject" data-permission-decision="reject" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}">Reject</button>${allowOptions.map((item) => `<button class="rep-allow" data-permission-decision="allow_once" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}" data-option-id="${escapeHtml(item.optionId || item.option_id)}">${escapeHtml(item.name || "Allow once")}</button>`).join("")}</div>` : `<div class="rep-permission-result">${badge(agent.status || "info", payload.decision || "resolved")}</div>`}
+    ${actionable ? `<div class="rep-permission-actions"><button class="rep-reject" data-permission-decision="reject" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}">Reject</button>${allowOptions.map((item) => `<button class="rep-allow" data-permission-decision="allow_once" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}" data-option-id="${escapeHtml(item.optionId || item.option_id)}">${escapeHtml(item.name || "Allow once")}</button>`).join("")}</div>` : `<div class="rep-permission-result">${pending ? `<small>Live approval session unavailable; do not approve from saved events.</small>` : badge(agent.status || "info", payload.decision || "resolved")}</div>`}
   </div>`;
 }
 
@@ -433,6 +438,11 @@ function bindPermissionButtons(root = document) {
     const requestId = button.dataset.requestId;
     const decision = button.dataset.permissionDecision;
     const optionId = button.dataset.optionId || null;
+    if (!repState.streaming || runId !== repState.selectedRunId) {
+      button.disabled = false;
+      showInlineError("The live permission session is no longer available. Refresh the run; do not authorize saved events.");
+      return;
+    }
     try {
       await request(`/api/v1/replication/runs/${encodeURIComponent(runId)}/permissions/${encodeURIComponent(requestId)}`, {
         method: "POST",
@@ -450,7 +460,9 @@ function bindPermissionButtons(root = document) {
 
 async function loadAttachments() {
   if (!repState.selectedAuditId) { repState.attachments = []; return; }
-  repState.attachments = await getJson(`/api/v1/audits/${encodeURIComponent(repState.selectedAuditId)}/attachments`);
+  const auditId = repState.selectedAuditId;
+  const attachments = await getJson(`/api/v1/audits/${encodeURIComponent(auditId)}/attachments`);
+  if (repState.selectedAuditId === auditId) repState.attachments = attachments;
 }
 
 async function loadRuns() {
