@@ -27,6 +27,7 @@ on:
       - "scripts/smoke_workspace_read_recovery_browser.py"
       - "scripts/smoke_replication_disconnect_browser.py"
       - "scripts/smoke_workspace_buttons_browser.py"
+      - "scripts/smoke_workspace_tabs_browser.py"
       - "scripts/browser_replication_diff_agent.py"
       - "pyproject.toml"
       - ".github/workflows/ui-visual-smoke.yml"
@@ -55,6 +56,7 @@ on:
       - "scripts/smoke_workspace_read_recovery_browser.py"
       - "scripts/smoke_replication_disconnect_browser.py"
       - "scripts/smoke_workspace_buttons_browser.py"
+      - "scripts/smoke_workspace_tabs_browser.py"
       - "scripts/browser_replication_diff_agent.py"
       - "pyproject.toml"
       - ".github/workflows/ui-visual-smoke.yml"
@@ -152,6 +154,8 @@ jobs:
           python scripts/smoke_replication_disconnect_browser.py \
             --base-url http://127.0.0.1:8765
           python scripts/smoke_workspace_buttons_browser.py \
+            --base-url http://127.0.0.1:8765
+          python scripts/smoke_workspace_tabs_browser.py \
             --base-url http://127.0.0.1:8765
           python scripts/smoke_finding_replication_browser.py \
             --base-url http://127.0.0.1:8765 \
