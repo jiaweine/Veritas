@@ -207,7 +207,7 @@ function renderShell() {
       <section class="rep-center" aria-label="Agent conversation">
         <div class="rep-center-head">
           <div><strong>${escapeHtml(capability.agent || "Replication agent")}</strong><small>${configured ? `ACP session · ${escapeHtml(runtime)}${escapeHtml(network)}` : "Configure VERITAS_REPLICATION_AGENT"}</small></div>
-          <div class="rep-run-actions"><span id="rep-live-state" class="rep-live-state ${repState.streaming ? "running" : ""}"><i></i>${repState.streaming ? "running" : "ready"}</span><button id="rep-cancel" class="rep-cancel" ${repState.streaming && repState.selectedRunId ? "" : "disabled"}>Stop</button></div>
+          <div class="rep-run-actions"><span id="rep-live-state" class="rep-live-state ${repState.streaming ? "running" : ""}"><i></i>${repState.streaming ? "running" : repState.connectionWarning ? "unconfirmed" : "ready"}</span><button id="rep-cancel" class="rep-cancel" ${repState.streaming && repState.selectedRunId ? "" : "disabled"}>Stop</button></div>
         </div>
         ${renderFindingContext()}
         <div id="rep-thread" class="rep-thread">${renderPersistedThread(repState.selectedRun)}</div>
