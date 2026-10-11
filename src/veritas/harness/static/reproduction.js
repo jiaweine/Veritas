@@ -17,6 +17,8 @@ const repState = {
   selectedFileRequest: 0,
   inspectorTab: "changes",
   streaming: false,
+  recoveryRunId: "",
+  connectionWarning: "",
   maxAttachmentBytes: 80 * 1024 * 1024,
   findingContext: null,
   draftPrompt: "",
@@ -169,6 +171,11 @@ function renderShell() {
         <span>Network · <b>${escapeHtml(network.replace(" · network: ", "").replace(" · host isolation not guaranteed", "host-controlled"))}</b></span>
       </div>
     </div>
+
+    ${repState.connectionWarning ? `<div class="rep-connection-warning" role="status" aria-live="polite">
+      <div><strong>Live trace disconnected</strong><p>${escapeHtml(repState.connectionWarning)}</p></div>
+      ${repState.recoveryRunId ? `<button type="button" class="secondary-button" data-rep-recover>Refresh persisted status</button>` : ""}
+    </div>` : ""}
 
     ${!audits.length ? `<div class="empty-state rep-empty"><div class="empty-state-inner"><div class="empty-mark">↻</div><h2>No paper available</h2><p>Upload a research paper first, then attach code/data and open a replication workspace.</p></div></div>` : `
     <div class="rep-grid">
@@ -373,6 +380,8 @@ function bindSurface() {
     repState.selectedFile = null;
     repState.findingContext = null;
     repState.draftPrompt = "";
+    repState.recoveryRunId = "";
+    repState.connectionWarning = "";
     try { sessionStorage.removeItem(REPLICATION_CONTEXT_KEY); } catch {}
     await Promise.all([loadAttachments(), loadRuns()]);
     const first = replicationRuns()[0];
@@ -384,6 +393,7 @@ function bindSurface() {
   document.querySelector("#rep-artifact-input")?.addEventListener("change", uploadArtifacts);
   document.querySelector("#rep-refresh-runs")?.addEventListener("click", async () => { await loadRuns(); renderShell(); });
   document.querySelector("#rep-run")?.addEventListener("click", runAgent);
+  document.querySelector("[data-rep-recover]")?.addEventListener("click", refreshPersistedRun);
   document.querySelector("#rep-cancel")?.addEventListener("click", cancelRun);
   document.querySelector("#rep-refresh-workspace")?.addEventListener("click", async () => { await loadWorkspace(repState.selectedRunId); renderShell(); });
   document.querySelectorAll("[data-rep-return-finding]").forEach((button) => button.addEventListener("click", () => returnToFinding()));
@@ -518,6 +528,8 @@ async function runAgent() {
   repState.draftPrompt = prompt;
 
   repState.streaming = true;
+  repState.recoveryRunId = "";
+  repState.connectionWarning = "";
   repState.selectedRunId = "";
   repState.selectedRun = null;
   repState.workspace = null;
@@ -541,11 +553,58 @@ async function runAgent() {
     repState.streaming = false;
     await loadRuns();
     if (finalRunId) await selectRun(finalRunId, false);
+    // EOF is not a terminal agent state. Only a persisted finish/error/cancel
+    // event proves that the job stopped.
+    if (finalRunId && !["finish", "error", "cancelled"].includes(repState.selectedRun?.phase)) {
+      repState.recoveryRunId = finalRunId;
+      repState.connectionWarning = "The live stream ended without a confirmed terminal event. The run may still be active. Refresh its persisted status; do not re-submit the task.";
+    }
     renderShell();
   } catch (error) {
     repState.streaming = false;
-    setRunningUi(false);
-    if (thread) thread.insertAdjacentHTML("beforeend", `<div class="rep-system-event"><span class="rep-system-icon danger">!</span><div><strong>Replication request failed</strong><small>${escapeHtml(error.message)}</small></div>${badge("danger", "error")}</div>`);
+    const runId = repState.selectedRunId || "";
+    repState.recoveryRunId = runId;
+    repState.connectionWarning = runId
+      ? `The connection ended before completion was confirmed (${error.message}). This run may still be active; refresh its persisted status instead of starting it again.`
+      : `The request outcome is unknown (${error.message}). Do not re-submit the same task until you have checked the run history.`;
+    if (runId) {
+      try {
+        await loadRuns();
+        await selectRun(runId, false);
+      } catch {
+        // A failed read is not proof of a failed or cancelled execution.
+      }
+    }
+    renderShell();
+  }
+}
+
+async function refreshPersistedRun() {
+  const runId = repState.recoveryRunId;
+  if (!runId) return;
+  const button = main.querySelector("[data-rep-recover]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Checking…";
+  }
+  try {
+    const detail = await getJson(`/api/v1/runs/${encodeURIComponent(runId)}`);
+    if (repState.recoveryRunId !== runId) return;
+    await loadRuns();
+    if (repState.recoveryRunId !== runId) return;
+    await selectRun(runId, false);
+    if (repState.recoveryRunId !== runId) return;
+    if (["finish", "error", "cancelled"].includes(detail.phase)) {
+      repState.recoveryRunId = "";
+      repState.connectionWarning = "";
+    } else {
+      repState.connectionWarning = "The server has no terminal record for this run yet. It may still be active. Check again later; never re-submit automatically.";
+    }
+    renderShell();
+  } catch (error) {
+    if (repState.recoveryRunId !== runId) return;
+    repState.connectionWarning = `Run status could not be checked (${error.message}). The execution outcome is still unknown.`;
+    renderShell();
   }
 }
 
@@ -592,13 +651,9 @@ function setRunningUi(running) {
 }
 
 function showInlineError(message) {
-  let toast = document.querySelector("#toast");
-  if (toast) {
-    toast.textContent = message;
-    toast.classList.add("show");
-    clearTimeout(showInlineError.timer);
-    showInlineError.timer = setTimeout(() => toast.classList.remove("show"), 3200);
-  }
+  window.dispatchEvent(new CustomEvent("veritas:notice", {
+    detail: { kind: "error", message: String(message) },
+  }));
 }
 
 let reproductionLoadSequence = 0;
