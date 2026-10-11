@@ -20,6 +20,7 @@ const repState = {
   livePrompt: "",
   liveEvents: [],
   submittedPermissionIds: [],
+  pendingDecisionIds: [],
   uploadingArtifacts: false,
   recoveryRunId: "",
   connectionWarning: "",
@@ -340,14 +341,17 @@ function permissionCard(agent, runId) {
   const pending = payload.decision === "pending";
   // Persisted pending events aren't proof that their live permission request
   // is still actionable. Never authorize from a replayed run transcript.
-  const actionable = pending && repState.streaming && runId === repState.selectedRunId;
+  const requestId = String(payload.request_id || "");
+  const inFlight = repState.pendingDecisionIds.includes(requestId);
+  const submitted = repState.submittedPermissionIds.includes(requestId);
+  const actionable = pending && repState.streaming && runId === repState.selectedRunId && !inFlight && !submitted;
   const options = Array.isArray(payload.options) ? payload.options : [];
   const allowOptions = options.filter((item) => item.kind === "allow_once" && (item.optionId || item.option_id));
   const tool = payload.tool_call || {};
   const detail = tool.title || tool.name || agent.title || "Agent tool request";
   return `<div class="rep-permission ${pending ? "pending" : "resolved"}" data-permission-card="${escapeHtml(payload.request_id || "")}">
     <div class="rep-permission-icon">!</div><div class="rep-permission-copy"><div class="rep-card-kicker">PERMISSION</div><strong>${escapeHtml(detail)}</strong><p>${pending ? "This operation is paused. Review it before continuing." : escapeHtml(agent.detail || "Permission resolved.")}</p>${structuredPayload(tool)}</div>
-    ${actionable ? `<div class="rep-permission-actions"><button class="rep-reject" data-permission-decision="reject" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}">Reject</button>${allowOptions.map((item) => `<button class="rep-allow" data-permission-decision="allow_once" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}" data-option-id="${escapeHtml(item.optionId || item.option_id)}">${escapeHtml(item.name || "Allow once")}</button>`).join("")}</div>` : `<div class="rep-permission-result">${pending ? `<small>Live approval session unavailable; do not approve from saved events.</small>` : badge(agent.status || "info", payload.decision || "resolved")}</div>`}
+    ${actionable ? `<div class="rep-permission-actions"><button class="rep-reject" data-permission-decision="reject" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}">Reject</button>${allowOptions.map((item) => `<button class="rep-allow" data-permission-decision="allow_once" data-run-id="${escapeHtml(runId)}" data-request-id="${escapeHtml(payload.request_id || "")}" data-option-id="${escapeHtml(item.optionId || item.option_id)}">${escapeHtml(item.name || "Allow once")}</button>`).join("")}</div>` : `<div class="rep-permission-result">${pending ? `<small>${inFlight ? "Sending permission decision…" : submitted ? "Permission decision sent" : "Live approval session unavailable; do not approve from saved events."}</small>` : badge(agent.status || "info", payload.decision || "resolved")}</div>`}
   </div>`;
 }
 
@@ -497,6 +501,8 @@ function bindPermissionButtons(root = document) {
       showInlineError("The live permission session is no longer available. Refresh the run; do not authorize saved events.");
       return;
     }
+    if (repState.pendingDecisionIds.includes(requestId) || repState.submittedPermissionIds.includes(requestId)) return;
+    repState.pendingDecisionIds.push(requestId);
     if (card) card.dataset.permissionBusy = "true";
     const buttons = [...(card?.querySelectorAll("[data-permission-decision]") || [button])];
     buttons.forEach((control) => { control.disabled = true; });
@@ -506,12 +512,14 @@ function bindPermissionButtons(root = document) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision, option_id: optionId }),
       });
+      repState.pendingDecisionIds = repState.pendingDecisionIds.filter((id) => id !== requestId);
       if (!repState.submittedPermissionIds.includes(requestId)) {
         repState.submittedPermissionIds.push(requestId);
       }
       const actions = card?.querySelector(".rep-permission-actions");
       if (actions) actions.innerHTML = `<span class="rep-decision-sent">${decision === "allow_once" ? "Allow-once sent" : "Rejected"}</span>`;
     } catch (error) {
+      repState.pendingDecisionIds = repState.pendingDecisionIds.filter((id) => id !== requestId);
       if (card) delete card.dataset.permissionBusy;
       buttons.forEach((control) => { control.disabled = false; });
       showInlineError(error.message);
@@ -618,6 +626,7 @@ async function runAgent() {
   repState.livePrompt = prompt;
   repState.liveEvents = [];
   repState.submittedPermissionIds = [];
+  repState.pendingDecisionIds = [];
   repState.recoveryRunId = "";
   repState.connectionWarning = "";
   repState.selectedRunId = "";
