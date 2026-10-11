@@ -169,7 +169,7 @@ function setView(view, { push = true } = {}) {
   state.view = view;
   $$('[data-view]').forEach((node) => node.classList.toggle("active", node.dataset.view === view));
   document.body.classList.remove("sidebar-open");
-  if (push) history.replaceState(null, "", `#${view}`);
+  if (push && location.hash !== `#${view}`) history.pushState(null, "", `#${view}`);
   renderMain();
   els.main.focus({ preventScroll: true });
 }
@@ -323,14 +323,15 @@ function renderSettings() {
   </div>`;
 }
 
-async function openAudit(auditId) {
+async function openAudit(auditId, { push = true } = {}) {
   const requestToken = ++state.activeAuditRequest;
   try {
     const audit = await api(`/api/v1/audits/${encodeURIComponent(auditId)}`).then((r) => r.json());
     if (requestToken !== state.activeAuditRequest) return;
     state.activeAudit = audit;
     state.view = "audit";
-    history.replaceState(null, "", `#audit=${encodeURIComponent(auditId)}`);
+    const targetHash = `#audit=${encodeURIComponent(auditId)}`;
+    if (push && location.hash !== targetHash) history.pushState(null, "", targetHash);
     $('[data-view]').forEach((node) => node.classList.remove("active"));
     renderMain();
     renderAgent();
@@ -550,7 +551,7 @@ function syncRouteFromHash() {
     let auditId;
     try { auditId = decodeURIComponent(encoded); } catch { auditId = encoded; }
     if (auditId && (state.view !== "audit" || state.activeAudit?.audit_id !== auditId)) {
-      void openAudit(auditId);
+      void openAudit(auditId, { push: false });
     }
     return;
   }
@@ -581,6 +582,7 @@ function bindGlobal() {
   // Native sidebar clicks call setView(); hash-only navigation from feature
   // modules and browser history must also update the rendered SPA view.
   window.addEventListener("hashchange", syncRouteFromHash);
+  window.addEventListener("popstate", syncRouteFromHash);
   document.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); els.command.open ? els.command.close() : openCommand(); }
   });
@@ -591,7 +593,7 @@ async function boot() {
   await loadProductData({ keepAudit: false });
   const hash = location.hash.slice(1);
   if (hash.startsWith("audit=")) {
-    await openAudit(decodeURIComponent(hash.split("=").slice(1).join("=")));
+    await openAudit(decodeURIComponent(hash.split("=").slice(1).join("=")), { push: false });
   } else if (["overview","audits","findings","runs","evidence","reproduction","benchmarks","settings"].includes(hash)) {
     setView(hash, { push: false });
   } else {
