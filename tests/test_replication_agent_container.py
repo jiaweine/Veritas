@@ -53,6 +53,15 @@ def test_constrained_container_command_does_not_expose_host_or_secret_values(
     assert "/var/run/docker.sock" not in str(argv)
 
 
+def test_root_server_cannot_launch_agent_container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("veritas.replication.acp.os.getuid", lambda: 0)
+    agent = AgentCommand(argv=("agent",), container_image=IMAGE)
+    with pytest.raises(RuntimeError, match="non-root server account"):
+        AcpTurnRunner(agent)._launch_spec(tmp_path.resolve())
+
+
 def test_opt_in_network_is_bridge_only(tmp_path: Path) -> None:
     agent = AgentCommand(
         argv=("agent",), container_image=IMAGE, container_network="bridge"
