@@ -234,6 +234,9 @@ async function enhanceBenchmarks({ force = false } = {}) {
   const generation = ++enhancementGeneration;
   main.dataset.benchmarksEnhanced = "loading";
   resetHistoryFeed();
+  if (force) {
+    main.innerHTML = `<div class="page" data-benchmark-loading="true"><h1 class="page-title">Benchmarks</h1><div class="settings-loading" role="status">Reloading benchmark inventory…</div></div>`;
+  }
   try {
     const [catalog, historyPage] = await Promise.all([fetchCatalog(), fetchHistoryPage()]);
     if (generation !== enhancementGeneration || !benchmarkTitleIsActive()) return;
