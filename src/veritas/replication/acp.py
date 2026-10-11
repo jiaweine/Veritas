@@ -61,6 +61,8 @@ class AgentCommand:
             raise ValueError("container image must have a pinned sha256 digest")
         if self.container_network not in {"none", "bridge"}:
             raise ValueError("container network must be none or bridge")
+        if self.container_image is None and self.container_network != "none":
+            raise ValueError("container networking requires a configured container image")
         for key in self.forward_env:
             if not key or "=" in key or "\x00" in key:
                 raise ValueError(f"invalid forwarded environment name: {key!r}")
@@ -402,7 +404,7 @@ class AcpTurnRunner:
         process_env = self.agent.process_env()
         if self.agent.container_image is None:
             return self.agent.argv, str(workspace), process_env
-        if ":" in str(workspace) or "\\n" in str(workspace):
+        if ":" in str(workspace) or "\n" in str(workspace):
             raise ValueError("workspace path cannot be safely bound into the agent container")
         if not hasattr(os, "getuid") or not hasattr(os, "getgid"):
             raise RuntimeError("container runtime requires a POSIX host")
