@@ -1,0 +1,51 @@
+# One-time, branch-scoped publisher for verified browser screenshots.
+# Automatically skips later README and PNG changes; remove this workflow
+# once the screenshot refresh is committed.
+name: readme-screenshot-refresh
+
+on:
+  push:
+    branches: ["fix/audit-workbench-dark-theme-unification"]
+    paths:
+      - ".github/workflows/readme-screenshot-refresh.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-real-screenshots:
+    if: github.repository == 'jiaweine/Veritas' && github.ref == 'refs/heads/fix/audit-workbench-dark-theme-unification'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: true
+      - name: Fetch screenshots from successful UI smoke
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/readme-screenshots"
+          gh run download 38128924054 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name veritas-ui-screenshots \
+            --dir "$RUNNER_TEMP/readme-screenshots"
+      - name: Copy real Chromium screenshots into README assets
+        run: python scripts/update_readme_screenshots.py "$RUNNER_TEMP/readme-screenshots"
+      - name: Commit updated image assets to PR branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            docs/assets/product/overview.png \
+            docs/assets/product/audit-workbench.png \
+            docs/assets/product/command-search.png \
+            docs/assets/product/runs.png \
+            docs/assets/product/reproduction.png
+          if git diff --cached --quiet; then
+            echo "All README screenshots are already up to date"
+            exit 0
+          fi
+          git commit -m "docs(readme): refresh real dark workspace screenshots"
+          git push origin "HEAD:$GITHUB_REF_NAME"
