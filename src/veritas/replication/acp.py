@@ -408,6 +408,8 @@ class AcpTurnRunner:
             raise ValueError("workspace path cannot be safely bound into the agent container")
         if not hasattr(os, "getuid") or not hasattr(os, "getgid"):
             raise RuntimeError("container runtime requires a POSIX host")
+        if os.getuid() == 0:
+            raise RuntimeError("container agent must be launched by a non-root server account")
         argv = (
             "docker", "run", "--rm", "--interactive", "--pull", "never",
             "--read-only", "--cap-drop", "ALL",
