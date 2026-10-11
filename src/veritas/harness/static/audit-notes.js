@@ -212,7 +212,9 @@ async function loadNotes(root, auditId) {
     const draft = readDraft(auditId);
     if (draft !== null && draft === notesState.serverText) clearDraft(auditId);
   } catch (error) {
-    notesState.error = `Unable to load notes: ${error.message}`;
+    if (token === notesState.requestToken && auditId === activeAuditId()) {
+      notesState.error = `Unable to load notes: ${error.message}`;
+    }
   } finally {
     if (token === notesState.requestToken) notesState.loading = false;
     const fresh = auditRoot();
@@ -239,11 +241,16 @@ async function saveNotes(root, auditId) {
       throw new Error(payload.detail || `${response.status} ${response.statusText}`);
     }
     const saved = await response.json();
-    notesState.serverText = typeof saved.notes === "string" ? saved.notes : content;
-    notesState.serverUpdatedAt = saved.notes_updated_at || null;
-    clearDraft(auditId);
+    const persisted = typeof saved.notes === "string" ? saved.notes : content;
+    // The editor may have changed while this POST was in flight.
+    // Keep any newer draft instead of wiping it after the older save completes.
+    if (readDraft(auditId) === persisted) clearDraft(auditId);
+    if (notesState.auditId === auditId) {
+      notesState.serverText = persisted;
+      notesState.serverUpdatedAt = saved.notes_updated_at || null;
+    }
   } catch (error) {
-    notesState.error = `Save failed: ${error.message}`;
+    if (notesState.auditId === auditId) notesState.error = `Save failed: ${error.message}`;
   } finally {
     notesState.saving = false;
     const fresh = auditRoot();
