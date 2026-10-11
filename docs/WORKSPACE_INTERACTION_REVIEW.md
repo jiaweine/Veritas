@@ -13,13 +13,13 @@ API is authoritative for persisted evidence; transient client state is not.
 | Audit & conversation | Audit detail and NDJSON messages | Incremental events; route-specific state fencing | Network interruption cannot resume from an event cursor |
 | Evidence Lens | Immutable paper and source annotations | Source-linked paper preview, inspector, finding navigation | Some context transfers depend on hash/session storage |
 | Findings | Cursor pages + persisted audit details | Web first 50 with load-more; cross-link to paper | Native reads complete findings collection, no paging |
-| Runs | Cursor pages + correlated detail/events | Bounded Web history, inspector and pagination | No live subscription or background refresh |
+| Runs | Cursor pages + correlated detail/events | Bounded Web history, inspector and pagination | No live subscription; failed initial reads now have explicit Retry |
 | Projects | Projects + audit assignment mutation | Create, filter and assign; errors roll back selectors | UI modules duplicate projection/refresh; no cross-tab sync |
 | Notes | Audit record + `/notes` mutation | Local draft, keyboard save, persisted server snapshot | Concurrent editing across devices lacks revision conflicts |
 | Search | `GET /api/v1/search` | One debounced abortable palette with retry | No search facets or server-side fuzzy ranking |
 | Benchmarks | Catalog + paginated results | Read-only metrics and evaluation history | No client-side benchmark job submission flow |
 | Settings | Capabilities + provider route probe | Inspect server config and perform controlled probe | No persisted server-authenticated configuration editor |
-| Reproduction | ACP run/control, workspace/diffs | Streaming, cancellation and approval with explicit boundaries | Agent reconnect and recovery need more server context |
+| Reproduction | ACP run/control, workspace/diffs | Streaming, cancellation and approval with explicit boundaries | On disconnect, persisted run state can be refreshed by ID; no full event resume or verified approval reacquisition |
 | Native | Versioned `/api/v1` endpoints | Upload, audit chat and reproduction | Missing Web page-level pagination and most organizer tools |
 | PWA | Static cache only | Shell available offline | Evidence, edits and execution require a live API; no offline queue |
 
@@ -48,6 +48,32 @@ API is authoritative for persisted evidence; transient client state is not.
    treat missing API connectivity as a successful mutation, cache paper
    evidence as public static shell data, or queue non-idempotent POSTs
    without an explicit design.
+
+## Recoverable reads and uncertain execution state
+
+The Web modules for **Runs, Settings and Benchmarks** now use an explicit
+read-only retry path after the first API error. Their error state is an
+accessible alert with a Retry button. A retry reissues the corresponding
+GET, and route identity is checked before accepting its response. No
+mutation is automatically replayed.
+
+Reproduction's live NDJSON transport is **not a resumable subscription**.
+An EOF or network error without a persisted terminal event now produces a
+visible `unconfirmed` state. If a Run ID was observed, the UI provides
+`Refresh persisted status` using only `GET /api/v1/runs/{run_id}`,
+then refreshes its correlated history. It only clears the uncertainty when
+the server reports a terminal `finish`, `error` or `cancelled` phase.
+If no Run ID was observed, the API outcome is unknown and a retrying POST
+could duplicate execution. **No automatic POST retries are allowed.**
+
+Persisted permission events may still contain `decision=pending`, but a
+replayed event cannot authorize a tool: approval buttons appear only while
+the initiating Run's live stream remains active. Reconnect-time approval
+requires a separate server-verified permission context protocol.
+
+Feature-level errors can dispatch `veritas:notice` to the single Web toast
+owner. Reproduction now uses this rather than directly editing the toast
+element and auto-dismissing failure messages.
 
 ## State model for shared async primitives
 
@@ -100,6 +126,8 @@ API is authoritative for persisted evidence; transient client state is not.
   wrong/empty PDF is rejected without a POST.
 - `scripts/smoke_async_navigation_browser.py`: delayed Settings, Runs and
   Reproduction API results do not repaint another route.
+- `scripts/smoke_workspace_read_recovery_browser.py`: failed read-only Runs, Settings and Benchmarks GETs recover using in-place Retry.
+- `scripts/smoke_replication_disconnect_browser.py`: a disconnected ACP live stream is reconciled through saved run detail without resubmitting POST.
 - `scripts/smoke_ndjson_stream_browser.py`: split UTF-8, EOF and malformed
   frame behavior is consistent.
 - Existing page/pagination, project and permissions smoke tests should
