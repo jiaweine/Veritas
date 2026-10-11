@@ -458,6 +458,9 @@ async function submitUpload(event) {
   els.uploadForm.setAttribute("aria-busy", "true");
   els.uploadSubmit.disabled = true;
   els.uploadSubmit.textContent = "Parsing…";
+  $("#upload-close").disabled = true;
+  $("#upload-cancel").disabled = true;
+  els.drop.disabled = true;
   const data = new FormData();
   data.append("file", state.selectedFile);
   data.append("title", els.uploadTitle.value.trim());
@@ -480,6 +483,9 @@ async function submitUpload(event) {
     els.uploadForm.removeAttribute("aria-busy");
     els.uploadSubmit.textContent = "Parse & start conversation";
     els.uploadSubmit.disabled = !state.selectedFile;
+    $("#upload-close").disabled = false;
+    $("#upload-cancel").disabled = false;
+    els.drop.disabled = false;
     els.file.value = "";
   }
 }
@@ -595,6 +601,19 @@ function bindGlobal() {
   $("#new-audit").addEventListener("click", openUpload);
   $("#mobile-new").addEventListener("click", openUpload);
   $("#drop-zone").addEventListener("click", chooseFile);
+  els.drop.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    if (!state.uploading) els.drop.classList.add("drag-over");
+  });
+  els.drop.addEventListener("dragleave", () => els.drop.classList.remove("drag-over"));
+  els.drop.addEventListener("drop", (event) => {
+    event.preventDefault();
+    els.drop.classList.remove("drag-over");
+    if (!state.uploading) setSelectedFile(event.dataTransfer?.files?.[0]);
+  });
+  els.upload.addEventListener("cancel", (event) => {
+    if (state.uploading) event.preventDefault();
+  });
   els.file.addEventListener("change", () => setSelectedFile(els.file.files?.[0]));
   $("#upload-close").addEventListener("click", () => els.upload.close());
   $("#upload-cancel").addEventListener("click", () => els.upload.close());
