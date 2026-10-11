@@ -13,6 +13,13 @@ from uuid import uuid4
 from .models import HarnessEvent, utc_now_iso
 
 MAX_AUDIT_NOTES_CHARS = 50_000
+_NOTES_VERSION_UNSET = object()
+
+
+class NotesConflictError(ValueError):
+    """Notes changed since the client read them; do not overwrite user data."""
+
+
 EVENT_JOURNAL_FILENAME = "events.ndjson"
 EVENT_JOURNAL_SCHEMA_VERSION = "1"
 _JOURNAL_READ_FLAGS = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -282,7 +289,18 @@ class HarnessStore:
             self._write_record(record)
             return self._read_record(audit_id)
 
-    def set_notes(self, audit_id: str, notes: str) -> dict[str, Any]:
+    def set_notes(
+        self,
+        audit_id: str,
+        notes: str,
+        *,
+        expected_updated_at: str | None | object = _NOTES_VERSION_UNSET,
+    ) -> dict[str, Any]:
+        """Conditionally save notes while holding the shared store lock.
+
+        Old clients may omit the precondition. New clients send the version
+        they last read (including explicit null for never-saved notes).
+        """
         if not isinstance(notes, str):
             raise TypeError("audit notes must be text")
         if len(notes) > MAX_AUDIT_NOTES_CHARS:
@@ -291,6 +309,11 @@ class HarnessStore:
             )
         with self._lock:
             record = self._read_record(audit_id, include_events=False)
+            if (
+                expected_updated_at is not _NOTES_VERSION_UNSET
+                and record.get("notes_updated_at") != expected_updated_at
+            ):
+                raise NotesConflictError("audit notes changed since they were last loaded")
             now = utc_now_iso()
             record["notes"] = notes
             record["notes_updated_at"] = now
