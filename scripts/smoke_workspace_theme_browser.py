@@ -110,6 +110,9 @@ def main() -> None:
             )
 
         if audit_id:
+            # The app consumes initial #audit= on boot; changing only the
+            # fragment on an already-loaded SPA does not open a new paper.
+            page.goto("about:blank", wait_until="load")
             page.goto(f"{base_url}/#audit={audit_id}", wait_until="networkidle")
             page.wait_for_function(
                 "document.body.classList.contains('reference-audit-active')",
@@ -122,6 +125,7 @@ def main() -> None:
                 full_page=True,
             )
 
+        page.goto("about:blank", wait_until="load")
         page.goto(f"{base_url}/#overview", wait_until="networkidle")
         _close_conversation(page)
         page.locator("#command-trigger").click()
